@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Login } from '@/components/login'
 import { TahfidzRekap } from '@/components/tahfidz-rekap'
 import { TahfidzForm } from '@/components/tahfidz-form'
@@ -8,10 +8,12 @@ import { QiroahForm } from '@/components/qiroah-form'
 import { QiroahRekap } from '@/components/qiroah-rekap'
 import { QiroahPenilaian } from '@/components/qiroah-penilaian'
 import { QiroahPenguji } from '@/components/qiroah-penguji'
+import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/components/pusat-notifikasi'
 import TertibPoint from '@/components/tertib-point'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import { hasPengujiRole } from '@/lib/qiroah'
+import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import {
   educationCalendar,
   recentActivities,
@@ -21,7 +23,6 @@ import {
 } from '@/lib/teacher-data'
 import {
   BookOpen,
-  BookCheck,
   FileText,
   CalendarCheck2,
   Edit3,
@@ -30,7 +31,6 @@ import {
   FileCheck,
   ArrowLeft,
   ArrowRight,
-  Bell,
   ClipboardList,
   CheckCircle2,
   CalendarDays,
@@ -44,12 +44,25 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<string>('dashboard')
   const [completedTodos, setCompletedTodos] = useState<string[]>([])
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('user_session')
+      if (!raw) return
+      const user = JSON.parse(raw)
+      if (adalahKepalaSekolah(user)) window.location.replace('/dashboard/kepala-sekolah')
+    } catch {
+      /* sesi yang rusak diabaikan */
+    }
+  }, [])
+
   const handleLogout = () => {
     localStorage.removeItem('user_session')
     setCurrentUser(null)
     setCurrentView('dashboard')
     window.location.reload()
   }
+
+  const pusat = usePusatNotifikasi(currentUser, currentView)
 
   const todayLabel = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -66,7 +79,13 @@ export default function Home() {
     .join('') || 'PG'
 
   if (!currentUser) {
-    return <Login onLoginSuccess={(user) => setCurrentUser(user)} />
+    return <Login onLoginSuccess={(user) => {
+      if (adalahKepalaSekolah(user)) {
+        window.location.assign('/dashboard/kepala-sekolah')
+        return
+      }
+      setCurrentUser(user)
+    }} />
   }
 
   const isTahfidz = currentView.startsWith('tahfidz')
@@ -99,6 +118,16 @@ export default function Home() {
             <div className="flex size-8 items-center justify-center rounded-full bg-amber-100 font-bold text-amber-800 text-xs">
               {initials}
             </div>
+            <PusatNotifikasi
+              semua={pusat.semua}
+              belumDibaca={pusat.belumDibaca}
+              sudah={pusat.sudah}
+              onBuka={(item) => {
+                pusat.tandai(item.id)
+                setCurrentView(item.tujuan)
+              }}
+              onTandaiSemua={() => pusat.tandaiSemua(pusat.semua.map((item) => item.id))}
+            />
             <button
               onClick={handleLogout}
               className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50 transition"
@@ -110,31 +139,44 @@ export default function Home() {
 
         {/* Navigasi Menu Atas */}
         <div className="mx-auto flex max-w-6xl gap-6 px-4 overflow-x-auto text-xs font-semibold border-t border-slate-100 pt-2">
-          {[
+          {(
+            [
             { id: 'dashboard', label: 'Dashboard', active: currentView === 'dashboard' },
             { id: 'tahfidz_menu', label: "Tahfidzul Qur'an", active: isTahfidz },
             { id: 'qiroah_menu', label: "Qiroatul Qur'an", active: isQiroah },
             { id: 'jurnal', label: 'Jurnal Pembelajaran', active: currentView === 'jurnal' },
             { id: 'absensi', label: 'Absensi', active: currentView === 'absensi' },
+            { id: 'data_siswa', label: 'Data Siswa', href: '/data-siswa' },
             { id: 'tertib_point', label: 'Tertib Point', active: currentView === 'tertib_point' },
             { id: 'pengumuman', label: 'Pengumuman', active: currentView === 'pengumuman' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setCurrentView(item.id)}
-              className={`whitespace-nowrap pb-2.5 transition ${
-                item.active
-                  ? 'border-b-2 border-emerald-600 font-extrabold text-emerald-700'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {item.label}
-            </button>
+            ] as { id: string; label: string; active?: boolean; href?: string }[]
+          ).map((item) => (
+            item.href ? (
+              <a
+                key={item.id}
+                href={item.href}
+                className="whitespace-nowrap pb-2.5 text-slate-500 transition hover:text-slate-800"
+              >
+                {item.label}
+              </a>
+            ) : (
+              <button
+                key={item.id}
+                onClick={() => setCurrentView(item.id)}
+                className={`whitespace-nowrap pb-2.5 transition ${
+                  item.active
+                    ? 'border-b-2 border-emerald-600 font-extrabold text-emerald-700'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {item.label}
+              </button>
+            )
           ))}
         </div>
       </header>
 
-      <main className={`mx-auto p-4 sm:p-6 space-y-6 ${currentView === 'jurnal' || currentView === 'absensi' ? 'max-w-7xl' : 'max-w-6xl'}`}>
+      <main className={`mx-auto p-4 sm:p-6 space-y-6 ${currentView === 'absensi' ? 'max-w-[96rem]' : currentView === 'jurnal' ? 'max-w-7xl' : 'max-w-6xl'}`}>
         {currentView === 'dashboard' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -143,12 +185,6 @@ export default function Home() {
                 <h2 className="text-xl font-black text-slate-900">Dashboard Guru</h2>
                 <p className="text-xs text-slate-500">Kelola kegiatan belajar dan perkembangan santri dengan mudah.</p>
               </div>
-              <button
-                onClick={() => setCurrentView('pengumuman')}
-                className="hidden sm:flex items-center gap-1.5 rounded-full bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white shadow-sm"
-              >
-                <Bell className="size-3.5" /> 3 notifikasi
-              </button>
             </div>
 
             {/* Grid Card Menu Utama (Termasuk Card Merah Cerah Tertib Point) */}
@@ -167,19 +203,12 @@ export default function Home() {
                 <p className="mt-1 text-[11px] opacity-80">Kelola setoran, hafalan, dan kenaikan hafalan santri</p>
               </button>
 
-              <button
-                onClick={() => setCurrentView('qiroah_menu')}
-                className="rounded-2xl bg-[#0284c7] p-5 text-left text-white shadow transition hover:shadow-lg hover:-translate-y-0.5"
-              >
-                <div className="flex items-center justify-between pb-6">
-                  <div className="rounded-xl bg-white/20 p-2.5">
-                    <BookCheck className="size-5" />
-                  </div>
-                  <ArrowRight className="size-4 opacity-75" />
-                </div>
-                <h3 className="text-sm font-extrabold">Qiroatul Qur&apos;an</h3>
-                <p className="mt-1 text-[11px] opacity-80">Input bacaan, jilid, dan kenaikan jilid santri</p>
-              </button>
+              <RingkasanQiroah
+                onOpen={() => setCurrentView('qiroah_menu')}
+                onJadwalkan={() => setCurrentView('qiroah_penguji')}
+                penguji={pusat.penguji}
+                pengampu={pusat.pengampu}
+              />
 
               <button
                 onClick={() => setCurrentView('jurnal')}
@@ -234,6 +263,27 @@ export default function Home() {
                 <ClipboardList className="size-5 text-emerald-600" />
               </div>
               <div className="grid gap-3 md:grid-cols-3">
+                {pusat.penguji.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('qiroah_penguji')}
+                    className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-left"
+                  >
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-amber-500 bg-white text-amber-600">
+                      <ClipboardCheck className="size-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-bold text-amber-950">Jadwalkan ujian kenaikan jilid</span>
+                      <span className="mt-1 block text-xs leading-5 text-amber-900">
+                        {pusat.penguji
+                          .slice(0, 3)
+                          .map((item) => `${item.nama} (${item.kelas})`)
+                          .join(', ')}
+                        {pusat.penguji.length > 3 ? `, dan ${pusat.penguji.length - 3} siswa lain` : ''} menunggu tanggal ujian.
+                      </span>
+                    </span>
+                  </button>
+                )}
                 {teacherTodos.map((todo) => {
                   const completed = completedTodos.includes(todo.id)
                   return (
@@ -576,6 +626,11 @@ export default function Home() {
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1b4332] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#16382a] transition"
               >
                 <FileCheck className="size-5" /> Menu Penguji
+                {pusat.penguji.length > 0 && (
+                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-900">
+                    {pusat.penguji.length}
+                  </span>
+                )}
               </button>
             )}
           </div>

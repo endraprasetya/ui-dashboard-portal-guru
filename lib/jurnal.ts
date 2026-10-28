@@ -128,6 +128,11 @@ export function teacherName(currentUser?: any) {
   return currentUser?.nama_lengkap || currentUser?.nama || currentUser?.username || 'Guru'
 }
 
+export function teacherNip(currentUser?: any) {
+  const nip = currentUser?.nip ?? currentUser?.NIP ?? currentUser?.nip_guru ?? ''
+  return String(nip || '').trim()
+}
+
 export function hitungKehadiran(totalSiswa: number, absen: SiswaTidakHadir[], absenManual?: string) {
   const dariDaftar = absen.length
   const manual = Number(absenManual)
@@ -380,4 +385,112 @@ export function semesterRange(year: number, semester: string) {
     return { start: `${year}-01-01`, end: `${year}-06-30` }
   }
   return { start: `${year}-07-01`, end: `${year}-12-31` }
+}
+
+export type SimbolHadir = '' | '•' | 'S' | 'I' | 'A'
+
+export type BarisMatriksAbsen = {
+  key: string
+  nama: string
+  simbol: SimbolHadir[]
+  sakit: number
+  izin: number
+  alpa: number
+  hadir: number
+  persen: number | null
+}
+
+export function jenisAbsen(value: string): 'sakit' | 'izin' | 'alpa' {
+  const key = value.toLowerCase()
+  if (key.includes('sakit')) return 'sakit'
+  if (key.includes('izin')) return 'izin'
+  return 'alpa'
+}
+
+export function hariLiburSekolah(year: number, month: number, day: number) {
+  const hari = new Date(year, month - 1, day).getDay()
+  return hari === 0 || hari === 5
+}
+
+const RANK_ABSEN = { alpa: 3, sakit: 2, izin: 1 } as const
+const SIMBOL_ABSEN = { sakit: 'S', izin: 'I', alpa: 'A' } as const
+
+export function buildRekapMatriks(opts: {
+  bulan: string
+  rows: { tanggal?: string; siswa_tidak_hadir?: unknown }[]
+  siswa: { id_siswa: string; nama_siswa: string }[]
+}) {
+  const [year, month] = opts.bulan.split('-').map(Number)
+  const jumlahHari = year && month ? new Date(year, month, 0).getDate() : 0
+  const libur = Array.from({ length: jumlahHari }, (_, index) => hariLiburSekolah(year, month, index + 1))
+  const hariDenganData = new Set<number>()
+  const absenHari = new Map<number, Map<string, 'S' | 'I' | 'A'>>()
+  const rankHari = new Map<number, Map<string, number>>()
+
+  for (const row of opts.rows) {
+    const iso = String(row.tanggal || '').slice(0, 10)
+    if (iso.slice(0, 7) !== opts.bulan) continue
+    const day = Number(iso.slice(8, 10))
+    if (!day || day > jumlahHari) continue
+    hariDenganData.add(day)
+
+    for (const item of normalizeSiswaTidakHadir(row.siswa_tidak_hadir)) {
+      const jenis = jenisAbsen(item.keterangan)
+      const simbol = SIMBOL_ABSEN[jenis]
+      const rank = RANK_ABSEN[jenis]
+      if (!absenHari.has(day)) absenHari.set(day, new Map())
+      if (!rankHari.has(day)) rankHari.set(day, new Map())
+      const simbolMap = absenHari.get(day)!
+      const rankMap = rankHari.get(day)!
+      const keys = [
+        item.id_siswa ? `id:${item.id_siswa}` : '',
+        item.nama ? `nama:${item.nama.trim().toLowerCase()}` : '',
+      ].filter(Boolean)
+
+      for (const key of keys) {
+        if (rank < (rankMap.get(key) || 0)) continue
+        rankMap.set(key, rank)
+        simbolMap.set(key, simbol)
+      }
+    }
+  }
+
+  const hariEfektif = hariDenganData.size
+  const baris: BarisMatriksAbsen[] = opts.siswa.map((siswa) => {
+    const idKey = siswa.id_siswa ? `id:${String(siswa.id_siswa)}` : ''
+    const namaKey = `nama:${String(siswa.nama_siswa || '').trim().toLowerCase()}`
+    let sakit = 0
+    let izin = 0
+    let alpa = 0
+    let hadir = 0
+    const simbol: SimbolHadir[] = []
+
+    for (let day = 1; day <= jumlahHari; day += 1) {
+      if (!hariDenganData.has(day)) {
+        simbol.push('')
+        continue
+      }
+      const map = absenHari.get(day)
+      const mark = (idKey && map?.get(idKey)) || map?.get(namaKey) || '•'
+      simbol.push(mark)
+      if (mark === '•') hadir += 1
+      else if (mark === 'S') sakit += 1
+      else if (mark === 'I') izin += 1
+      else alpa += 1
+    }
+
+    const persen = hariEfektif > 0 ? Math.round((hadir / hariEfektif) * 1000) / 10 : null
+    return {
+      key: String(siswa.id_siswa || siswa.nama_siswa),
+      nama: siswa.nama_siswa,
+      simbol,
+      sakit,
+      izin,
+      alpa,
+      hadir,
+      persen,
+    }
+  })
+
+  return { jumlahHari, hariEfektif, libur, baris }
 }

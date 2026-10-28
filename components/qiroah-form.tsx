@@ -12,6 +12,7 @@ import {
   generateQiroahId,
   generateUjianId,
   isYa,
+  pengujiUntukKelas,
   teacherDisplayName,
 } from '@/lib/qiroah'
 
@@ -210,6 +211,8 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
       return
     }
 
+    const unitSiswa = selectedStudent.unit || currentUser?.unit || '-'
+    const penguji = pengujiUntukKelas(selectedStudent.kelas, unitSiswa)
     setSendingPengajuan(true)
     const { error } = await supabase.from('pengajuan').insert([
       {
@@ -218,9 +221,10 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
         diajukan_oleh: teacherDisplayName(currentUser),
         nama_siswa: selectedStudent.nama_siswa,
         kelas: selectedStudent.kelas || '-',
-        unit: selectedStudent.unit || currentUser?.unit || '-',
+        unit: unitSiswa,
         jilid_diujikan: jilidDiuji,
-        status: 'Menunggu Ujian',
+        nama_penguji: penguji,
+        status: 'menunggu_jadwal',
         id_siswa: idSiswa,
       },
     ])
@@ -231,7 +235,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
       return
     }
 
-    alert('Berhasil! Pengajuan kenaikan jilid telah masuk ke antrean penguji.')
+    alert(
+      penguji
+        ? `Pengajuan tersimpan dengan status menunggu jadwal. Guru penguji: ${penguji}.`
+        : 'Pengajuan tersimpan dengan status menunggu jadwal. Kelas ini belum memiliki guru penguji pada pemetaan Unit Nogosari.',
+    )
     setShowPengajuan(false)
     setJilidDiuji('')
   }
@@ -532,6 +540,17 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   readOnly
                   value={teacherDisplayName(currentUser)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-sm font-semibold text-sky-700"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Guru Penguji</label>
+                <input
+                  readOnly
+                  value={
+                    pengujiUntukKelas(selectedStudent?.kelas, selectedStudent?.unit || currentUser?.unit) ||
+                    'Belum ada pemetaan untuk kelas ini'
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-sm font-semibold text-emerald-800"
                 />
               </div>
               <div className="flex gap-2 pt-2">

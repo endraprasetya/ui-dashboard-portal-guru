@@ -1,6 +1,24 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+function resolveSupabaseUrl(raw: string) {
+  const value = raw.trim()
+  if (!value) return ''
+  try {
+    const url = new URL(value)
+    const project = url.pathname.match(/\/project\/([a-z0-9]+)(?:\/|$)/i)
+    if (url.hostname === 'supabase.com' && project) {
+      return `https://${project[1]}.supabase.co`
+    }
+    if (url.hostname.endsWith('.supabase.co')) {
+      return `${url.protocol}//${url.hostname}`
+    }
+  } catch {
+    return value.replace(/\/+$/, '')
+  }
+  return value.replace(/\/+$/, '')
+}
+
+const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || '')
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 if (!supabaseUrl || !supabaseAnonKey) {

@@ -1,30 +1,27 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, BarChart2, CalendarDays, Printer } from 'lucide-react'
+import { ArrowLeft, BarChart2, CalendarDays, Printer, Table2 } from 'lucide-react'
+import { AbsensiMatriks } from '@/components/absensi-matriks'
 import {
   fetchJurnalRentang,
   fetchKelasDanJumlahSiswa,
   fetchSiswaKelas,
+  jenisAbsen,
   monthRange,
   normalizeSiswaTidakHadir,
   semesterRange,
+  teacherName,
+  teacherNip,
   teacherUnit,
   type SiswaKelas,
 } from '@/lib/jurnal'
 
-type Mode = 'siswa' | 'harian' | 'bulanan'
+type Mode = 'siswa' | 'harian' | 'bulanan' | 'matriks'
 
 function currentMonthValue() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
-function labelKeterangan(value: string) {
-  const key = value.toLowerCase()
-  if (key.includes('sakit')) return 'sakit'
-  if (key.includes('izin')) return 'izin'
-  return 'alpa'
 }
 
 export function AbsensiRekap({
@@ -52,9 +49,9 @@ export function AbsensiRekap({
   }, [currentUser])
 
   const { start, end } = useMemo(() => {
-    if (periode === 'semester') return semesterRange(Number(tahun), semester)
-    return monthRange(bulan)
-  }, [periode, bulan, semester, tahun])
+    if (mode === 'matriks' || periode === 'bulan') return monthRange(bulan)
+    return semesterRange(Number(tahun), semester)
+  }, [mode, periode, bulan, semester, tahun])
 
   useEffect(() => {
     async function load() {
@@ -90,7 +87,7 @@ export function AbsensiRekap({
       const absen = normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
       if (absen.length > 0) {
         for (const item of absen) {
-          const jenis = labelKeterangan(item.keterangan)
+          const jenis = jenisAbsen(item.keterangan)
           if (jenis === 'sakit') sakit += 1
           else if (jenis === 'izin') izin += 1
           else alpa += 1
@@ -126,7 +123,7 @@ export function AbsensiRekap({
       for (const absen of normalizeSiswaTidakHadir(row.siswa_tidak_hadir)) {
         const key = absen.id_siswa || `${row.kelas}:${absen.nama}`
         const rec = pastikan(key, absen.nama, row.kelas)
-        const jenis = labelKeterangan(absen.keterangan)
+        const jenis = jenisAbsen(absen.keterangan)
         rec.tidakHadir += 1
         if (jenis === 'sakit') rec.sakit += 1
         else if (jenis === 'izin') rec.izin += 1
@@ -164,7 +161,7 @@ export function AbsensiRekap({
       const absen = normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
       if (absen.length > 0) {
         for (const item of absen) {
-          const jenis = labelKeterangan(item.keterangan)
+          const jenis = jenisAbsen(item.keterangan)
           if (jenis === 'sakit') rec.sakit += 1
           else if (jenis === 'izin') rec.izin += 1
           else rec.alpa += 1
@@ -193,8 +190,8 @@ export function AbsensiRekap({
         <ArrowLeft className="size-4" /> Kembali ke Dashboard
       </button>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-800 bg-slate-800 px-5 py-4 text-white">
+      <div className="absensi-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="absensi-chrome border-b border-slate-800 bg-slate-800 px-5 py-4 text-white">
           <h2 className="text-lg font-black">Rekap Absensi</h2>
           <p className="text-xs text-slate-300">
             Laporan dan analisis kehadiran dari jurnal pembelajaran
@@ -202,7 +199,7 @@ export function AbsensiRekap({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
+        <div className="absensi-chrome flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
           <label className="text-xs font-bold text-slate-600">
             Kelas
             <select
@@ -210,7 +207,7 @@ export function AbsensiRekap({
               onChange={(e) => setKelas(e.target.value)}
               className="mt-1 block min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"
             >
-              <option value="">Semua kelas</option>
+              <option value="">{mode === 'matriks' ? 'Pilih kelas' : 'Semua kelas'}</option>
               {kelasList.map((nama) => (
                 <option key={nama} value={nama}>
                   {nama}
@@ -231,7 +228,7 @@ export function AbsensiRekap({
             </select>
           </label>
 
-          {periode === 'bulan' ? (
+          {periode === 'bulan' || mode === 'matriks' ? (
             <label className="text-xs font-bold text-slate-600">
               Bulan
               <input
@@ -271,11 +268,12 @@ export function AbsensiRekap({
             onClick={() => window.print()}
             className="no-print inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700"
           >
-            <Printer className="size-4" /> Cetak
+            <Printer className="size-4" /> {mode === 'matriks' ? 'Cetak rekap F4' : 'Cetak'}
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="absensi-body space-y-4 px-5 py-4">
+          {mode !== 'matriks' && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-[11px] font-bold uppercase text-slate-500">Sesi jurnal</p>
@@ -298,13 +296,15 @@ export function AbsensiRekap({
               <p className="text-2xl font-black text-red-800">{ringkasan.alpa}</p>
             </div>
           </div>
+          )}
 
-          <div className="no-print flex gap-2">
+          <div className="absensi-chrome no-print flex flex-wrap gap-2">
             {(
               [
                 ['siswa', 'Rekap siswa', BarChart2],
                 ['harian', 'Rekap harian', CalendarDays],
                 ['bulanan', 'Rekap bulanan', BarChart2],
+                ['matriks', 'Matriks bulanan', Table2],
               ] as const
             ).map(([id, label, Icon]) => (
               <button
@@ -321,8 +321,8 @@ export function AbsensiRekap({
           </div>
 
           {error && <p className="text-xs font-bold text-red-600">{error}</p>}
-          {loading && <p className="text-xs text-slate-500">Memuat rekap absensi...</p>}
-          {!loading && rows.length === 0 && (
+          {loading && mode !== 'matriks' && <p className="text-xs text-slate-500">Memuat rekap absensi...</p>}
+          {!loading && rows.length === 0 && mode !== 'matriks' && (
             <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
               Belum ada data jurnal pada periode ini. Isi presensi lewat menu Jurnal Pembelajaran.
             </p>
@@ -394,6 +394,19 @@ export function AbsensiRekap({
                 </tbody>
               </table>
             </div>
+          )}
+
+          {mode === 'matriks' && (
+            <AbsensiMatriks
+              bulan={bulan}
+              kelas={kelas}
+              unit={unit}
+              siswa={siswa}
+              rows={rows}
+              loading={loading}
+              guruNama={teacherName(currentUser)}
+              guruNip={teacherNip(currentUser)}
+            />
           )}
 
           {!loading && mode === 'bulanan' && rekapBulanan.length > 0 && (

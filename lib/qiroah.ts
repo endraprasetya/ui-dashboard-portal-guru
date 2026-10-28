@@ -121,3 +121,117 @@ export function generateUjianId() {
   const stamp = `${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
   return `UJ-${stamp}`
 }
+
+export const PEMETAAN_PENGUJI_NOGOSARI = [
+  { kelas: ['1A'], nama: 'Haryono, S.Pd' },
+  { kelas: ['1B'], nama: 'Ali Wahyudin, S.Pd.I' },
+  { kelas: ['2A', '2B'], nama: 'Andreas Haryanto, S.Pd' },
+  { kelas: ['3A', '3B', '4A', '4B', '5A', '5B', '6A', '6B'], nama: 'Prasetyo, S.Pd' },
+  { kelas: ['1C', '1D'], nama: 'Ambar Novitasari, S.Pd' },
+  { kelas: ['2C', '2D'], nama: 'Asiyah' },
+  { kelas: ['3C', '3D'], nama: 'Shabrina Silmi' },
+  { kelas: ['4C', '4D', '5C', '5D', '6C', '6D'], nama: 'Dian Aprilia' },
+] as const
+
+export function normalKelas(kelas?: string) {
+  return String(kelas || '')
+    .toUpperCase()
+    .replace(/KELAS/g, '')
+    .replace(/[^A-Z0-9]/g, '')
+}
+
+export function unitNogosari(unit?: string) {
+  return String(unit || '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+    .includes('nogosari')
+}
+
+export function pengujiUntukKelas(kelas?: string, unit?: string) {
+  if (!unitNogosari(unit)) return ''
+  const kunci = normalKelas(kelas)
+  const found = PEMETAAN_PENGUJI_NOGOSARI.find((item) => item.kelas.some((nama) => normalKelas(nama) === kunci))
+  return found?.nama || ''
+}
+
+function namaInti(value?: string) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/,/g, ' ')
+    .replace(/\bs\.?\s*pd\.?\s*i?\b/g, ' ')
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function namaPengujiCocok(namaUser?: string, namaPenguji?: string) {
+  const pengguna = namaInti(namaUser)
+  const penguji = namaInti(namaPenguji)
+  if (!pengguna || !penguji) return false
+  if (pengguna === penguji) return true
+  const pendek = pengguna.length < penguji.length ? pengguna : penguji
+  const panjang = pengguna.length < penguji.length ? penguji : pengguna
+  if (pendek.length < 4) return false
+  return panjang.includes(pendek)
+}
+
+export function statusInti(status?: string) {
+  return String(status || '')
+    .split('|')[0]
+    .trim()
+    .toLowerCase()
+}
+
+export function waktuDariStatus(status?: string) {
+  const jam = String(status || '')
+    .split('|')[1]
+    ?.trim()
+  return jam && /^\d{2}:\d{2}/.test(jam) ? jam.slice(0, 5) : ''
+}
+
+export function statusDenganWaktu(waktu: string) {
+  const jam = String(waktu || '').trim().slice(0, 5)
+  return /^\d{2}:\d{2}$/.test(jam) ? `terjadwal|${jam}` : 'terjadwal'
+}
+
+export function menungguJadwal(status?: string) {
+  const inti = statusInti(status)
+  return inti === 'menunggu_jadwal' || inti === 'menunggu ujian' || inti === '' || inti === '-'
+}
+
+export function sudahTerjadwal(status?: string) {
+  return statusInti(status) === 'terjadwal'
+}
+
+export function labelStatusPengajuan(status?: string) {
+  if (sudahTerjadwal(status)) return 'Terjadwal'
+  if (menungguJadwal(status)) return 'Menunggu jadwal'
+  if (statusInti(status) === 'selesai') return 'Selesai'
+  return String(status || '-').split('|')[0]
+}
+
+export function untukPengampu(
+  row: { diajukan_oleh?: string },
+  currentUser?: { nama_lengkap?: string; nama?: string; username?: string } | null,
+) {
+  if (!currentUser) return false
+  return namaPengujiCocok(teacherDisplayName(currentUser), row.diajukan_oleh)
+}
+
+export function barisUntukPenguji(
+  row: { kelas?: string; unit?: string; nama_penguji?: string },
+  currentUser?: { nama_lengkap?: string; nama?: string; username?: string; role?: string } | null,
+) {
+  if (!currentUser) return false
+  const admin = String(currentUser.role || '')
+    .toLowerCase()
+    .includes('admin')
+  const namaUser = teacherDisplayName(currentUser)
+  const namaBaris = String(row.nama_penguji || '').trim()
+  if (namaBaris && namaPengujiCocok(namaUser, namaBaris)) return true
+  if (!namaBaris) {
+    const dariKelas = pengujiUntukKelas(row.kelas, row.unit)
+    if (dariKelas && namaPengujiCocok(namaUser, dariKelas)) return true
+  }
+  return admin
+}
