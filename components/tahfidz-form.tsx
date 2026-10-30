@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
 import { fetchAllSurah } from '@/lib/surah'
-import { ArrowLeft, Save, CheckCircle2, Edit3, XCircle, Search } from 'lucide-react'
+import { ArrowLeft, Save, Edit3, XCircle, Search } from 'lucide-react'
+import { BidangSuaraMandiri } from '@/components/input-suara'
 
 function parseSetoranDate(dateStr: unknown): Date | null {
   if (!dateStr) return null
@@ -280,7 +281,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       if (error) {
         alert('Gagal memperbarui data: ' + error.message)
       } else {
-        setSuccessMessage('Alhamdulillah, setoran berhasil diperbarui!')
+        setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
         handleCancelEdit()
         handleStudentChange(idSiswa)
       }
@@ -304,7 +305,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       if (error) {
         alert('Gagal menyimpan setoran: ' + error.message)
       } else {
-        setSuccessMessage('Alhamdulillah, setoran baru berhasil disimpan!')
+        setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
         handleCancelEdit()
         handleStudentChange(idSiswa)
       }
@@ -345,13 +346,6 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
           </button>
         )}
       </div>
-
-      {successMessage && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-emerald-800 border border-emerald-200">
-          <CheckCircle2 className="size-5 text-emerald-600" />
-          <span className="font-semibold">{successMessage}</span>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Pilih Siswa - Searchable Select */}
@@ -494,12 +488,15 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
               <option value="Belum Lancar">Belum Lancar</option>
             </select>
 
-            <textarea
-              placeholder="Pesan Hafalan"
-              value={hPesan}
-              onChange={(e) => setHPesan(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 p-2 text-sm mt-2 bg-white"
-            ></textarea>
+            <div className="mt-2">
+              <BidangSuaraMandiri
+                value={hPesan}
+                onChange={setHPesan}
+                placeholder="Pesan Hafalan"
+                rows={2}
+                className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm"
+              />
+            </div>
           </div>
         </div>
 
@@ -623,6 +620,11 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
           <Save className="size-5" />
           {loading ? 'Menyimpan...' : editIdSetoran ? 'PERBARUI SETORAN' : 'SIMPAN SETORAN'}
         </button>
+        {successMessage && (
+          <p role="status" className="text-center text-sm font-bold text-emerald-700">
+            {successMessage}
+          </p>
+        )}
       </form>
     </div>
   )

@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { educationCalendar } from '@/lib/teacher-data'
 import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
-import { barisUntukPenguji, sudahTerjadwal, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
+import { barisUntukPenguji, pengujiEfektif, sudahTerjadwal, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib'
 
@@ -15,6 +15,7 @@ export type NotifikasiItem = {
 
 export type NotifikasiQiroah = NotifikasiItem & {
   peran: 'penguji' | 'pengampu'
+  tahap: 'menunggu' | 'terjadwal'
   nama: string
   kelas: string
   tanggal: string
@@ -151,8 +152,8 @@ export async function muatNotifikasi(currentUser?: any) {
   const [pengajuan, tahfidz, jurnal, tertib] = await Promise.all([
     supabase
       .from('pengajuan')
-      .select('id_pengajuan,nama_siswa,kelas,unit,jilid_diujikan,tanggal_pelaksanaan,status,nama_penguji,diajukan_oleh')
-      .order('tanggal_pelaksanaan', { ascending: true }),
+      .select('id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,tanggal_pelaksanaan,status,nama_penguji,diajukan_oleh')
+      .order('tanggal_diajukan', { ascending: false }),
     supabase
       .from('setoran_tahfidz')
       .select('id_setoran,tanggal,id_siswa,hafalan_baru,status')
@@ -171,37 +172,61 @@ export async function muatNotifikasi(currentUser?: any) {
       .limit(12),
   ])
 
+  if (pengajuan.error) console.error('Gagal memuat pengajuan:', pengajuan.error.message)
+
+  const idSiswa = Array.from(new Set((pengajuan.data || []).map((row) => String(row.id_siswa || '')).filter(Boolean)))
+  const pembimbing = new Map<string, string>()
+  if (idSiswa.length > 0) {
+    const relasi = await supabase.from('siswa').select('id_siswa,id_pembimbing').in('id_siswa', idSiswa)
+    if (relasi.error) console.error('Gagal memuat pembimbing siswa:', relasi.error.message)
+    for (const row of relasi.data || []) pembimbing.set(String(row.id_siswa), String(row.id_pembimbing || ''))
+  }
+
   for (const row of pengajuan.data || []) {
-    if (menungguJadwal(row.status) && barisUntukPenguji(row, currentUser)) {
+    const relasi = {
+      ...row,
+      id_pembimbing: pembimbing.get(String(row.id_siswa || '')) || '',
+      nama_penguji: pengujiEfektif(row),
+    }
+    const nama = row.nama_siswa || 'Siswa'
+    const kelas = row.kelas || '-'
+    const jilid = row.jilid_diujikan || 'kenaikan jilid'
+    if (menungguJadwal(row.status) && barisUntukPenguji(relasi, currentUser)) {
       qiroah.push({
         id: `qiroah-penguji:${row.id_pengajuan}`,
         kategori: 'qiroah',
         peran: 'penguji',
-        judul: `Pengajuan ujian ${row.nama_siswa || 'siswa'}`,
-        detail: `${row.kelas || '-'} · ${row.jilid_diujikan || 'kenaikan jilid'} menunggu penjadwalan`,
+        tahap: 'menunggu',
+        judul: `Pengajuan ujian ${nama}`,
+        detail: `${kelas} · ${jilid} menunggu tanggal dan waktu ujian`,
         tujuan: 'qiroah_penguji',
-        nama: row.nama_siswa || 'Siswa',
-        kelas: row.kelas || '-',
+        nama,
+        kelas,
         tanggal: '',
         waktu: '',
-        penguji: row.nama_penguji || '',
+        penguji: relasi.nama_penguji,
       })
     }
-    if (sudahTerjadwal(row.status) && untukPengampu(row, currentUser)) {
+    if (untukPengampu(relasi, currentUser) && (menungguJadwal(row.status) || sudahTerjadwal(row.status))) {
+      const terjadwal = sudahTerjadwal(row.status)
       const waktu = waktuDariStatus(row.status)
       const tanggal = tanggalPendek(row.tanggal_pelaksanaan)
+      const penguji = relasi.nama_penguji || 'penguji'
       qiroah.push({
-        id: `qiroah-pengampu:${row.id_pengajuan}`,
+        id: terjadwal ? `qiroah-pengampu:${row.id_pengajuan}` : `qiroah-pengampu-menunggu:${row.id_pengajuan}`,
         kategori: 'qiroah',
         peran: 'pengampu',
-        judul: `Jadwal ujian ${row.nama_siswa || 'siswa'}`,
-        detail: `${row.kelas || '-'} · ${tanggal || 'tanggal menyusul'}${waktu ? ` pukul ${waktu}` : ''} · ${row.nama_penguji || 'penguji'}`,
+        tahap: terjadwal ? 'terjadwal' : 'menunggu',
+        judul: terjadwal ? `Jadwal ujian ${nama} sudah ditentukan` : `Pengajuan ${nama} menunggu jadwal`,
+        detail: terjadwal
+          ? `${kelas} · ${tanggal || 'tanggal menyusul'}${waktu ? ` pukul ${waktu}` : ''} · ${penguji}`
+          : `${kelas} · ${jilid} · status menunggu jadwal dari guru penguji`,
         tujuan: 'qiroah_menu',
-        nama: row.nama_siswa || 'Siswa',
-        kelas: row.kelas || '-',
-        tanggal,
-        waktu,
-        penguji: row.nama_penguji || '',
+        nama,
+        kelas,
+        tanggal: terjadwal ? tanggal : '',
+        waktu: terjadwal ? waktu : '',
+        penguji,
       })
     }
   }

@@ -28,6 +28,7 @@ export type JurnalJam = {
   absen: string
   siswaTidakHadir: SiswaTidakHadir[]
   ttd: string | null
+  tugas: string
 }
 
 export type JadwalItem = {
@@ -84,7 +85,7 @@ export const TIPE_LINK: [string, string][] = [
 export const KETERANGAN_ABSEN = ['Sakit', 'Izin', 'Alpa'] as const
 
 export const JURNAL_FIELDS =
-  'id,kelas,tanggal,jam,semester,mapel,materi,kegiatan,links,hadir,tidak_hadir,siswa_tidak_hadir,ttd'
+  'id,kelas,tanggal,jam,semester,mapel,materi,kegiatan,links,hadir,tidak_hadir,siswa_tidak_hadir,ttd,tugas'
 
 export function emptyJurnalJam(hadirDefault = ''): JurnalJam {
   return {
@@ -96,6 +97,7 @@ export function emptyJurnalJam(hadirDefault = ''): JurnalJam {
     absen: '0',
     siswaTidakHadir: [],
     ttd: null,
+    tugas: '',
   }
 }
 
@@ -335,6 +337,7 @@ export function rowsToEntries(rows: any[], totalSiswa = 0): Record<number, Jurna
       absen: String(row.tidak_hadir ?? tidakHadir),
       siswaTidakHadir,
       ttd: row.ttd || null,
+      tugas: row.tugas || '',
     }
   }
   return entries
@@ -362,6 +365,7 @@ export async function simpanJurnalHari(payload: {
       tidak_hadir: tidakHadir,
       siswa_tidak_hadir: entry.siswaTidakHadir || [],
       ttd: entry.ttd || null,
+      tugas: entry.tugas || '',
     }
   })
 

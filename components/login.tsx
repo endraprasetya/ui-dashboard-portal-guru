@@ -31,30 +31,34 @@ export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void 
         .select('*')
         .eq('username', usernameValue)
         .eq('password', passwordValue)
-        .maybeSingle()
+        .limit(1)
 
       if (error) {
+        const pesan = error.message || ''
+        const barisKosong = error.code === 'PGRST116' || /JSON object requested/i.test(pesan)
         setErrorMsg(
-          error.message.includes('Invalid API key') || error.message.includes('JWT')
-            ? 'Koneksi database gagal. Periksa konfigurasi Supabase.'
-            : `Gagal masuk: ${error.message}`,
+          barisKosong
+            ? 'Username atau password tidak sesuai. Jika akun baru ditambahkan, pastikan data user sudah tersimpan di database.'
+            : /Invalid API key|JWT/i.test(pesan)
+              ? 'Koneksi database gagal. Periksa konfigurasi Supabase.'
+              : 'Tidak dapat memeriksa akun saat ini. Silakan coba lagi.',
         )
         return
       }
 
-      if (!data) {
-        setErrorMsg('Username atau password salah!')
+      const baris = Array.isArray(data) ? data[0] : null
+      if (!baris || !String(baris.username || '').trim()) {
+        setErrorMsg('Username atau password tidak sesuai. Pastikan akun sudah terdaftar dengan benar di database.')
         return
       }
 
-      // Ensure we have the necessary fields from the users table
+      const { password: _sandi, ...tanpaSandi } = baris
       const userData = {
-        ...data,
-        // Map field names if needed based on your database structure
-        target_id: data.target_id || data.id_user || data.username,
-        nama_lengkap: data.nama_lengkap || data.nama || data.username,
-        unit: data.unit || 'Semua Unit',
-        role: data.role || 'Ustadz'
+        ...tanpaSandi,
+        target_id: baris.target_id || baris.id_user || baris.username,
+        nama_lengkap: baris.nama_lengkap || baris.nama || baris.username,
+        unit: baris.unit || 'Semua Unit',
+        role: baris.role || 'Ustadz',
       }
 
       localStorage.setItem('user_session', JSON.stringify(userData))
@@ -78,8 +82,8 @@ export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void 
         </div>
 
         {errorMsg && (
-          <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3.5 text-xs font-bold text-red-600 border border-red-200">
-            <ShieldAlert className="size-4 shrink-0" />
+          <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm font-semibold leading-relaxed text-red-700">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}

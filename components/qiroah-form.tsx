@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
+import { ArrowLeft, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
+import { BidangSuaraMandiri } from '@/components/input-suara'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
 import {
@@ -12,6 +13,7 @@ import {
   generateQiroahId,
   generateUjianId,
   isYa,
+  namaPengujiCocok,
   pengujiUntukKelas,
   teacherDisplayName,
 } from '@/lib/qiroah'
@@ -123,13 +125,26 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     resetFormFields()
   }
 
-  const handleDelete = async (idQiroah: string) => {
-    if (!idQiroah) return
+  const milikSetoran = (record: { ustadz?: string } | null | undefined) => {
+    const pencatat = String(record?.ustadz || '').trim()
+    if (!pencatat || pencatat === '-') return true
+    return namaPengujiCocok(teacherDisplayName(currentUser), pencatat)
+  }
+
+  const handleDelete = async (record: { id_qiroah?: string; ustadz?: string }) => {
+    if (!record?.id_qiroah) return
+    if (!milikSetoran(record)) {
+      alert('Hanya guru yang mencatat setoran ini yang dapat menghapusnya.')
+      return
+    }
     if (!confirm('Yakin ingin menghapus setoran qiroah ini?')) return
 
-    const { error } = await supabase.from('setoran_qiroah').delete().eq('id_qiroah', idQiroah)
-    if (error) {
-      alert('Gagal menghapus data: ' + error.message)
+    let query = supabase.from('setoran_qiroah').delete().eq('id_qiroah', record.id_qiroah)
+    const pencatat = String(record.ustadz || '').trim()
+    if (pencatat && pencatat !== '-') query = query.eq('ustadz', pencatat)
+    const { data, error } = await query.select('id_qiroah')
+    if (error || !data?.length) {
+      alert(error ? 'Gagal menghapus data: ' + error.message : 'Hanya guru yang mencatat setoran ini yang dapat menghapusnya.')
       return
     }
     setSuccessMessage('Riwayat setoran berjaya dihapus.')
@@ -166,12 +181,26 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     }
 
     if (editIdQiroah) {
-      const { error } = await supabase.from('setoran_qiroah').update(payload).eq('id_qiroah', editIdQiroah)
+      const sumber = latestRecords.find((item) => item.id_qiroah === editIdQiroah)
+      if (sumber && !milikSetoran(sumber)) {
+        setLoading(false)
+        alert('Hanya guru yang mencatat setoran ini yang dapat mengubahnya.')
+        return
+      }
+      let query = supabase.from('setoran_qiroah').update(payload).eq('id_qiroah', editIdQiroah)
+      const pencatat = String(sumber?.ustadz || '').trim()
+      if (pencatat && pencatat !== '-') query = query.eq('ustadz', pencatat)
+      const { data, error } = await query.select('id_qiroah')
+      if (!error && !data?.length) {
+        setLoading(false)
+        alert('Hanya guru yang mencatat setoran ini yang dapat mengubahnya.')
+        return
+      }
       setLoading(false)
       if (error) {
         alert('Gagal memperbarui data: ' + error.message)
       } else {
-        setSuccessMessage('Alhamdulillah, setoran qiroah berjaya diperbarui!')
+        setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
         handleCancelEdit()
         handleStudentChange(idSiswa, studentSearchQuery)
       }
@@ -195,7 +224,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     if (error) {
       alert('Gagal menyimpan setoran: ' + error.message)
     } else {
-      setSuccessMessage('Alhamdulillah, setoran qiroah baru berjaya disimpan!')
+      setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
       handleCancelEdit()
       handleStudentChange(idSiswa, studentSearchQuery)
     }
@@ -272,13 +301,6 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
         )}
       </div>
 
-      {successMessage && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-          <CheckCircle2 className="size-5 text-emerald-600" />
-          <span className="font-semibold">{successMessage}</span>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="relative mb-3" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Nama Siswa Binaan</label>
@@ -329,15 +351,17 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
               <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
                 5 Riwayat Setoran Terakhir Santri:
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (latestRecords[0]) handleLoadEdit(latestRecords[0])
-                }}
-                className="inline-flex items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
-              >
-                <Edit3 className="size-3" /> Edit Teratas
-              </button>
+              {milikSetoran(latestRecords[0]) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (latestRecords[0]) handleLoadEdit(latestRecords[0])
+                  }}
+                  className="inline-flex items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
+                >
+                  <Edit3 className="size-3" /> Edit Teratas
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white">
@@ -367,24 +391,28 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                         {rec.tugas_rumah && rec.tugas_rumah !== '-' ? rec.tugas_rumah : '-'}
                       </td>
                       <td className="p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleLoadEdit(rec)}
-                            title="Edit baris ini"
-                            className="rounded bg-amber-500 p-1 text-white hover:bg-amber-600"
-                          >
-                            <Edit3 className="size-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(rec.id_qiroah)}
-                            title="Hapus baris ini"
-                            className="rounded bg-red-500 p-1 text-white hover:bg-red-600"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        </div>
+                        {milikSetoran(rec) ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleLoadEdit(rec)}
+                              title="Edit baris ini"
+                              className="rounded bg-amber-500 p-1 text-white hover:bg-amber-600"
+                            >
+                              <Edit3 className="size-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(rec)}
+                              title="Hapus baris ini"
+                              className="rounded bg-red-500 p-1 text-white hover:bg-red-600"
+                            >
+                              <Trash2 className="size-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-slate-400">{rec.ustadz || 'Guru lain'}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -472,9 +500,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
         <div>
           <label className="mb-1 block text-sm font-bold text-slate-700">Catatan / Perbaikan Guru</label>
-          <textarea
+          <BidangSuaraMandiri
             value={catatan}
-            onChange={(e) => setCatatan(e.target.value)}
+            onChange={setCatatan}
             rows={2}
             placeholder="Contoh: Dengung pada ikhfa' kurang ditahan."
             className="w-full rounded-xl border border-slate-300 p-3 text-sm"
@@ -483,10 +511,10 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
         <div>
           <label className="mb-1 block text-sm font-bold text-slate-700">Tugas Rumah / Target Mandiri</label>
-          <input
-            type="text"
+          <BidangSuaraMandiri
             value={tugasRumah}
-            onChange={(e) => setTugasRumah(e.target.value)}
+            onChange={setTugasRumah}
+            satuBaris
             placeholder="Contoh: Lancarkan hal 15 di rumah"
             className="w-full rounded-xl border border-slate-300 p-3 text-sm"
           />
@@ -502,6 +530,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
           <Save className="size-5" />
           {loading ? 'Menyimpan...' : editIdQiroah ? 'Perbarui Setoran' : 'Simpan Setoran Siswa'}
         </button>
+        {successMessage && (
+          <p role="status" className="text-center text-sm font-bold text-emerald-700">
+            {successMessage}
+          </p>
+        )}
       </form>
 
       {showPengajuan && (

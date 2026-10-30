@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Login } from '@/components/login'
 import { TahfidzRekap } from '@/components/tahfidz-rekap'
 import { TahfidzForm } from '@/components/tahfidz-form'
@@ -12,15 +12,17 @@ import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/componen
 import TertibPoint from '@/components/tertib-point'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
+import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { educationCalendar, recentActivities } from '@/lib/teacher-data'
 import {
-  educationCalendar,
-  recentActivities,
-  teacherTodos,
-  teachingDays,
-  todaySchedule,
-} from '@/lib/teacher-data'
+  keteranganJadwal,
+  muatAgendaGuru,
+  ringkasanPekan,
+  type TugasGuru,
+} from '@/lib/agenda-guru'
+import { todayInputValue } from '@/lib/jurnal'
 import {
   BookOpen,
   FileText,
@@ -37,22 +39,33 @@ import {
   ClipboardCheck,
   Plus,
   ShieldAlert,
+  Settings,
 } from 'lucide-react'
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [currentView, setCurrentView] = useState<string>('dashboard')
   const [completedTodos, setCompletedTodos] = useState<string[]>([])
+  const [agenda, setAgenda] = useState<{ jadwal: Awaited<ReturnType<typeof muatAgendaGuru>>['jadwal']; tugas: TugasGuru[] }>({
+    jadwal: [],
+    tugas: [],
+  })
+  const [agendaSiap, setAgendaSiap] = useState(false)
+  const [sesiSiap, setSesiSiap] = useState(false)
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem('user_session')
-      if (!raw) return
-      const user = JSON.parse(raw)
-      if (adalahKepalaSekolah(user)) window.location.replace('/dashboard/kepala-sekolah')
+      const user = raw ? JSON.parse(raw) : null
+      if (adalahKepalaSekolah(user)) {
+        window.location.replace('/dashboard/kepala-sekolah')
+        return
+      }
+      if (user) setCurrentUser(user)
     } catch {
       /* sesi yang rusak diabaikan */
     }
+    setSesiSiap(true)
   }, [])
 
   const handleLogout = () => {
@@ -63,6 +76,65 @@ export default function Home() {
   }
 
   const pusat = usePusatNotifikasi(currentUser, currentView)
+  const pekan = ringkasanPekan()
+  const kunciTugas = `portal-guru-todo:${currentUser?.target_id || currentUser?.username || 'guru'}:${todayInputValue()}`
+
+  useEffect(() => {
+    if (!currentUser) return
+    try {
+      const raw = JSON.parse(localStorage.getItem(kunciTugas) || '[]')
+      setCompletedTodos(Array.isArray(raw) ? raw.filter((item) => typeof item === 'string') : [])
+    } catch {
+      setCompletedTodos([])
+    }
+  }, [kunciTugas, currentUser])
+
+  useEffect(() => {
+    if (!currentUser) return
+    let batal = false
+    setAgendaSiap(false)
+    muatAgendaGuru(currentUser).then((hasil) => {
+      if (batal) return
+      setAgenda(hasil)
+      setAgendaSiap(true)
+    })
+    return () => {
+      batal = true
+    }
+  }, [currentUser])
+
+  const tugasHariIni = useMemo(() => {
+    const daftar = [...agenda.tugas]
+    if (pusat.penguji.length > 0) {
+      const nama = pusat.penguji.slice(0, 3).map((item) => `${item.nama} (${item.kelas})`)
+      const sisa = pusat.penguji.length > 3 ? `, dan ${pusat.penguji.length - 3} siswa lain` : ''
+      daftar.push({
+        id: 'pengajuan-penguji',
+        title: 'Pengajuan kenaikan jilid menunggu jadwal',
+        detail: `${nama.join(', ')}${sisa} belum ditentukan tanggal dan waktu ujiannya.`,
+        tujuan: 'qiroah_penguji',
+      })
+    }
+    if (pusat.pengampuMenunggu.length > 0) {
+      const nama = pusat.pengampuMenunggu.slice(0, 3).map((item) => `${item.nama} (${item.kelas})`)
+      const sisa = pusat.pengampuMenunggu.length > 3 ? `, dan ${pusat.pengampuMenunggu.length - 3} siswa lain` : ''
+      daftar.push({
+        id: 'pengajuan-pengampu',
+        title: 'Pantau pengajuan kenaikan jilid siswa binaan',
+        detail: `${nama.join(', ')}${sisa} masih menunggu verifikasi jadwal dari guru penguji.`,
+        tujuan: 'qiroah_menu',
+      })
+    }
+    return daftar
+  }, [agenda.tugas, pusat.penguji, pusat.pengampuMenunggu])
+
+  const tandaiTugas = (id: string) => {
+    setCompletedTodos((current) => {
+      const berikutnya = current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+      localStorage.setItem(kunciTugas, JSON.stringify(berikutnya))
+      return berikutnya
+    })
+  }
 
   const todayLabel = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -77,6 +149,10 @@ export default function Home() {
     .slice(0, 2)
     .map((part: string) => part[0]?.toUpperCase())
     .join('') || 'PG'
+
+  if (!sesiSiap) {
+    return <main className="grid min-h-screen place-items-center text-sm text-slate-500">Memeriksa sesi...</main>
+  }
 
   if (!currentUser) {
     return <Login onLoginSuccess={(user) => {
@@ -208,6 +284,7 @@ export default function Home() {
                 onJadwalkan={() => setCurrentView('qiroah_penguji')}
                 penguji={pusat.penguji}
                 pengampu={pusat.pengampu}
+                pengampuMenunggu={pusat.pengampuMenunggu}
               />
 
               <button
@@ -262,63 +339,50 @@ export default function Home() {
                 </div>
                 <ClipboardList className="size-5 text-emerald-600" />
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {pusat.penguji.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentView('qiroah_penguji')}
-                    className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-left"
-                  >
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-amber-500 bg-white text-amber-600">
-                      <ClipboardCheck className="size-4" />
-                    </span>
-                    <span>
-                      <span className="block text-sm font-bold text-amber-950">Jadwalkan ujian kenaikan jilid</span>
-                      <span className="mt-1 block text-xs leading-5 text-amber-900">
-                        {pusat.penguji
-                          .slice(0, 3)
-                          .map((item) => `${item.nama} (${item.kelas})`)
-                          .join(', ')}
-                        {pusat.penguji.length > 3 ? `, dan ${pusat.penguji.length - 3} siswa lain` : ''} menunggu tanggal ujian.
-                      </span>
-                    </span>
-                  </button>
-                )}
-                {teacherTodos.map((todo) => {
-                  const completed = completedTodos.includes(todo.id)
-                  return (
-                    <button
-                      key={todo.id}
-                      type="button"
-                      onClick={() =>
-                        setCompletedTodos((current) =>
-                          completed ? current.filter((id) => id !== todo.id) : [...current, todo.id],
-                        )
-                      }
-                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
-                        completed
-                          ? 'border-emerald-200 bg-emerald-50/70'
-                          : 'border-slate-100 bg-slate-50/60 hover:border-emerald-200 hover:bg-emerald-50/50'
-                      }`}
-                    >
-                      <span
-                        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border ${
+              <div className="grid gap-3 md:grid-cols-2">
+                {!agendaSiap && tugasHariIni.length === 0 ? (
+                  <p className="text-sm text-slate-500">Memuat tugas guru...</p>
+                ) : tugasHariIni.length === 0 ? (
+                  <p className="text-sm text-slate-500">Tidak ada tugas yang menunggu untuk hari ini.</p>
+                ) : (
+                  tugasHariIni.map((todo) => {
+                    const completed = completedTodos.includes(todo.id)
+                    return (
+                      <div
+                        key={todo.id}
+                        className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
                           completed
-                            ? 'border-emerald-600 bg-emerald-600 text-white'
-                            : 'border-slate-300 bg-white text-transparent'
+                            ? 'border-emerald-200 bg-emerald-50/70'
+                            : 'border-slate-100 bg-slate-50/60'
                         }`}
                       >
-                        <CheckCircle2 className="size-4" />
-                      </span>
-                      <span>
-                        <span className={`block text-sm font-bold ${completed ? 'text-emerald-800 line-through' : 'text-slate-800'}`}>
-                          {todo.title}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500">{todo.detail}</span>
-                      </span>
-                    </button>
-                  )
-                })}
+                        <button
+                          type="button"
+                          aria-pressed={completed}
+                          aria-label={completed ? 'Tandai belum selesai' : 'Tandai selesai'}
+                          onClick={() => tandaiTugas(todo.id)}
+                          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border ${
+                            completed
+                              ? 'border-emerald-600 bg-emerald-600 text-white'
+                              : 'border-slate-300 bg-white text-transparent'
+                          }`}
+                        >
+                          <CheckCircle2 className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentView(todo.tujuan)}
+                          className="min-w-0 text-left"
+                        >
+                          <span className={`block text-sm font-bold ${completed ? 'text-emerald-800 line-through' : 'text-slate-800'}`}>
+                            {todo.title}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">{todo.detail}</span>
+                        </button>
+                      </div>
+                    )
+                  })
+                )}
               </div>
             </section>
 
@@ -329,11 +393,11 @@ export default function Home() {
                   <CalendarDays className="size-5 text-emerald-600" />
                 </div>
                 <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                  {teachingDays.map((day) => (
+                  {pekan.map((day) => (
                     <div
                       key={day.day}
                       className={`rounded-lg px-2 py-2 text-center ${
-                        day.day === 'Selasa'
+                        day.aktif
                           ? 'bg-emerald-100 text-emerald-800'
                           : day.lessons === 0
                             ? 'bg-slate-50 text-slate-400'
@@ -346,43 +410,49 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="space-y-2 text-xs">
-                  {todaySchedule.map((item) => (
-                    <div
-                      key={item.time}
-                      className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
-                        item.status === 'Berlangsung'
-                          ? 'bg-emerald-50 border-emerald-100'
-                          : 'bg-slate-50 border-slate-100'
-                      }`}
-                    >
-                      <div>
-                        <span className="font-bold text-slate-800">{item.time}</span>
-                        <p className="text-slate-500 font-medium">
-                          {item.subject} · Kelas {item.className} - {item.room}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-lg px-2.5 py-1 text-[10px] font-bold ${
-                            item.status === 'Berlangsung'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                        {item.status !== 'Selesai' && (
-                          <button
-                            type="button"
-                            onClick={() => setCurrentView('jurnal')}
-                            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200"
+                  {!agendaSiap ? (
+                    <p className="text-sm text-slate-500">Memuat jadwal dari jurnal pembelajaran...</p>
+                  ) : agenda.jadwal.length === 0 ? (
+                    <p className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-500">
+                      Belum ada materi pokok yang tercatat di jurnal pembelajaran untuk kelas binaan hari ini.
+                    </p>
+                  ) : (
+                    agenda.jadwal.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
+                          item.status === 'Berlangsung'
+                            ? 'bg-emerald-50 border-emerald-100'
+                            : 'bg-slate-50 border-slate-100'
+                        }`}
+                      >
+                        <div>
+                          <span className="font-bold text-slate-800">{item.time}</span>
+                          <p className="text-slate-500 font-medium">{keteranganJadwal(item)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-lg px-2.5 py-1 text-[10px] font-bold ${
+                              item.status === 'Berlangsung'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-200 text-slate-600'
+                            }`}
                           >
-                            <Plus className="size-3" /> Isi Jurnal
-                          </button>
-                        )}
+                            {item.status}
+                          </span>
+                          {item.status !== 'Selesai' && (
+                            <button
+                              type="button"
+                              onClick={() => setCurrentView('jurnal')}
+                              className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200"
+                            >
+                              <Plus className="size-3" /> Isi Jurnal
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -531,11 +601,26 @@ export default function Home() {
             >
               <FileCheck className="size-5" /> Input Rapor
             </button>
+
+            <button
+              onClick={() => setCurrentView('tahfidz_setting')}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#334155] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#1e293b] transition"
+            >
+              <Settings className="size-5" /> Setting
+            </button>
           </div>
         )}
 
         {currentView === 'tahfidz_setoran' && (
           <TahfidzForm onBack={() => setCurrentView('tahfidz_menu')} currentUser={currentUser} />
+        )}
+
+        {currentView === 'tahfidz_setting' && (
+          <SettingSiswaBinaan
+            onBack={() => setCurrentView('tahfidz_menu')}
+            currentUser={currentUser}
+            warna="tahfidz"
+          />
         )}
 
         {currentView === 'tahfidz_rekap' && (
@@ -620,6 +705,13 @@ export default function Home() {
               <ClipboardList className="size-5" /> Penilaian Tugas Rumah
             </button>
 
+            <button
+              onClick={() => setCurrentView('qiroah_setting')}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#334155] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#1e293b] transition"
+            >
+              <Settings className="size-5" /> Setting
+            </button>
+
             {canPenguji && (
               <button
                 onClick={() => setCurrentView('qiroah_penguji')}
@@ -638,6 +730,14 @@ export default function Home() {
 
         {currentView === 'qiroah_setoran' && (
           <QiroahForm onBack={() => setCurrentView('qiroah_menu')} currentUser={currentUser} />
+        )}
+
+        {currentView === 'qiroah_setting' && (
+          <SettingSiswaBinaan
+            onBack={() => setCurrentView('qiroah_menu')}
+            currentUser={currentUser}
+            warna="qiroah"
+          />
         )}
 
         {currentView === 'qiroah_rekap' && (

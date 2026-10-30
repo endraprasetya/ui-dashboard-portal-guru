@@ -8,7 +8,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, Printer, Search, Target, Users } fro
 
 import { supabase } from '@/lib/supabase'
 
-import { fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
+import { ambilBarisSiswa, fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
 
 import {
 
@@ -166,21 +166,23 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
 
 
-    const results = await Promise.all(
+    const barisKelas = await ambilBarisSiswa(classStudents.map((student) => String(student.id_siswa)), (bagian, from, to) =>
+      supabase
+        .from('setoran_qiroah')
+        .select('id_qiroah, tanggal, id_siswa, jilid, halaman, status, catatan, tugas_rumah, ustadz')
+        .in('id_siswa', bagian)
+        .range(from, to),
+    )
+    const setoranPerSiswa = new Map<string, any[]>()
+    for (const row of barisKelas) {
+      const id = String((row as { id_siswa?: string }).id_siswa || '')
+      const daftar = setoranPerSiswa.get(id) || []
+      daftar.push(row)
+      setoranPerSiswa.set(id, daftar)
+    }
 
-      classStudents.map(async (student) => {
-
-        const { data } = await supabase
-
-          .from('setoran_qiroah')
-
-          .select('id_qiroah, tanggal, id_siswa, jilid, halaman, status, catatan, tugas_rumah, ustadz')
-
-          .eq('id_siswa', String(student.id_siswa))
-
-
-
-        const setoranList = [...(data || [])].sort((a, b) => {
+    const results = classStudents.map((student) => {
+        const setoranList = [...(setoranPerSiswa.get(String(student.id_siswa)) || [])].sort((a, b) => {
 
           const dateA = parseCustomDate(a.tanggal) || new Date(0)
 
@@ -204,9 +206,7 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
         return { student, firstSetoran, lastSetoran }
 
-      }),
-
-    )
+    })
 
 
 

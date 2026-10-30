@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { isKelasAlumni } from "@/lib/siswa";
+import { BidangSuaraMandiri } from "@/components/input-suara";
 
 interface Student {
   id: string;
@@ -26,7 +27,24 @@ interface Log {
   guru: string;
   month: string;
   unit?: string;
+  keterangan: string;
   ts: number;
+}
+
+const KOLOM_LOG = "id_tertib_point,id_siswa,label,pts,guru,bulan,unit,keterangan,created_at";
+
+function normNama(value?: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function milikPencatat(guru: string, user?: { nama_lengkap?: string; nama?: string; username?: string } | null) {
+  const pencatat = normNama(guru);
+  if (!pencatat || pencatat === "-") return false;
+  const kandidat = [user?.nama_lengkap, user?.nama, user?.username].map((item) => normNama(item)).filter(Boolean);
+  return kandidat.includes(pencatat);
 }
 
 const MODAL_PTS = 200;
@@ -73,6 +91,7 @@ function mapLogRow(row: any): Log {
     guru: String(row.guru || "-"),
     month: String(row.bulan || ""),
     unit: row.unit ? String(row.unit) : undefined,
+    keterangan: String(row.keterangan || "").trim(),
     ts: Number.isFinite(created) ? created : Date.now(),
   };
 }
@@ -158,7 +177,7 @@ function printOfficialLetter(title: string, bodyHtml: string) {
   window.setTimeout(run, 250);
 }
 
-async function fetchAllPages<T>(loadPage: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>) {
+async function fetchAllPages<T>(loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>) {
   const pageSize = 1000;
   const all: T[] = [];
   let from = 0;
@@ -180,6 +199,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
   const [searchQuery, setSearchQuery] = useState("");
+  const [halaman, setHalaman] = useState(1);
   const [students, setStudents] = useState<Student[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -188,6 +208,9 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [status, setStatus] = useState("");
   const [statusError, setStatusError] = useState(false);
   const [rulesFromDb, setRulesFromDb] = useState(false);
+  const [keteranganInput, setKeteranganInput] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editKeterangan, setEditKeterangan] = useState("");
 
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   const [modalType, setModalType] = useState<"give" | "report" | null>(null);
@@ -196,20 +219,22 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const currentUnit = String(currentUser?.unit || currentUser?.sekolah || "").trim() || "Semua Unit";
 
   const fetchStudents = useCallback(async () => {
-    const { data, error } = await fetchAllPages((from, to) =>
-      supabase
+    const { data, error } = await fetchAllPages((from, to) => {
+      let query = supabase
         .from("siswa")
         .select("id_siswa,nama_siswa,kelas,unit")
         .not("kelas", "ilike", "%Alumni%")
         .order("nama_siswa", { ascending: true })
-        .range(from, to),
-    );
+        .range(from, to);
+      if (currentUnit && currentUnit !== "Semua Unit") query = query.eq("unit", currentUnit);
+      return query;
+    });
     if (error) {
       console.error("Gagal memuat siswa:", error.message);
       return;
     }
     setStudents((data || []).map(mapSiswaRow).filter((s) => s.id && s.name && !isKelasAlumni(s.kelas)));
-  }, []);
+  }, [currentUnit]);
 
   const fetchRules = useCallback(async () => {
     const { data, error } = await supabase
@@ -232,7 +257,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     const { data, error } = await fetchAllPages((from, to) => {
       let query = supabase
         .from("tertib_point")
-        .select("id_tertib_point,id_siswa,label,pts,guru,bulan,unit,created_at")
+        .select(KOLOM_LOG)
         .eq("bulan", monthValue)
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -269,6 +294,11 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       return matchUnit && matchQuery;
     });
   }, [students, currentUnit, searchQuery]);
+
+  const ukuranHalaman = 20;
+  const jumlahHalaman = Math.max(1, Math.ceil(filteredStudents.length / ukuranHalaman));
+  const halamanAman = Math.min(halaman, jumlahHalaman);
+  const siswaTampil = filteredStudents.slice((halamanAman - 1) * ukuranHalaman, halamanAman * ukuranHalaman);
 
   const allRules = useMemo(() => {
     const fromDbNeg = rules.filter((r) => r.type === "neg");
@@ -314,13 +344,14 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       guru: currentTeacherName,
       bulan,
       unit: student?.unit || (currentUnit !== "Semua Unit" ? currentUnit : ""),
+      keterangan: keteranganInput.trim(),
     };
 
     setBusy(true);
     setStatus("");
     setStatusError(false);
 
-    const { data, error } = await supabase.from("tertib_point").insert([payload]).select("id_tertib_point,id_siswa,label,pts,guru,bulan,unit,created_at").single();
+    const { data, error } = await supabase.from("tertib_point").insert([payload]).select(KOLOM_LOG).single();
 
     setBusy(false);
 
@@ -331,26 +362,74 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     }
 
     if (data) setLogs((current) => [mapLogRow(data), ...current]);
+    setKeteranganInput("");
     setStatus("Poin berhasil dicatat.");
   };
 
-  const handleDelLog = async (logId: number | string) => {
+  const tolakBukanPencatat = () => {
+    setStatus("Hanya guru yang mencatat poin ini yang dapat mengubah atau menghapusnya.");
+    setStatusError(true);
+  };
+
+  const handleSimpanEdit = async (log: Log) => {
     if (busy) return;
+    if (!milikPencatat(log.guru, currentUser)) {
+      tolakBukanPencatat();
+      return;
+    }
+    setBusy(true);
+    setStatus("");
+    setStatusError(false);
+    const keterangan = editKeterangan.trim();
+    const { data, error } = await supabase
+      .from("tertib_point")
+      .update({ keterangan })
+      .eq("id_tertib_point", log.id)
+      .eq("guru", log.guru)
+      .select(KOLOM_LOG)
+      .maybeSingle();
+    setBusy(false);
+    if (error || !data) {
+      setStatus(error ? "Gagal memperbarui keterangan: " + error.message : "Catatan tidak dapat diubah.");
+      setStatusError(true);
+      return;
+    }
+    setLogs((current) => current.map((item) => (String(item.id) === String(log.id) ? mapLogRow(data) : item)));
+    setEditId(null);
+    setEditKeterangan("");
+    setStatus("Keterangan poin diperbarui.");
+  };
+
+  const handleDelLog = async (log: Log) => {
+    if (busy) return;
+    if (!milikPencatat(log.guru, currentUser)) {
+      tolakBukanPencatat();
+      return;
+    }
     setBusy(true);
     setStatus("");
     setStatusError(false);
 
-    const { error } = await supabase.from("tertib_point").delete().eq("id_tertib_point", logId);
+    const { data, error } = await supabase
+      .from("tertib_point")
+      .delete()
+      .eq("id_tertib_point", log.id)
+      .eq("guru", log.guru)
+      .select("id_tertib_point");
     setBusy(false);
 
-    if (error) {
-      setStatus("Gagal membatalkan catatan: " + error.message);
+    if (error || !data || data.length === 0) {
+      setStatus(error ? "Gagal menghapus catatan: " + error.message : "Catatan tidak dapat dihapus.");
       setStatusError(true);
       return;
     }
 
-    setLogs((current) => current.filter((l) => String(l.id) !== String(logId)));
-    setStatus("Catatan poin dibatalkan.");
+    setLogs((current) => current.filter((l) => String(l.id) !== String(log.id)));
+    if (editId === String(log.id)) {
+      setEditId(null);
+      setEditKeterangan("");
+    }
+    setStatus("Catatan poin dihapus.");
   };
 
   const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -385,7 +464,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
             .map(
               (l) => `<tr>
                 <td>${escapeHtml(new Date(l.ts).toLocaleDateString("id-ID"))}</td>
-                <td>${escapeHtml(l.label)}</td>
+                <td>${escapeHtml(l.label)}${l.keterangan ? `<br><span style="font-weight:400">${escapeHtml(l.keterangan)}</span>` : ""}</td>
                 <td>${escapeHtml(l.guru)}</td>
                 <td style="text-align:center;font-weight:700">${l.pts > 0 ? `+${l.pts}` : l.pts}</td>
               </tr>`,
@@ -559,7 +638,10 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
               type="search"
               placeholder="Cari nama atau kelas santri (pencarian canggih)..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setHalaman(1);
+              }}
               className="w-full md:w-96 bg-white border border-slate-300 rounded-lg px-4 py-2 text-sm shadow-sm focus:ring-2 focus:ring-emerald-600 outline-none"
             />
           </div>
@@ -578,8 +660,8 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {filteredStudents.length > 0 ? (
-                  filteredStudents.map((s) => {
+                {siswaTampil.length > 0 ? (
+                  siswaTampil.map((s) => {
                     const c = calcPoints(s.id);
                     const st = getStatus(c.sisa);
                     return (
@@ -598,6 +680,9 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                             onClick={() => {
                               setActiveStudentId(s.id);
                               setModalType("give");
+                              setEditId(null);
+                              setEditKeterangan("");
+                              setKeteranganInput("");
                             }}
                             className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm"
                           >
@@ -628,6 +713,12 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
               </tbody>
             </table>
           </div>
+          <PagerHalaman
+            halaman={halamanAman}
+            jumlah={jumlahHalaman}
+            onSebelumnya={() => setHalaman((nilai) => Math.max(1, nilai - 1))}
+            onBerikutnya={() => setHalaman((nilai) => nilai + 1)}
+          />
         </div>
       )}
 
@@ -637,7 +728,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
             Data Santri Unit {currentUnit} ({filteredStudents.length})
           </h3>
           <div className="space-y-3">
-            {filteredStudents.map((s) => (
+            {siswaTampil.map((s) => (
               <div key={s.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-100">
                 <span className="font-medium">
                   {s.name} <span className="text-xs text-slate-500">· Kelas {s.kelas}</span>
@@ -645,6 +736,12 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
               </div>
             ))}
           </div>
+          <PagerHalaman
+            halaman={halamanAman}
+            jumlah={jumlahHalaman}
+            onSebelumnya={() => setHalaman((nilai) => Math.max(1, nilai - 1))}
+            onBerikutnya={() => setHalaman((nilai) => nilai + 1)}
+          />
         </div>
       )}
 
@@ -706,6 +803,18 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
             {modalType === "give" && (
               <div>
                 <p className="text-xs text-emerald-700 font-semibold mb-3">Pencatat poin saat ini: {currentTeacherName}</p>
+                <label className="mb-4 block">
+                  <span className="mb-1 block text-xs font-bold text-slate-700">
+                    Keterangan <span className="font-normal text-slate-400">(opsional)</span>
+                  </span>
+                  <BidangSuaraMandiri
+                    value={keteranganInput}
+                    onChange={setKeteranganInput}
+                    rows={2}
+                    placeholder="Catatan tambahan untuk poin yang akan dicatat"
+                    className="w-full rounded-xl border border-slate-300 p-3 text-sm"
+                  />
+                </label>
                 <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {allRules.pos.map((r) => (
@@ -741,22 +850,75 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                   {logs
                     .filter((l) => String(l.sid) === String(activeStudent.id) && l.month === bulan)
                     .map((l) => (
-                      <div key={String(l.id)} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs">
-                        <div>
-                          <span className="font-medium">{l.label}</span> <span className="text-slate-400">({l.guru})</span>
+                      <div key={String(l.id)} className="rounded-lg bg-slate-50 p-2 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-medium">{l.label}</span> <span className="text-slate-400">({l.guru})</span>
+                            {l.keterangan && editId !== String(l.id) && (
+                              <p className="mt-1 text-slate-600">{l.keterangan}</p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className={l.pts > 0 ? "font-bold text-emerald-600" : "font-bold text-red-600"}>
+                              {l.pts > 0 ? `+${l.pts}` : l.pts}
+                            </span>
+                            {milikPencatat(l.guru, currentUser) && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setEditId(String(l.id));
+                                    setEditKeterangan(l.keterangan);
+                                  }}
+                                  className="font-semibold text-sky-700 hover:underline disabled:opacity-50"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleDelLog(l)}
+                                  className="font-semibold text-red-600 hover:underline disabled:opacity-50"
+                                >
+                                  Hapus
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={l.pts > 0 ? "font-bold text-emerald-600" : "font-bold text-red-600"}>
-                            {l.pts > 0 ? `+${l.pts}` : l.pts}
-                          </span>
-                          <button
-                            disabled={busy}
-                            onClick={() => handleDelLog(l.id)}
-                            className="text-slate-400 hover:text-red-600 font-semibold disabled:opacity-50"
-                          >
-                            Batalkan
-                          </button>
-                        </div>
+                        {editId === String(l.id) && (
+                          <div className="mt-2 space-y-2">
+                            <BidangSuaraMandiri
+                              value={editKeterangan}
+                              onChange={setEditKeterangan}
+                              rows={2}
+                              placeholder="Keterangan"
+                              className="w-full rounded-lg border border-slate-300 p-2 text-sm"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => {
+                                  setEditId(null);
+                                  setEditKeterangan("");
+                                }}
+                                className="rounded-lg border border-slate-300 px-2 py-1 font-semibold text-slate-600"
+                              >
+                                Batal
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleSimpanEdit(l)}
+                                className="rounded-lg bg-emerald-700 px-2 py-1 font-semibold text-white disabled:opacity-50"
+                              >
+                                Simpan
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -845,7 +1007,10 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                         studentLogs.map((l) => (
                           <tr key={String(l.id)}>
                             <td className="border border-black p-2">{new Date(l.ts).toLocaleDateString("id-ID")}</td>
-                            <td className="border border-black p-2 font-medium">{l.label}</td>
+                            <td className="border border-black p-2 font-medium">
+                              {l.label}
+                              {l.keterangan ? <span className="mt-1 block font-normal">{l.keterangan}</span> : null}
+                            </td>
                             <td className="border border-black p-2">{l.guru}</td>
                             <td className="border border-black p-2 text-center font-bold">
                               {l.pts > 0 ? `+${l.pts}` : l.pts}
@@ -893,6 +1058,43 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PagerHalaman({
+  halaman,
+  jumlah,
+  onSebelumnya,
+  onBerikutnya,
+}: {
+  halaman: number;
+  jumlah: number;
+  onSebelumnya: () => void;
+  onBerikutnya: () => void;
+}) {
+  if (jumlah <= 1) return null;
+  return (
+    <div className="mt-3 flex items-center justify-between text-xs">
+      <button
+        type="button"
+        disabled={halaman <= 1}
+        onClick={onSebelumnya}
+        className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40"
+      >
+        Sebelumnya
+      </button>
+      <span className="font-semibold text-slate-500">
+        Halaman {halaman} dari {jumlah}
+      </span>
+      <button
+        type="button"
+        disabled={halaman >= jumlah}
+        onClick={onBerikutnya}
+        className="rounded-lg bg-emerald-800 px-3 py-1.5 font-bold text-white disabled:opacity-40"
+      >
+        Berikutnya
+      </button>
     </div>
   );
 }

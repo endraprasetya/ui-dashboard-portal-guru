@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Eye, Mic, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
+import { BidangSuara, useDikte } from '@/components/input-suara'
 import {
   DAFTAR_MAPEL,
   KETERANGAN_ABSEN,
@@ -23,67 +24,6 @@ import {
   type SiswaKelas,
   type SiswaTidakHadir,
 } from '@/lib/jurnal'
-
-function getSpeechRecognitionCtor(): (new () => any) | null {
-  if (typeof window === 'undefined') return null
-  const host = window as Window & {
-    SpeechRecognition?: new () => any
-    webkitSpeechRecognition?: new () => any
-  }
-  return host.SpeechRecognition || host.webkitSpeechRecognition || null
-}
-
-function gabungTeks(base: string, spoken: string) {
-  const left = base.replace(/\s+$/g, '')
-  const right = spoken.replace(/^\s+/g, '').replace(/\s+$/g, '')
-  if (!left) return right
-  if (!right) return left
-  return `${left} ${right}`
-}
-
-function VoiceTextarea({
-  value,
-  onChange,
-  listening,
-  onToggle,
-}: {
-  value: string
-  onChange: (value: string) => void
-  listening: boolean
-  onToggle: () => void
-}) {
-  return (
-    <div>
-      <div className="relative">
-        <textarea
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className={`min-h-14 w-full resize-y rounded border px-2 py-1.5 pr-7 print:pr-2 ${
-            listening ? 'border-red-400 bg-red-50' : 'border-slate-200'
-          }`}
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-pressed={listening}
-          aria-label={listening ? 'Berhenti mendengarkan' : 'Rekam suara menjadi teks'}
-          title={listening ? 'Berhenti mendengarkan' : 'Rekam suara (Bahasa Indonesia)'}
-          className={`no-print absolute top-1 right-1 rounded p-1 ${
-            listening ? 'bg-red-600 text-white' : 'text-slate-500 hover:bg-slate-100'
-          }`}
-        >
-          <Mic className={`size-3.5 ${listening ? 'animate-pulse' : ''}`} />
-        </button>
-      </div>
-      {listening && (
-        <p className="no-print mt-1 flex items-center gap-1 text-[10px] font-bold text-red-600" aria-live="polite">
-          <span className="size-1.5 animate-pulse rounded-full bg-red-500" />
-          Mendengarkan...
-        </p>
-      )}
-    </div>
-  )
-}
 
 export function JurnalPembelajaran({
   onBack,
@@ -112,10 +52,7 @@ export function JurnalPembelajaran({
   const [lihatAbsenJam, setLihatAbsenJam] = useState<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawingRef = useRef(false)
-  const recognitionRef = useRef<any>(null)
-  const speechSessionRef = useRef(0)
-  const [listeningKey, setListeningKey] = useState<string | null>(null)
-  const [speechError, setSpeechError] = useState('')
+  const dikte = useDikte()
 
   const selectedDate = tanggal ? new Date(`${tanggal}T00:00:00`) : null
   const hariIndex = selectedDate ? selectedDate.getDay() : -1
@@ -160,14 +97,7 @@ export function JurnalPembelajaran({
 
   const muatJurnal = useCallback(async () => {
     if (!kelas || !tanggal) return
-    speechSessionRef.current += 1
-    try {
-      recognitionRef.current?.abort?.()
-    } catch {
-      /* sesi suara sebelumnya sudah berhenti */
-    }
-    recognitionRef.current = null
-    setListeningKey(null)
+    dikte.hentikan()
     setLoading(true)
     setStatus('')
     setStatusError(false)
@@ -190,7 +120,7 @@ export function JurnalPembelajaran({
     }
 
     setLoading(false)
-  }, [kelas, tanggal, jumlahSiswa])
+  }, [kelas, tanggal, jumlahSiswa, dikte.hentikan])
 
   useEffect(() => {
     muatJurnal()
@@ -292,134 +222,6 @@ export function JurnalPembelajaran({
     updateEntry(ttdJam, { ttd: blank ? null : canvas.toDataURL('image/png') })
     setTtdJam(null)
   }
-
-  const hentikanSuara = () => {
-    speechSessionRef.current += 1
-    const recognition = recognitionRef.current
-    recognitionRef.current = null
-    try {
-      recognition?.abort?.()
-    } catch {
-      /* sudah berhenti */
-    }
-    setListeningKey(null)
-  }
-
-  const toggleSpeech = (key: string, jam: number, field: 'materi' | 'kegiatan') => {
-    if (listeningKey === key) {
-      hentikanSuara()
-      return
-    }
-
-    hentikanSuara()
-    const Ctor = getSpeechRecognitionCtor()
-    if (!Ctor) {
-      setSpeechError('Browser ini belum mendukung input suara. Gunakan Chrome atau Edge.')
-      return
-    }
-    if (!window.isSecureContext) {
-      setSpeechError('Input suara hanya dapat dipakai lewat localhost atau HTTPS.')
-      return
-    }
-
-    const session = ++speechSessionRef.current
-    const meta = { base: getEntry(jam)[field] || '', spoken: '' }
-    const recognition = new Ctor()
-    recognition.lang = 'id-ID'
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.maxAlternatives = 1
-    let lastStart = 0
-    let quickEnds = 0
-
-    recognition.onstart = () => {
-      lastStart = Date.now()
-    }
-
-    recognition.onresult = (event: any) => {
-      if (speechSessionRef.current !== session) return
-      let spoken = ''
-      for (let i = 0; i < event.results.length; i += 1) {
-        const piece = String(event.results[i][0]?.transcript || '')
-        if (!piece) continue
-        if (spoken && !/\s$/.test(spoken) && !/^\s/.test(piece)) spoken += ' '
-        spoken += piece
-      }
-      meta.spoken = spoken.trim()
-      updateEntryRef.current(jam, { [field]: gabungTeks(meta.base, meta.spoken) })
-    }
-
-    recognition.onerror = (event: any) => {
-      const code = String(event?.error || '')
-      if (code === 'no-speech' || code === 'aborted') return
-      if (speechSessionRef.current !== session) return
-      speechSessionRef.current += 1
-      recognitionRef.current = null
-      setListeningKey(null)
-      if (code === 'not-allowed' || code === 'service-not-allowed') {
-        setSpeechError('Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini, lalu coba lagi.')
-      } else if (code === 'audio-capture') {
-        setSpeechError('Mikrofon tidak ditemukan atau sedang dipakai aplikasi lain.')
-      } else {
-        setSpeechError('Rekaman suara terhenti. Coba lagi.')
-      }
-    }
-
-    recognition.onend = () => {
-      if (speechSessionRef.current !== session) return
-      if (meta.spoken) {
-        meta.base = gabungTeks(meta.base, meta.spoken)
-        meta.spoken = ''
-      }
-      if (Date.now() - lastStart < 400) {
-        quickEnds += 1
-        if (quickEnds >= 4) {
-          speechSessionRef.current += 1
-          recognitionRef.current = null
-          setListeningKey(null)
-          setSpeechError('Mikrofon berhenti terlalu cepat. Periksa izin mikrofon di browser, lalu coba lagi.')
-          return
-        }
-      } else {
-        quickEnds = 0
-      }
-      window.setTimeout(() => {
-        if (speechSessionRef.current !== session) return
-        try {
-          recognition.start()
-        } catch {
-          speechSessionRef.current += 1
-          recognitionRef.current = null
-          setListeningKey(null)
-          setSpeechError('Mikrofon tidak dapat dilanjutkan. Periksa izin mikrofon di browser, lalu coba lagi.')
-        }
-      }, 250)
-    }
-
-    recognitionRef.current = recognition
-    setSpeechError('')
-    setListeningKey(key)
-    try {
-      recognition.start()
-    } catch {
-      speechSessionRef.current += 1
-      recognitionRef.current = null
-      setListeningKey(null)
-      setSpeechError('Tidak dapat memulai mikrofon.')
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      speechSessionRef.current += 1
-      try {
-        recognitionRef.current?.abort?.()
-      } catch {
-        /* komponen sudah ditutup */
-      }
-      recognitionRef.current = null
-    }
-  }, [])
 
   const tanggalLabel = selectedDate
     ? selectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -532,7 +334,7 @@ export function JurnalPembelajaran({
               </>
             )}
           </p>
-          {speechError && <p className="no-print text-xs font-bold text-red-600">{speechError}</p>}
+          {dikte.galat && <p className="no-print text-xs font-bold text-red-600">{dikte.galat}</p>}
 
           {!jadwal ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-slate-500">
@@ -540,7 +342,7 @@ export function JurnalPembelajaran({
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1140px] border-collapse text-left text-xs">
+              <table className="w-full min-w-[1320px] border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-emerald-50 text-center font-bold text-emerald-900">
                     <th className="border border-slate-200 p-2">Jam ke</th>
@@ -549,6 +351,7 @@ export function JurnalPembelajaran({
                     <th className="border border-slate-200 p-2">Materi pokok</th>
                     <th className="border border-slate-200 p-2">Kegiatan pembelajaran</th>
                     <th className="border border-slate-200 p-2">Link pembelajaran</th>
+                    <th className="border border-slate-200 p-2">Tugas di Rumah</th>
                     <th className="border border-slate-200 p-2">Hadir</th>
                     <th className="border border-slate-200 p-2">Tidak hadir</th>
                     <th className="border border-slate-200 p-2">Paraf guru</th>
@@ -560,7 +363,7 @@ export function JurnalPembelajaran({
                       return (
                         <tr key={`rest-${index}`} className="bg-amber-50 text-center font-semibold text-amber-900">
                           <td className="border border-slate-200 p-2 text-xs font-normal text-slate-500">{item.w}</td>
-                          <td className="border border-slate-200 p-2" colSpan={8}>
+                          <td className="border border-slate-200 p-2" colSpan={9}>
                             {item.r}
                           </td>
                         </tr>
@@ -585,19 +388,31 @@ export function JurnalPembelajaran({
                           />
                         </td>
                         <td className="border border-slate-200 p-1.5 align-top">
-                          <VoiceTextarea
+                          <BidangSuara
                             value={entry.materi}
-                            listening={listeningKey === `${jam}:materi`}
+                            mendengarkan={dikte.aktif === `${jam}:materi`}
                             onChange={(value) => updateEntry(jam, { materi: value })}
-                            onToggle={() => toggleSpeech(`${jam}:materi`, jam, 'materi')}
+                            onToggle={() =>
+                              dikte.toggle(
+                                `${jam}:materi`,
+                                () => getEntry(jam).materi,
+                                (value) => updateEntryRef.current(jam, { materi: value }),
+                              )
+                            }
                           />
                         </td>
                         <td className="border border-slate-200 p-1.5 align-top">
-                          <VoiceTextarea
+                          <BidangSuara
                             value={entry.kegiatan}
-                            listening={listeningKey === `${jam}:kegiatan`}
+                            mendengarkan={dikte.aktif === `${jam}:kegiatan`}
                             onChange={(value) => updateEntry(jam, { kegiatan: value })}
-                            onToggle={() => toggleSpeech(`${jam}:kegiatan`, jam, 'kegiatan')}
+                            onToggle={() =>
+                              dikte.toggle(
+                                `${jam}:kegiatan`,
+                                () => getEntry(jam).kegiatan,
+                                (value) => updateEntryRef.current(jam, { kegiatan: value }),
+                              )
+                            }
                           />
                         </td>
                         <td className="border border-slate-200 p-1.5">
@@ -668,6 +483,21 @@ export function JurnalPembelajaran({
                               <Plus className="size-3" /> Tambah link
                             </button>
                           </div>
+                        </td>
+                        <td className="w-44 border border-slate-200 p-1.5 align-top">
+                          <BidangSuara
+                            value={entry.tugas}
+                            mendengarkan={dikte.aktif === `${jam}:tugas`}
+                            onChange={(value) => updateEntry(jam, { tugas: value })}
+                            onToggle={() =>
+                              dikte.toggle(
+                                `${jam}:tugas`,
+                                () => getEntry(jam).tugas,
+                                (value) => updateEntryRef.current(jam, { tugas: value }),
+                              )
+                            }
+                            placeholder="Tugas di rumah"
+                          />
                         </td>
                         <td className="w-16 border border-slate-200 p-1.5 text-center">
                           <div className="rounded bg-emerald-50 py-1.5 text-sm font-black text-emerald-800">

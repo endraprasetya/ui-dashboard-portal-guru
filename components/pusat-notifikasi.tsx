@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, BookCheck, ArrowRight } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import {
   LABEL_KATEGORI,
   bacaIdTersimpan,
@@ -20,15 +21,19 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
   const [dibaca, setDibaca] = useState<string[]>([])
   const [memuat, setMemuat] = useState(false)
 
-  const muat = useCallback(async () => {
-    setMemuat(true)
+  const berjalan = useRef(false)
+  const muat = useCallback(async (senyap = false) => {
+    if (berjalan.current && senyap) return
+    berjalan.current = true
+    if (!senyap) setMemuat(true)
     setDibaca(bacaIdTersimpan())
     try {
       const hasil = await muatNotifikasi(currentUser)
       setSemua(hasil.semua)
       setQiroah(hasil.qiroah)
     } finally {
-      setMemuat(false)
+      berjalan.current = false
+      if (!senyap) setMemuat(false)
     }
   }, [currentUser, penyegar])
 
@@ -36,10 +41,25 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     muat()
   }, [muat])
 
+  useEffect(() => {
+    const kanal = supabase
+      .channel(`notifikasi-pengajuan-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => {
+        muat(true)
+      })
+      .subscribe()
+    const timer = window.setInterval(() => muat(true), 15000)
+    return () => {
+      window.clearInterval(timer)
+      supabase.removeChannel(kanal)
+    }
+  }, [muat])
+
   const sudah = useCallback((id: string) => dibaca.includes(id), [dibaca])
   const belumDibaca = semua.filter((item) => !dibaca.includes(item.id)).length
   const penguji = qiroah.filter((item) => item.peran === 'penguji')
-  const pengampu = qiroah.filter((item) => item.peran === 'pengampu')
+  const pengampuMenunggu = qiroah.filter((item) => item.peran === 'pengampu' && item.tahap === 'menunggu')
+  const pengampu = qiroah.filter((item) => item.peran === 'pengampu' && item.tahap === 'terjadwal')
 
   const tandai = useCallback((id: string) => {
     setDibaca((current) => {
@@ -52,7 +72,7 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     setDibaca((current) => simpanIdDibaca([...current, ...ids]))
   }, [])
 
-  return { semua, qiroah, penguji, pengampu, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
+  return { semua, qiroah, penguji, pengampu, pengampuMenunggu, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
 }
 
 export function PusatNotifikasi({
@@ -167,11 +187,13 @@ export function RingkasanQiroah({
   onJadwalkan,
   penguji,
   pengampu,
+  pengampuMenunggu = [],
 }: {
   onOpen: () => void
   onJadwalkan: () => void
   penguji: NotifikasiQiroah[]
   pengampu: NotifikasiQiroah[]
+  pengampuMenunggu?: NotifikasiQiroah[]
 }) {
   return (
     <div className="flex flex-col self-start rounded-2xl bg-[#0284c7] p-5 text-left text-white shadow transition hover:shadow-lg">
@@ -197,6 +219,19 @@ export function RingkasanQiroah({
           </ul>
           {penguji.length > 3 && <p className="mt-1 text-[10px] font-bold">+{penguji.length - 3} siswa lain</p>}
         </button>
+      )}
+      {pengampuMenunggu.length > 0 && (
+        <div className="mt-2 rounded-xl bg-black/10 p-2.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-wide">Menunggu jadwal penguji</p>
+          <ul className="mt-1.5 space-y-1">
+            {pengampuMenunggu.slice(0, 3).map((item) => (
+              <li key={item.id} className="text-[11px] leading-4">
+                <span className="font-bold">{item.nama}</span> · {item.kelas}
+              </li>
+            ))}
+          </ul>
+          {pengampuMenunggu.length > 3 && <p className="mt-1 text-[10px] font-bold">+{pengampuMenunggu.length - 3} siswa lain</p>}
+        </div>
       )}
       {pengampu.length > 0 && (
         <div className="mt-2 rounded-xl bg-black/10 p-2.5">

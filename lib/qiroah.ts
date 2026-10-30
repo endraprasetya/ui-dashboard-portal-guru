@@ -196,11 +196,14 @@ export function statusDenganWaktu(waktu: string) {
 
 export function menungguJadwal(status?: string) {
   const inti = statusInti(status)
-  return inti === 'menunggu_jadwal' || inti === 'menunggu ujian' || inti === '' || inti === '-'
+  if (!inti || inti === '-') return true
+  if (inti.includes('selesai') || inti.includes('terjadwal') || inti.includes('lulus') || inti.includes('batal')) return false
+  return inti.includes('menunggu') || inti.includes('pengajuan') || inti.includes('diajukan') || inti.includes('antr') || inti.includes('antre')
 }
 
 export function sudahTerjadwal(status?: string) {
-  return statusInti(status) === 'terjadwal'
+  const inti = statusInti(status)
+  return inti === 'terjadwal' || inti.includes('terjadwal') || inti === 'dijadwalkan' || inti === 'sudah dijadwalkan'
 }
 
 export function labelStatusPengajuan(status?: string) {
@@ -210,28 +213,52 @@ export function labelStatusPengajuan(status?: string) {
   return String(status || '-').split('|')[0]
 }
 
+function daftarPembimbing(value?: string) {
+  return String(value || '')
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function unitSama(unitUser?: string, unitBaris?: string) {
+  const pengguna = String(unitUser || '').trim().toLowerCase()
+  const baris = String(unitBaris || '').trim().toLowerCase()
+  if (!pengguna || pengguna === 'semua unit') return true
+  if (!baris) return false
+  return pengguna === baris || baris.includes(pengguna) || pengguna.includes(baris)
+}
+
+export function pengujiEfektif(row: { kelas?: string; unit?: string; nama_penguji?: string }) {
+  const tertulis = String(row.nama_penguji || '').trim()
+  if (tertulis) return tertulis
+  return pengujiUntukKelas(row.kelas, row.unit)
+}
+
 export function untukPengampu(
-  row: { diajukan_oleh?: string },
-  currentUser?: { nama_lengkap?: string; nama?: string; username?: string } | null,
+  row: { diajukan_oleh?: string; unit?: string; id_pembimbing?: string },
+  currentUser?: { nama_lengkap?: string; nama?: string; username?: string; unit?: string; target_id?: string } | null,
 ) {
   if (!currentUser) return false
-  return namaPengujiCocok(teacherDisplayName(currentUser), row.diajukan_oleh)
+  const target = String(currentUser.target_id || '').trim().toLowerCase()
+  const pembimbing = daftarPembimbing(row.id_pembimbing).map((item) => item.toLowerCase())
+  if (target && pembimbing.includes(target)) return true
+  if (!namaPengujiCocok(teacherDisplayName(currentUser), row.diajukan_oleh)) return false
+  return unitSama(currentUser.unit, row.unit)
 }
 
 export function barisUntukPenguji(
   row: { kelas?: string; unit?: string; nama_penguji?: string },
-  currentUser?: { nama_lengkap?: string; nama?: string; username?: string; role?: string } | null,
+  currentUser?: { nama_lengkap?: string; nama?: string; username?: string; role?: string; unit?: string } | null,
 ) {
   if (!currentUser) return false
-  const admin = String(currentUser.role || '')
-    .toLowerCase()
-    .includes('admin')
+  const peran = String(currentUser.role || '').toLowerCase()
+  const admin = peran.includes('admin')
   const namaUser = teacherDisplayName(currentUser)
-  const namaBaris = String(row.nama_penguji || '').trim()
+  const namaBaris = pengujiEfektif(row)
   if (namaBaris && namaPengujiCocok(namaUser, namaBaris)) return true
-  if (!namaBaris) {
-    const dariKelas = pengujiUntukKelas(row.kelas, row.unit)
-    if (dariKelas && namaPengujiCocok(namaUser, dariKelas)) return true
+  const unitUser = String(currentUser.unit || '').trim()
+  if (!namaBaris && peran.includes('penguji') && unitUser && unitUser.toLowerCase() !== 'semua unit' && unitSama(unitUser, row.unit)) {
+    return true
   }
   return admin
 }

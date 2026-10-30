@@ -12,6 +12,7 @@ import {
   labelStatusPengajuan,
   menungguJadwal,
   nextJilid,
+  pengujiEfektif,
   pengujiUntukKelas,
   statusDenganWaktu,
   statusInti,
@@ -155,19 +156,21 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
   const [idUjianTersimpan, setIdUjianTersimpan] = useState('')
   const [pesanSimpan, setPesanSimpan] = useState('')
 
-  const loadAntrean = useCallback(async () => {
-    setLoading(true)
+  const loadAntrean = useCallback(async (senyap = false) => {
+    if (!senyap) setLoading(true)
     const { data, error } = await supabase
       .from('pengajuan')
       .select('*')
       .order('tanggal_diajukan', { ascending: false })
 
     if (error) {
-      alert('Gagal memuat antrean: ' + error.message)
-      setAntrean([])
-      setMenunggu([])
-      setSelesai([])
-      setRekapans([])
+      if (!senyap) {
+        alert('Gagal memuat antrean: ' + error.message)
+        setAntrean([])
+        setMenunggu([])
+        setSelesai([])
+        setRekapans([])
+      }
       setLoading(false)
       return
     }
@@ -198,6 +201,20 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
 
   useEffect(() => {
     loadAntrean()
+  }, [loadAntrean])
+
+  useEffect(() => {
+    const kanal = supabase
+      .channel(`antrean-pengajuan-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => {
+        loadAntrean(true)
+      })
+      .subscribe()
+    const timer = window.setInterval(() => loadAntrean(true), 15000)
+    return () => {
+      window.clearInterval(timer)
+      supabase.removeChannel(kanal)
+    }
   }, [loadAntrean])
 
   useEffect(() => {
@@ -247,7 +264,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
   const nilaiAspek = isJilid12 ? [kelancaran, makhraj, harakat, adab] : [kelancaran, makhraj, harakat, tajwid, adab]
   const nilaiLengkap = nilaiAspek.every((nilai) => nilai !== '' && Number.isFinite(Number(nilai)))
   const totalNilai = nilaiLengkap
-    ? Math.round(nilaiAspek.reduce((jumlah, nilai) => jumlah + Number(nilai), 0) / aspekCount)
+    ? Math.round(nilaiAspek.reduce((jumlah: number, nilai) => jumlah + Number(nilai), 0) / aspekCount)
     : null
 
   const ringkasan = totalNilai == null ? null : predikatDariNilai(totalNilai)
@@ -614,7 +631,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
           <h3 className="text-sm font-extrabold text-slate-800">Antrean Ujian Terjadwal</h3>
           <button
             type="button"
-            onClick={loadAntrean}
+            onClick={() => loadAntrean()}
             className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white"
           >
             <RefreshCw className="size-3.5" /> Refresh
@@ -656,7 +673,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                     <td className="border p-2 font-bold">{item.nama_siswa}</td>
                     <td className="border p-2">{item.jilid_diujikan}</td>
                     <td className="border p-2">{item.kelas}</td>
-                    <td className="border p-2">{item.nama_penguji || '-'}</td>
+                    <td className="border p-2">{pengujiEfektif(item) || '-'}</td>
                     <td className="border p-2">
                       <button
                         type="button"

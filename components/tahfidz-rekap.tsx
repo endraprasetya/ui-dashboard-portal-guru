@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
+import { ambilBarisSiswa, fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
 import { ArrowLeft, Printer, Search, Target, Users, ChevronDown, ChevronUp } from 'lucide-react'
 
 export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -135,18 +135,24 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
     const classStudents = students.filter((s) => String(s.kelas).trim() === selectedClass.trim())
     const startObj = startDate ? new Date(`${startDate}T00:00:00`) : null
     const endObj = endDate ? new Date(`${endDate}T23:59:59`) : null
+    const barisKelas = await ambilBarisSiswa(classStudents.map((student) => String(student.id_siswa)), (bagian, from, to) =>
+      supabase
+        .from('setoran_tahfidz')
+        .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah')
+        .in('id_siswa', bagian)
+        .range(from, to),
+    )
+    const setoranPerSiswa = new Map<string, any[]>()
+    for (const row of barisKelas) {
+      const id = String(row.id_siswa || '')
+      const daftar = setoranPerSiswa.get(id) || []
+      daftar.push(row)
+      setoranPerSiswa.set(id, daftar)
+    }
 
-    const results = await Promise.all(
-      classStudents.map(async (student) => {
-        // Query efisien: hanya ambil field yang diperlukan
-        const { data } = await supabase
-          .from('setoran_tahfidz')
-          .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah')
-          .eq('id_siswa', String(student.id_siswa))
+    const results = classStudents.map((student) => {
+        let setoranList = setoranPerSiswa.get(String(student.id_siswa)) || []
 
-        let setoranList = data || []
-
-        // Sort setoran list by date
         setoranList.sort((a, b) => {
           const dateA = parseCustomDate(a.tanggal) || new Date(0)
           const dateB = parseCustomDate(b.tanggal) || new Date(0)
@@ -176,8 +182,7 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
           firstSetoran,
           lastSetoran,
         }
-      })
-    )
+    })
 
     setReportData(results)
     setLoading(false)

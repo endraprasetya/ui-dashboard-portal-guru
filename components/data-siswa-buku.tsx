@@ -1,22 +1,63 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Search } from 'lucide-react'
+import { ArrowLeft, Search, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 
 const KELAS = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D', '3A', '3B', '3C', '3D', '4A', '4B', '4C', '4D', '5A', '5B', '5C', '5D', '6A', '6B', '6C', '6D']
 const UKURAN = 20
 
-type BarisSiswa = {
-  nama_lengkap: string
-  kelas: string
-  nomor_induk_sekolah: string
-  nisn: string
-  nik: string
-  jenis_kelamin: string
-  tempat_tanggal_lahir: string
-}
+const LABEL_DIRI: { kelompok: string; kolom: [string, string][] }[] = [
+  {
+    kelompok: 'Identitas siswa',
+    kolom: [
+      ['nama_lengkap', 'Nama lengkap'],
+      ['kelas', 'Kelas'],
+      ['nomor_induk_sekolah', 'Nomor induk'],
+      ['nisn', 'NISN'],
+      ['nik', 'NIK'],
+      ['jenis_kelamin', 'Jenis kelamin'],
+      ['tempat_tanggal_lahir', 'Tempat, tanggal lahir'],
+      ['agama', 'Agama'],
+      ['anak_ke', 'Anak ke-'],
+      ['telepon', 'Telepon'],
+      ['pendidikan_sebelumnya', 'Pendidikan sebelumnya'],
+      ['diterima_di_sekolah_ini_di_kelas', 'Diterima di kelas'],
+      ['diterima_di_sekolah_ini_pada_tanggal', 'Tanggal diterima'],
+    ],
+  },
+  {
+    kelompok: 'Orang tua',
+    kolom: [
+      ['nama_ayah', 'Nama ayah'],
+      ['pekerjaan_ayah', 'Pekerjaan ayah'],
+      ['nama_ibu', 'Nama ibu'],
+      ['nik_ibu', 'NIK ibu'],
+      ['pekerjaan_ibu', 'Pekerjaan ibu'],
+    ],
+  },
+  {
+    kelompok: 'Alamat',
+    kolom: [
+      ['jalan', 'Jalan'],
+      ['desa_kelurahan', 'Desa / kelurahan'],
+      ['kecamatan', 'Kecamatan'],
+      ['kabupaten', 'Kabupaten'],
+      ['propinsi', 'Provinsi'],
+    ],
+  },
+  {
+    kelompok: 'Wali',
+    kolom: [
+      ['nama_wali', 'Nama wali'],
+      ['alamat_wali', 'Alamat wali'],
+      ['pekerjaan_wali', 'Pekerjaan wali'],
+    ],
+  },
+]
+
+type BarisSiswa = Record<string, string>
 
 function teks(nilai: unknown) {
   return String(nilai ?? '').trim()
@@ -31,6 +72,7 @@ export function DataSiswaBuku() {
   const [cari, setCari] = useState('')
   const [kelas, setKelas] = useState('')
   const [halaman, setHalaman] = useState(1)
+  const [detail, setDetail] = useState<BarisSiswa | null>(null)
 
   useEffect(() => {
     try {
@@ -48,11 +90,20 @@ export function DataSiswaBuku() {
   }, [])
 
   useEffect(() => {
+    if (!detail) return
+    const tutup = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetail(null)
+    }
+    window.addEventListener('keydown', tutup)
+    return () => window.removeEventListener('keydown', tutup)
+  }, [detail])
+
+  useEffect(() => {
     if (!siap) return
     let batal = false
     supabase
       .from('data_diri_siswa')
-      .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn,nik,jenis_kelamin,tempat_tanggal_lahir')
+      .select('*')
       .limit(1000)
       .then(({ data, error }) => {
         if (batal) return
@@ -61,15 +112,12 @@ export function DataSiswaBuku() {
           setMemuat(false)
           return
         }
-        const daftar = ((data || []) as Record<string, unknown>[]).map((row) => ({
-          nama_lengkap: teks(row.nama_lengkap) || 'Siswa',
-          kelas: teks(row.kelas),
-          nomor_induk_sekolah: teks(row.nomor_induk_sekolah),
-          nisn: teks(row.nisn),
-          nik: teks(row.nik),
-          jenis_kelamin: teks(row.jenis_kelamin),
-          tempat_tanggal_lahir: teks(row.tempat_tanggal_lahir),
-        }))
+        const daftar = ((data || []) as Record<string, unknown>[]).map((row) => {
+          const bersih: BarisSiswa = {}
+          for (const [kunci, nilai] of Object.entries(row)) bersih[kunci] = teks(nilai)
+          if (!bersih.nama_lengkap) bersih.nama_lengkap = 'Siswa'
+          return bersih
+        })
         daftar.sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.nama_lengkap.localeCompare(b.nama_lengkap, 'id'))
         setBaris(daftar)
         setMemuat(false)
@@ -106,7 +154,7 @@ export function DataSiswaBuku() {
             <h1 className="text-lg font-black">Data Siswa</h1>
           </div>
           <a href={kembali} className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
-            <ArrowLeft className="size-3.5" /> Kembali
+            <ArrowLeft className="size-3.5" /> Kembali ke dashboard
           </a>
         </div>
       </header>
@@ -165,12 +213,13 @@ export function DataSiswaBuku() {
                     <th className="px-3 py-2 font-bold">NIK</th>
                     <th className="px-3 py-2 font-bold">Jenis Kelamin</th>
                     <th className="px-3 py-2 font-bold">TTL</th>
+                    <th className="px-3 py-2 font-bold">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {!memuat && tampil.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-slate-400">Tidak ada siswa yang cocok dengan pencarian.</td>
+                      <td colSpan={9} className="px-3 py-8 text-center text-slate-400">Tidak ada siswa yang cocok dengan pencarian.</td>
                     </tr>
                   ) : tampil.map((row, index) => (
                     <tr key={`${row.nomor_induk_sekolah}-${row.nama_lengkap}-${row.kelas}`} className="border-t border-slate-100">
@@ -182,6 +231,15 @@ export function DataSiswaBuku() {
                       <td className="px-3 py-2">{row.nik || '-'}</td>
                       <td className="px-3 py-2">{row.jenis_kelamin || '-'}</td>
                       <td className="px-3 py-2">{row.tempat_tanggal_lahir || '-'}</td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => setDetail(row)}
+                          className="rounded-lg bg-[#143d32] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#0f2e26]"
+                        >
+                          Lihat Selengkapnya
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -208,6 +266,52 @@ export function DataSiswaBuku() {
           </div>
         </section>
       </main>
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDetail(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="judul-detail-siswa"
+            className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setDetail(null)}
+              aria-label="Tutup"
+              className="absolute top-4 right-4 rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            >
+              <X className="size-5" />
+            </button>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Buku induk</p>
+            <h2 id="judul-detail-siswa" className="mt-1 pr-8 text-xl font-black text-slate-900">{detail.nama_lengkap}</h2>
+            <p className="mt-1 text-sm text-slate-500">{detail.kelas ? `Kelas ${detail.kelas}` : 'Kelas belum diisi'}</p>
+            <div className="mt-5 space-y-5">
+              {LABEL_DIRI.map((bagian) => (
+                <section key={bagian.kelompok}>
+                  <h3 className="mb-2 text-sm font-extrabold text-slate-800">{bagian.kelompok}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {bagian.kolom.map(([kunci, label]) => (
+                      <div key={kunci} className="rounded-xl bg-slate-50 px-3 py-2">
+                        <dt className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</dt>
+                        <dd className="mt-1 text-sm font-semibold text-slate-800">{detail[kunci] || '-'}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+              {Object.keys(detail)
+                .filter((kunci) => !LABEL_DIRI.some((bagian) => bagian.kolom.some(([nama]) => nama === kunci)))
+                .map((kunci) => (
+                  <div key={kunci} className="rounded-xl bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{kunci.replace(/_/g, ' ')}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">{detail[kunci] || '-'}</p>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

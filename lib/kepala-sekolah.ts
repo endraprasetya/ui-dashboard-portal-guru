@@ -10,6 +10,7 @@ import {
   labelStatusPengajuan,
   menungguJadwal,
   namaPengujiCocok,
+  pengujiUntukKelas,
   normalKelas,
   sudahTerjadwal,
   teacherDisplayName,
@@ -347,7 +348,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       unit: row.unit || UNIT_KEPALA_SEKOLAH,
       jilid: row.jilid_diujikan || '-',
       pengampu: row.diajukan_oleh || '-',
-      penguji: row.nama_penguji || '-',
+      penguji: row.nama_penguji || pengujiUntukKelas(row.kelas, row.unit) || '-',
       status: labelStatusPengajuan(row.status),
       tanggal: String(row.tanggal_pelaksanaan || '').slice(0, 10),
       waktu: waktuDariStatus(row.status),
@@ -491,7 +492,7 @@ async function muatPengguna(catatan: string[]) {
   const pilihan = ['nama_lengkap,username,unit,role,target_id', 'nama_lengkap,username,unit,role']
   for (const kolom of pilihan) {
     const { data, error } = await supabase.from('users').select(kolom).eq('unit', UNIT_KEPALA_SEKOLAH).limit(500)
-    if (!error) return data || []
+    if (!error) return (data || []) as { nama_lengkap?: string; username?: string; unit?: string; role?: string; target_id?: string }[]
   }
   catatan.push('Daftar guru belum dapat dimuat.')
   return []
