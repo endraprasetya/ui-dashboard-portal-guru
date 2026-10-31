@@ -16,6 +16,7 @@ import {
   teacherDisplayName,
   waktuDariStatus,
 } from '@/lib/qiroah'
+import { cariRekapan } from '@/lib/ujian-relasi'
 
 export const KEPALA_SEKOLAH = {
   nama: 'Sri Sunarko Utomo, S.Pd',
@@ -260,7 +261,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     halaman<any>((dari, sampai) =>
       supabase
         .from('pengajuan')
-        .select('id_pengajuan,nama_siswa,kelas,unit,jilid_diujikan,diajukan_oleh,nama_penguji,status,tanggal_pelaksanaan')
+        .select('id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,diajukan_oleh,nama_penguji,status,tanggal_pelaksanaan')
         .eq('unit', UNIT_KEPALA_SEKOLAH)
         .order('tanggal_diajukan', { ascending: false })
         .range(dari, sampai),
@@ -340,7 +341,12 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     (row) => unitKepalaSekolah(row.unit) && diHariIni(row.created_at, hari, mulai.getTime()),
   ).length
   const ujian = (pengajuan || [])
-    .filter((row) => unitKepalaSekolah(row.unit) && (menungguJadwal(row.status) || sudahTerjadwal(row.status)))
+    .filter(
+      (row) =>
+        unitKepalaSekolah(row.unit) &&
+        (menungguJadwal(row.status) || sudahTerjadwal(row.status)) &&
+        !cariRekapan(row, rekapan || []),
+    )
     .map((row) => ({
       id: String(row.id_pengajuan),
       nama: row.nama_siswa || 'Siswa',

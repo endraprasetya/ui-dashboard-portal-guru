@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
@@ -13,10 +13,15 @@ import {
   generateQiroahId,
   generateUjianId,
   isYa,
+  labelStatusPengajuan,
   namaPengujiCocok,
   pengujiUntukKelas,
+  statusInti,
   teacherDisplayName,
+  untukPengampu,
 } from '@/lib/qiroah'
+import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
+import { cariRekapan, ringkasHasil, selaraskanStatusPengajuan, type RekapanRingkas } from '@/lib/ujian-relasi'
 
 const SETORAN_FIELDS =
   'id_qiroah, tanggal, unit, id_siswa, nama_siswa, ustadz, jilid, halaman, status, catatan, tugas_rumah, status_setoran, nilai, catatan_audio, murojaah_di_rumah, membaca_di_sekolah, murojaah_bersama_teman'
@@ -46,6 +51,14 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   const [showPengajuan, setShowPengajuan] = useState(false)
   const [jilidDiuji, setJilidDiuji] = useState('')
   const [sendingPengajuan, setSendingPengajuan] = useState(false)
+  const [showAntrean, setShowAntrean] = useState(false)
+  const [antrean, setAntrean] = useState<any[]>([])
+  const [rekapAntrean, setRekapAntrean] = useState<RekapanRingkas[]>([])
+  const [memuatAntrean, setMemuatAntrean] = useState(false)
+  const [editPengajuanId, setEditPengajuanId] = useState('')
+  const [editJilid, setEditJilid] = useState('')
+  const [menyimpanAntrean, setMenyimpanAntrean] = useState(false)
+  const [siswaSudahSetor, setSiswaSudahSetor] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -60,6 +73,29 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   useEffect(() => {
     fetchAllSiswa(currentUser).then(setStudents)
   }, [currentUser])
+
+  const muatSiswaSudahSetor = useCallback(async () => {
+    const hari = kunciHariJakarta()
+    const mulai = new Date(`${hari}T00:00:00+07:00`)
+    mulai.setDate(mulai.getDate() - 1)
+    const { data, error } = await supabase
+      .from('setoran_qiroah')
+      .select('id_siswa, tanggal')
+      .gte('tanggal', mulai.toISOString())
+    if (error) {
+      console.error('Gagal memuat siswa yang sudah setor:', error.message)
+      return
+    }
+    const ids = new Set<string>()
+    for (const row of data || []) {
+      if (row.id_siswa && tanggalTermasukHariIni(row.tanggal, hari)) ids.add(String(row.id_siswa))
+    }
+    setSiswaSudahSetor(ids)
+  }, [])
+
+  useEffect(() => {
+    muatSiswaSudahSetor()
+  }, [muatSiswaSudahSetor])
 
   const selectedStudent = students.find((s) => s.id_siswa === idSiswa)
 
@@ -99,13 +135,29 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
   const filteredStudents = students
     .filter((s) => {
+      const sudah = siswaSudahSetor.has(String(s.id_siswa))
       const query = studentSearchQuery.trim().toLowerCase()
-      if (!query) return true
+      if (!query) return !sudah
       const name = String(s.nama_siswa || '').toLowerCase()
       const tokens = query.split(/\s+/).filter(Boolean)
       return tokens.every((token) => name.includes(token))
     })
     .slice(0, 50)
+
+  const catatanSebelumnya = latestRecords.find((rec) => {
+    const teks = String(rec.catatan || '').trim()
+    return teks && teks !== '-'
+  })
+
+  const selesaiSimpan = (idTersimpan: string) => {
+    resetFormFields()
+    setJilid('At-Tartil Jilid 1')
+    setIdSiswa('')
+    setStudentSearchQuery('')
+    setLatestRecords([])
+    setIsStudentSearchOpen(false)
+    setSiswaSudahSetor((prev) => new Set(prev).add(String(idTersimpan)))
+  }
 
   const handleLoadEdit = (record: any) => {
     if (!record) return
@@ -149,6 +201,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     }
     setSuccessMessage('Riwayat setoran berjaya dihapus.')
     handleStudentChange(idSiswa, studentSearchQuery)
+    muatSiswaSudahSetor()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -201,8 +254,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
         alert('Gagal memperbarui data: ' + error.message)
       } else {
         setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
-        handleCancelEdit()
-        handleStudentChange(idSiswa, studentSearchQuery)
+        selesaiSimpan(idSiswa)
       }
       return
     }
@@ -225,9 +277,81 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
       alert('Gagal menyimpan setoran: ' + error.message)
     } else {
       setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
-      handleCancelEdit()
-      handleStudentChange(idSiswa, studentSearchQuery)
+      selesaiSimpan(idSiswa)
     }
+  }
+
+  const muatAntrean = async () => {
+    setMemuatAntrean(true)
+    const { data, error } = await supabase
+      .from('pengajuan')
+      .select('id_pengajuan,tanggal_diajukan,nama_siswa,kelas,unit,jilid_diujikan,status,diajukan_oleh,id_siswa,nama_penguji,tanggal_pelaksanaan')
+      .order('tanggal_diajukan', { ascending: false })
+    if (error) {
+      setMemuatAntrean(false)
+      alert('Gagal memuat antrean pengajuan: ' + error.message)
+      setAntrean([])
+      return
+    }
+    const milik = (data || []).filter((row) => untukPengampu(row, currentUser))
+    const ids = Array.from(new Set(milik.map((row) => String(row.id_siswa || '')).filter(Boolean)))
+    const rekap =
+      ids.length === 0
+        ? []
+        : (
+            await supabase
+              .from('rekapan')
+              .select('id_ujian,id_siswa,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji')
+              .in('id_siswa', ids)
+          ).data || []
+    setRekapAntrean(rekap as RekapanRingkas[])
+    setAntrean(milik)
+    setMemuatAntrean(false)
+    void selaraskanStatusPengajuan(milik, rekap as RekapanRingkas[])
+  }
+
+  const bukaAntrean = () => {
+    setEditPengajuanId('')
+    setEditJilid('')
+    setShowAntrean(true)
+    muatAntrean()
+  }
+
+  const simpanEditPengajuan = async () => {
+    if (!editPengajuanId || !editJilid) {
+      alert('Pilih jilid yang akan diujikan.')
+      return
+    }
+    setMenyimpanAntrean(true)
+    const { error } = await supabase.from('pengajuan').update({ jilid_diujikan: editJilid }).eq('id_pengajuan', editPengajuanId)
+    setMenyimpanAntrean(false)
+    if (error) {
+      alert('Gagal memperbarui pengajuan: ' + error.message)
+      return
+    }
+    setEditPengajuanId('')
+    setEditJilid('')
+    muatAntrean()
+  }
+
+  const hapusPengajuan = async (row: { id_pengajuan?: string; nama_siswa?: string }) => {
+    if (!row.id_pengajuan) return
+    if (!confirm(`Hapus pengajuan kenaikan jilid ${row.nama_siswa || 'siswa ini'}?`)) return
+    const { error } = await supabase.from('pengajuan').delete().eq('id_pengajuan', row.id_pengajuan)
+    if (error) {
+      alert('Gagal menghapus pengajuan: ' + error.message)
+      return
+    }
+    if (editPengajuanId === row.id_pengajuan) {
+      setEditPengajuanId('')
+      setEditJilid('')
+    }
+    muatAntrean()
+  }
+
+  const pengajuanBisaDikelola = (status?: string) => {
+    const inti = statusInti(status)
+    return !inti.includes('selesai') && !inti.includes('lulus')
   }
 
   const handleKirimPengajuan = async () => {
@@ -304,6 +428,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="relative mb-3" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Nama Siswa Binaan</label>
+          <p className="mb-1 text-[11px] text-slate-500">
+            Siswa yang sudah diisi hari ini disembunyikan. Ketik nama bila perlu dibuka kembali.
+          </p>
           <div className="relative">
             <Search className="absolute left-3 top-3 size-4 text-sky-500" />
             <input
@@ -330,14 +457,23 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                     className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-sky-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                      Kelas {student.kelas}
+                    <span className="flex items-center gap-1">
+                      {siswaSudahSetor.has(String(student.id_siswa)) && (
+                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          Sudah diisi
+                        </span>
+                      )}
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        Kelas {student.kelas}
+                      </span>
                     </span>
                   </button>
                 ))
               ) : (
                 <div className="p-3 text-center text-xs text-slate-400">
-                  Siswa dengan nama &quot;{studentSearchQuery}&quot; tidak ditemui
+                  {studentSearchQuery.trim()
+                    ? `Siswa dengan nama "${studentSearchQuery}" tidak ditemui`
+                    : 'Semua siswa binaan sudah diisi hari ini.'}
                 </div>
               )}
             </div>
@@ -422,19 +558,28 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!idSiswa) {
-              alert('Pilih siswa terlebih dahulu!')
-              return
-            }
-            setShowPengajuan(true)
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-sm font-extrabold text-white shadow hover:bg-amber-600"
-        >
-          <Send className="size-4" /> Ajukan Kenaikan Jilid
-        </button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!idSiswa) {
+                alert('Pilih siswa terlebih dahulu!')
+                return
+              }
+              setShowPengajuan(true)
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-sm font-extrabold text-white shadow hover:bg-amber-600"
+          >
+            <Send className="size-4" /> Ajukan Kenaikan Jilid
+          </button>
+          <button
+            type="button"
+            onClick={bukaAntrean}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 py-3 text-sm font-extrabold text-amber-900 hover:bg-amber-100"
+          >
+            <ClipboardList className="size-4" /> Lihat Antrean Pengajuan
+          </button>
+        </div>
 
         <div>
           <label className="mb-2 block text-sm font-bold text-slate-700">Persiapan Qiroah</label>
@@ -497,6 +642,15 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
             <option value="Diulang">Belum Lancar (Diulang)</option>
           </select>
         </div>
+
+        {catatanSebelumnya && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">
+              Catatan / Perbaikan Guru sebelumnya · {formatDateString(catatanSebelumnya.tanggal)}
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{catatanSebelumnya.catatan}</p>
+          </div>
+        )}
 
         <div>
           <label className="mb-1 block text-sm font-bold text-slate-700">Catatan / Perbaikan Guru</label>
@@ -603,6 +757,120 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   {sendingPengajuan ? 'Mengirim...' : 'Kirim'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAntrean && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between bg-emerald-700 px-5 py-3 text-white">
+              <h3 className="font-extrabold">Antrean Pengajuan Kenaikan Jilid</h3>
+              <button type="button" onClick={() => setShowAntrean(false)} className="rounded-lg bg-white/15 px-3 py-1 text-xs font-bold">
+                Tutup
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {memuatAntrean && <p className="py-8 text-center text-sm text-slate-500">Memuat antrean...</p>}
+              {!memuatAntrean && antrean.length === 0 && (
+                <p className="py-8 text-center text-sm text-slate-500">Belum ada pengajuan kenaikan jilid dari Anda.</p>
+              )}
+              {!memuatAntrean && antrean.length > 0 && (
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold text-slate-700">
+                      <th className="border p-2.5">Siswa</th>
+                      <th className="border p-2.5">Kelas</th>
+                      <th className="border p-2.5">Jilid</th>
+                      <th className="border p-2.5">Status</th>
+                      <th className="border p-2.5">Hasil</th>
+                      <th className="border p-2.5 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {antrean.map((row) => {
+                      const rekap = cariRekapan(row, rekapAntrean)
+                      const bisa = pengajuanBisaDikelola(row.status) && !rekap
+                      const sedangEdit = editPengajuanId === row.id_pengajuan
+                      return (
+                        <tr key={row.id_pengajuan} className="hover:bg-slate-50">
+                          <td className="border p-2.5 font-bold text-slate-800">{row.nama_siswa}</td>
+                          <td className="border p-2.5">{row.kelas || '-'}</td>
+                          <td className="border p-2.5">
+                            {sedangEdit ? (
+                              <select
+                                value={editJilid}
+                                onChange={(e) => setEditJilid(e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs"
+                              >
+                                <option value="">-- Pilih Jilid --</option>
+                                {JILID_UJIAN_OPTIONS.filter((opt) => !opt.includes('Jilid 1')).map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              row.jilid_diujikan || '-'
+                            )}
+                          </td>
+                          <td className="border p-2.5">{rekap ? 'Selesai' : labelStatusPengajuan(row.status)}</td>
+                          <td className="border p-2.5">{ringkasHasil(rekap) || '-'}</td>
+                          <td className="border p-2.5 text-center">
+                            {bisa ? (
+                              sedangEdit ? (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={simpanEditPengajuan}
+                                    disabled={menyimpanAntrean}
+                                    className="rounded bg-emerald-600 px-2 py-1 font-bold text-white disabled:opacity-50"
+                                  >
+                                    Simpan
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditPengajuanId('')
+                                      setEditJilid('')
+                                    }}
+                                    className="rounded bg-slate-200 px-2 py-1 font-bold text-slate-700"
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditPengajuanId(row.id_pengajuan)
+                                      setEditJilid(row.jilid_diujikan || '')
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded bg-amber-500 px-2 py-1 font-bold text-white"
+                                  >
+                                    <Edit3 className="size-3" /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => hapusPengajuan(row)}
+                                    className="inline-flex items-center gap-1 rounded bg-red-500 px-2 py-1 font-bold text-white"
+                                  >
+                                    <Trash2 className="size-3" /> Hapus
+                                  </button>
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-[11px] font-semibold text-slate-400">Selesai</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

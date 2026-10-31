@@ -285,6 +285,7 @@ export default function Home() {
                 penguji={pusat.penguji}
                 pengampu={pusat.pengampu}
                 pengampuMenunggu={pusat.pengampuMenunggu}
+                pengampuSelesai={pusat.pengampuSelesai}
               />
 
               <button

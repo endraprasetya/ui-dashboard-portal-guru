@@ -4,7 +4,18 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
 import { fetchAllSurah } from '@/lib/surah'
-import { ArrowLeft, Save, Edit3, XCircle, Search } from 'lucide-react'
+import {
+  formatLabelAyat,
+  formatMurojaahRecord,
+  formatTugasRecord,
+  formatZiyadahRecord,
+  kunciHariJakarta,
+  parseBagianAyat,
+  parseMurojaahTeks,
+  parseTugasTeks,
+  tanggalTermasukHariIni,
+} from '@/lib/tahfidz'
+import { ArrowLeft, Save, Edit3, Trash2, XCircle, Search } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
 
 function parseSetoranDate(dateStr: unknown): Date | null {
@@ -92,7 +103,9 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   const [hNilai, setHNilai] = useState('')
   const [hPesan, setHPesan] = useState('')
 
-  // Murojaah State (currently not used - kept for future use if needed)
+  const [siswaSudahSetor, setSiswaSudahSetor] = useState<Set<string>>(new Set())
+  const [tugasDimuat, setTugasDimuat] = useState(false)
+
   const [mSurahMulai, setMSurahMulai] = useState('')
   const [mSurahSelesai, setMSurahSelesai] = useState('')
   const [mMulaiA, setMMulaiA] = useState('')
@@ -146,8 +159,8 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   const handleStudentChange = useCallback(async (selectedId: string, studentName?: string) => {
     setIdSiswa(selectedId)
     if (studentName) setStudentSearchQuery(studentName)
+    resetInputFields()
     setLatestRecords([])
-    setEditIdSetoran('')
     setIsStudentSearchOpen(false)
 
     if (!selectedId) return
@@ -167,10 +180,10 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     }
   }, [])
 
-  // Filter siswa berdasarkan pencarian
   const filteredStudents = students.filter((s) => {
+    const sudah = siswaSudahSetor.has(String(s.id_siswa))
     const query = studentSearchQuery.trim().toLowerCase()
-    if (!query) return true
+    if (!query) return !sudah
     const name = String(s.nama_siswa || '').toLowerCase()
     const tokens = query.split(/\s+/).filter(Boolean)
     return tokens.every((token) => name.includes(token))
@@ -191,65 +204,153 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     }
   }
 
-  const pickField = (record: any, ...keys: string[]) => {
-    for (const key of keys) {
-      const value = record?.[key]
-      if (value != null && String(value).trim() !== '') return String(value).trim()
-    }
-    return ''
-  }
+  const formatZiyadah = (record: any) => formatZiyadahRecord(record)
+  const formatMurojaah = (record: any) => formatMurojaahRecord(record)
+  const formatTugasRumah = (record: any) => formatTugasRecord(record)
 
-  const formatZiyadah = (record: any) => {
-    const hafalan = pickField(record, 'hafalan_baru')
-    if (hafalan) return hafalan
-    const surah = pickField(record, 'surah_ziyadah', 'surah')
-    const mulai = pickField(record, 'ayat_mulai', 'ayat_ziyadah')
-    const selesai = pickField(record, 'ayat_selesai')
-    if (!surah && !mulai && !selesai) return '-'
-    const range = mulai && selesai ? `${mulai}-${selesai}` : mulai || selesai
-    return [surah, range].filter(Boolean).join(' ')
-  }
-
-  const formatMurojaah = (record: any) => {
-    const murojaah = pickField(record, "muroja'ah", 'murojaah')
-    if (murojaah) return murojaah
-    const surah = pickField(record, "surah_muroja'ah", 'surah_murojaah')
-    const ayat = pickField(record, "ayat_muroja'ah", 'ayat_murojaah')
-    if (!surah && !ayat) return '-'
-    return [surah, ayat].filter(Boolean).join(' ')
-  }
-
-  const formatTugasRumah = (record: any) => {
-    const tugas = pickField(record, 'tugas_rumah')
-    if (tugas) return tugas
-    const surah = pickField(record, 'surah_tugas')
-    const mulai = pickField(record, 'ayat_mulai_tugas')
-    const selesai = pickField(record, 'ayat_selesai_tugas')
-    if (!surah && !mulai && !selesai) return '-'
-    const range = mulai && selesai ? `${mulai}-${selesai}` : mulai || selesai
-    return [surah, range].filter(Boolean).join(' ')
-  }
-
-  // Mode Edit
-  const handleLoadEdit = () => {
-    if (!latestRecord) return
-    setEditIdSetoran(latestRecord.id_setoran)
-    setHSurah(latestRecord.hafalan_baru || '')
-    setHMulai(latestRecord.ayat_mulai || '')
-    setHSelesai(latestRecord.ayat_selesai || '')
-    setHNilai(latestRecord.status || 'Lancar')
-    setHPesan(latestRecord.keterangan_pesan_hafalan || latestRecord.keterangan || '')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const handleCancelEdit = () => {
+  const resetInputFields = useCallback(() => {
     setEditIdSetoran('')
+    setTugasDimuat(false)
     setHSurah('')
     setHMulai('')
     setHSelesai('')
     setHNilai('')
     setHPesan('')
+    setMSurahMulai('')
+    setMSurahSelesai('')
+    setMMulaiA('')
+    setMSelesaiA('')
+    setMMulaiE('')
+    setMSelesaiE('')
     setMPesan('')
+    setTugasH(false)
+    setTugasZSurah('')
+    setTugasZAyatMulai('')
+    setTugasZAyatSelesai('')
+    setTugasZPesan('')
+    setTugasM(false)
+    setTugasMSurah('')
+    setTugasMSurahSelesai('')
+    setTugasMAyatMulai('')
+    setTugasMAyatSelesai('')
+    setTugasMAyatMulaiE('')
+    setTugasMAyatSelesaiE('')
+    setTugasMPesan('')
+  }, [])
+
+  const resetSetelahSimpan = () => {
+    resetInputFields()
+    setIdSiswa('')
+    setStudentSearchQuery('')
+    setLatestRecords([])
+    setIsStudentSearchOpen(false)
+  }
+
+  const muatSiswaSudahSetor = useCallback(async () => {
+    const hari = kunciHariJakarta()
+    const mulai = new Date(`${hari}T00:00:00+07:00`)
+    mulai.setDate(mulai.getDate() - 1)
+    const { data, error } = await supabase
+      .from('setoran_tahfidz')
+      .select('id_siswa, tanggal')
+      .gte('tanggal', mulai.toISOString().slice(0, 10))
+
+    if (error) {
+      console.error('Gagal memuat siswa yang sudah setor:', error.message)
+      return
+    }
+
+    const ids = new Set<string>()
+    for (const row of data || []) {
+      if (row.id_siswa && tanggalTermasukHariIni(row.tanggal, hari)) ids.add(String(row.id_siswa))
+    }
+    setSiswaSudahSetor(ids)
+  }, [])
+
+  useEffect(() => {
+    muatSiswaSudahSetor()
+  }, [muatSiswaSudahSetor])
+
+  const isiAngka = (nilai: unknown) => {
+    const [awal, akhir] = String(nilai || '').split(/\s+s\.d\s+/i)
+    const ambil = (bagian: string) => {
+      const rentang = String(bagian || '').match(/(\d+)\s*[-–]\s*(\d+)/)
+      if (rentang) return [rentang[1], rentang[2]]
+      const satu = String(bagian || '').match(/(\d+)/)
+      return satu ? [satu[1], satu[1]] : ['', '']
+    }
+    return { awal: ambil(awal), akhir: ambil(akhir) }
+  }
+
+  const handleLoadEdit = () => {
+    if (!latestRecord) return
+    resetInputFields()
+    setEditIdSetoran(latestRecord.id_setoran)
+    const parsedZiyadah = parseBagianAyat(String(latestRecord.surah_ziyadah || latestRecord.hafalan_baru || ''))
+    const mulaiZ = latestRecord.ayat_mulai && latestRecord.ayat_mulai !== '-' ? String(latestRecord.ayat_mulai) : ''
+    const selesaiZ = latestRecord.ayat_selesai && latestRecord.ayat_selesai !== '-' ? String(latestRecord.ayat_selesai) : ''
+    setHSurah(parsedZiyadah?.surah || '')
+    setHMulai(mulaiZ || parsedZiyadah?.mulai || '')
+    setHSelesai(selesaiZ || parsedZiyadah?.selesai || '')
+    setHNilai(latestRecord.status || 'Lancar')
+    setHPesan(latestRecord.keterangan_pesan_hafalan || latestRecord.keterangan || '')
+
+    const parsedMurojaah = parseMurojaahTeks(latestRecord.murojaah)
+    const surahM = String(latestRecord.surah_murojaah || '').split(/\s+s\.d\s+/i)
+    setMSurahMulai((surahM[0] || parsedMurojaah?.awal?.surah || '').trim())
+    setMSurahSelesai((surahM[1] || parsedMurojaah?.akhir?.surah || '').trim())
+    const angkaM = isiAngka(latestRecord.ayat_murojaah)
+    setMMulaiA(angkaM.awal[0] || parsedMurojaah?.awal?.mulai || '')
+    setMSelesaiA(angkaM.awal[1] || parsedMurojaah?.awal?.selesai || '')
+    setMMulaiE(angkaM.akhir[0] || parsedMurojaah?.akhir?.mulai || '')
+    setMSelesaiE(angkaM.akhir[1] || parsedMurojaah?.akhir?.selesai || '')
+    const pesanM = String(latestRecord.keterangan_pesan_murojaah || '').trim()
+    setMPesan(pesanM && pesanM !== '-' ? pesanM : '')
+
+    const parsedTugas = parseTugasTeks(latestRecord.tugas_rumah)
+    const surahTugas = String(latestRecord.surah_tugas || '').trim()
+    const adaZiyadah = Boolean((surahTugas && surahTugas !== '-') || parsedTugas.ziyadah)
+    const adaMurojaahTugas = Boolean(parsedTugas.murojaah)
+    if (adaZiyadah) {
+      setTugasH(true)
+      setTugasZSurah(surahTugas && surahTugas !== '-' ? surahTugas : parsedTugas.ziyadah?.surah || '')
+      setTugasZAyatMulai(
+        latestRecord.ayat_mulai_tugas && latestRecord.ayat_mulai_tugas !== '-'
+          ? String(latestRecord.ayat_mulai_tugas)
+          : parsedTugas.ziyadah?.mulai || '',
+      )
+      setTugasZAyatSelesai(
+        latestRecord.ayat_selesai_tugas && latestRecord.ayat_selesai_tugas !== '-'
+          ? String(latestRecord.ayat_selesai_tugas)
+          : parsedTugas.ziyadah?.selesai || '',
+      )
+      setTugasZPesan(parsedTugas.ziyadah?.catatan || '')
+    }
+    if (adaMurojaahTugas && parsedTugas.murojaah) {
+      const rentang = String(latestRecord.tugas_rumah || '')
+        .split('|')
+        .slice(1)
+        .join('|')
+        .replace(/^[ZM]\s*:\s*/i, '')
+        .trim()
+      const lanjut = parseMurojaahTeks(rentang)
+      const awal = lanjut?.awal || parsedTugas.murojaah
+      const akhir = lanjut?.akhir
+      setTugasM(true)
+      setTugasMSurah(awal?.surah || '')
+      setTugasMAyatMulai(awal?.mulai || '')
+      setTugasMAyatSelesai(awal?.selesai || '')
+      setTugasMSurahSelesai(akhir?.surah || '')
+      setTugasMAyatMulaiE(akhir?.mulai || '')
+      setTugasMAyatSelesaiE(akhir?.selesai || '')
+      setTugasMPesan(akhir?.catatan || awal?.catatan || '')
+    }
+    setTugasDimuat(adaZiyadah || adaMurojaahTugas)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    resetInputFields()
   }
 
   // Simpan / Update ke Supabase
@@ -262,54 +363,94 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
     setLoading(true)
     setSuccessMessage('')
-    const tanggalSekarang = new Date().toISOString()
 
+    const awalMurojaah = formatLabelAyat(mSurahMulai, mMulaiA, mSelesaiA)
+    const akhirMurojaah = formatLabelAyat(mSurahSelesai, mMulaiE, mSelesaiE)
+    const teksMurojaah =
+      awalMurojaah && akhirMurojaah && awalMurojaah !== akhirMurojaah
+        ? `${awalMurojaah} s.d ${akhirMurojaah}`
+        : awalMurojaah || akhirMurojaah
+    const rentangAngka = (mulai: string, selesai: string) =>
+      mulai && selesai ? `${mulai}-${selesai}` : mulai || selesai
+    const adaMurojaah = Boolean(
+      mSurahMulai.trim() || mSurahSelesai.trim() || mMulaiA || mSelesaiA || mMulaiE || mSelesaiE || mPesan.trim(),
+    )
+    const awalTugasM = formatLabelAyat(tugasMSurah, tugasMAyatMulai, tugasMAyatSelesai)
+    const akhirTugasM = formatLabelAyat(tugasMSurahSelesai, tugasMAyatMulaiE, tugasMAyatSelesaiE)
+    const teksTugasM =
+      awalTugasM && akhirTugasM && awalTugasM !== akhirTugasM ? `${awalTugasM} s.d ${akhirTugasM}` : awalTugasM || akhirTugasM
+    const bagianTugas = [
+      tugasH ? [formatLabelAyat(tugasZSurah, tugasZAyatMulai, tugasZAyatSelesai), tugasZPesan.trim()].filter(Boolean).join(' · ') : '',
+      tugasM ? [teksTugasM, tugasMPesan.trim()].filter(Boolean).join(' · ') : '',
+    ].filter(Boolean)
+
+    const payload: Record<string, string> = {
+      hafalan_baru: hSurah.trim(),
+      ayat_mulai: hMulai,
+      ayat_selesai: hSelesai,
+      status: hNilai || 'Lancar',
+      keterangan_pesan_hafalan: hPesan,
+      surah_ziyadah: hSurah.trim(),
+      ayat_ziyadah: rentangAngka(hMulai, hSelesai),
+      nama_ustadz: currentUser?.nama_lengkap || currentUser?.nama || currentUser?.username || '',
+    }
+
+    if (adaMurojaah || !editIdSetoran) {
+      payload.murojaah = teksMurojaah || '-'
+      payload.surah_murojaah = [mSurahMulai.trim(), mSurahSelesai.trim()].filter(Boolean).join(' s.d ')
+      payload.ayat_murojaah = [rentangAngka(mMulaiA, mSelesaiA), rentangAngka(mMulaiE, mSelesaiE)].filter(Boolean).join(' s.d ')
+      payload.keterangan_pesan_murojaah = mPesan.trim() || '-'
+    }
+
+    if (tugasH || tugasM || !editIdSetoran || tugasDimuat) {
+      payload.tugas_rumah = bagianTugas.join(' | ') || '-'
+      payload.surah_tugas = tugasH ? tugasZSurah.trim() : ''
+      payload.ayat_mulai_tugas = tugasH ? tugasZAyatMulai : ''
+      payload.ayat_selesai_tugas = tugasH ? tugasZAyatSelesai : ''
+      payload.tipe_tugas = [tugasH ? 'Ziyadah' : '', tugasM ? 'Murojaah' : ''].filter(Boolean).join(' & ') || '-'
+    }
+
+    const siswaTersimpan = idSiswa
     if (editIdSetoran) {
-      const { error } = await supabase
-        .from('setoran_tahfidz')
-        .update({
-          hafalan_baru: hSurah,
-          ayat_mulai: hMulai,
-          ayat_selesai: hSelesai,
-          status: hNilai || 'Lancar',
-          keterangan_pesan_hafalan: hPesan,
-          tugas_rumah: `${tugasH ? '[Ziyadah Aktif] ' : ''}${tugasM ? '[Murojaah Aktif]' : ''}`,
-        })
-        .eq('id_setoran', editIdSetoran)
-
+      const { error } = await supabase.from('setoran_tahfidz').update(payload).eq('id_setoran', editIdSetoran)
       setLoading(false)
       if (error) {
         alert('Gagal memperbarui data: ' + error.message)
-      } else {
-        setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
-        handleCancelEdit()
-        handleStudentChange(idSiswa)
+        return
       }
     } else {
-      const idSetoran = 'STR-' + Date.now()
       const { error } = await supabase.from('setoran_tahfidz').insert([
         {
-          id_setoran: idSetoran,
-          tanggal: tanggalSekarang,
+          id_setoran: 'STR-' + Date.now(),
+          tanggal: new Date().toISOString(),
           id_siswa: idSiswa,
-          hafalan_baru: hSurah,
-          ayat_mulai: hMulai,
-          ayat_selesai: hSelesai,
-          status: hNilai || 'Lancar',
-          keterangan_pesan_hafalan: hPesan,
-          tugas_rumah: `${tugasH ? '[Ziyadah Aktif] ' : ''}${tugasM ? '[Murojaah Aktif]' : ''}`,
+          ...payload,
         },
       ])
-
       setLoading(false)
       if (error) {
         alert('Gagal menyimpan setoran: ' + error.message)
-      } else {
-        setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
-        handleCancelEdit()
-        handleStudentChange(idSiswa)
+        return
       }
     }
+
+    setSuccessMessage('Alhamdulillah setoran siswa berhasil di simpan.')
+    resetSetelahSimpan()
+    setSiswaSudahSetor((prev) => new Set(prev).add(String(siswaTersimpan)))
+  }
+
+  const handleDelete = async (record: { id_setoran?: string }) => {
+    if (!record?.id_setoran) return
+    if (!confirm('Yakin ingin menghapus riwayat setoran ini?')) return
+    const { error } = await supabase.from('setoran_tahfidz').delete().eq('id_setoran', record.id_setoran)
+    if (error) {
+      alert('Gagal menghapus data: ' + error.message)
+      return
+    }
+    if (editIdSetoran === record.id_setoran) resetInputFields()
+    setSuccessMessage('Riwayat setoran berhasil dihapus.')
+    if (idSiswa) handleStudentChange(idSiswa, studentSearchQuery)
+    muatSiswaSudahSetor()
   }
 
   return (
@@ -351,6 +492,9 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
         {/* Pilih Siswa - Searchable Select */}
         <div className="mb-3 relative" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Pilih Siswa</label>
+          <p className="mb-1 text-[11px] text-slate-500">
+            Siswa yang sudah diisi hari ini disembunyikan. Ketik nama bila perlu dibuka kembali.
+          </p>
           <div className="relative">
             <Search className="absolute left-3 top-3 size-4 text-blue-500" />
             <input
@@ -379,14 +523,23 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                     className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-blue-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                      Kelas {student.kelas}
+                    <span className="flex items-center gap-1">
+                      {siswaSudahSetor.has(String(student.id_siswa)) && (
+                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          Sudah diisi
+                        </span>
+                      )}
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        Kelas {student.kelas}
+                      </span>
                     </span>
                   </button>
                 ))
               ) : (
                 <div className="p-3 text-center text-xs text-slate-400">
-                  Siswa dengan nama "{studentSearchQuery}" tidak ditemukan
+                  {studentSearchQuery.trim()
+                    ? `Siswa dengan nama "${studentSearchQuery}" tidak ditemukan`
+                    : 'Semua siswa binaan sudah diisi hari ini.'}
                 </div>
               )}
             </div>
@@ -414,10 +567,11 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 <thead>
                   <tr className="bg-amber-100/70 font-bold text-amber-900">
                     <th className="border-b border-amber-200 p-2.5">Tgl</th>
-                    <th className="border-b border-amber-200 p-2.5">Ziyadah</th>
+                    <th className="border-b border-amber-200 p-2.5">Ayat</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Status</th>
                     <th className="border-b border-amber-200 p-2.5">Murojaah</th>
                     <th className="border-b border-amber-200 p-2.5">Tugas Di Rumah</th>
+                    <th className="border-b border-amber-200 p-2.5 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-amber-100">
@@ -433,10 +587,23 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                         {rec.status || '-'}
                       </td>
                       <td className="p-2.5 text-slate-700">
-                        {formatMurojaah(rec)}
+                        <div>{formatMurojaah(rec)}</div>
+                        {rec.keterangan_pesan_murojaah && rec.keterangan_pesan_murojaah !== '-' && (
+                          <div className="mt-0.5 text-[11px] leading-4 text-slate-500">{rec.keterangan_pesan_murojaah}</div>
+                        )}
                       </td>
                       <td className="p-2.5 text-slate-600">
                         {formatTugasRumah(rec)}
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(rec)}
+                          title="Hapus riwayat ini"
+                          className="rounded bg-red-500 p-1 text-white hover:bg-red-600"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
                       </td>
                     </tr>
                   ))}

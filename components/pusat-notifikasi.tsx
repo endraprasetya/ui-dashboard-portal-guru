@@ -60,6 +60,7 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
   const penguji = qiroah.filter((item) => item.peran === 'penguji')
   const pengampuMenunggu = qiroah.filter((item) => item.peran === 'pengampu' && item.tahap === 'menunggu')
   const pengampu = qiroah.filter((item) => item.peran === 'pengampu' && item.tahap === 'terjadwal')
+  const pengampuSelesai = qiroah.filter((item) => item.peran === 'pengampu' && item.tahap === 'selesai')
 
   const tandai = useCallback((id: string) => {
     setDibaca((current) => {
@@ -72,7 +73,7 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     setDibaca((current) => simpanIdDibaca([...current, ...ids]))
   }, [])
 
-  return { semua, qiroah, penguji, pengampu, pengampuMenunggu, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
+  return { semua, qiroah, penguji, pengampu, pengampuMenunggu, pengampuSelesai, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
 }
 
 export function PusatNotifikasi({
@@ -188,12 +189,14 @@ export function RingkasanQiroah({
   penguji,
   pengampu,
   pengampuMenunggu = [],
+  pengampuSelesai = [],
 }: {
   onOpen: () => void
   onJadwalkan: () => void
   penguji: NotifikasiQiroah[]
   pengampu: NotifikasiQiroah[]
   pengampuMenunggu?: NotifikasiQiroah[]
+  pengampuSelesai?: NotifikasiQiroah[]
 }) {
   return (
     <div className="flex flex-col self-start rounded-2xl bg-[#0284c7] p-5 text-left text-white shadow transition hover:shadow-lg">
@@ -231,6 +234,20 @@ export function RingkasanQiroah({
             ))}
           </ul>
           {pengampuMenunggu.length > 3 && <p className="mt-1 text-[10px] font-bold">+{pengampuMenunggu.length - 3} siswa lain</p>}
+        </div>
+      )}
+      {pengampuSelesai.length > 0 && (
+        <div className="mt-2 rounded-xl bg-black/10 p-2.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-wide">Ujian kenaikan jilid selesai</p>
+          <ul className="mt-1.5 space-y-1.5">
+            {pengampuSelesai.slice(0, 3).map((item) => (
+              <li key={item.id} className="text-[11px] leading-4">
+                <span className="font-bold">{item.nama}</span> · {item.kelas}
+                <span className="block opacity-90">{item.detail}</span>
+              </li>
+            ))}
+          </ul>
+          {pengampuSelesai.length > 3 && <p className="mt-1 text-[10px] font-bold">+{pengampuSelesai.length - 3} siswa lain</p>}
         </div>
       )}
       {pengampu.length > 0 && (

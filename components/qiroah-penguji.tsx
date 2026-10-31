@@ -15,11 +15,11 @@ import {
   pengujiEfektif,
   pengujiUntukKelas,
   statusDenganWaktu,
-  statusInti,
   sudahTerjadwal,
   teacherDisplayName,
   waktuDariStatus,
 } from '@/lib/qiroah'
+import { cariRekapan, kunciJilid, selaraskanStatusPengajuan, ujianSudahSelesai, unikPerJilid } from '@/lib/ujian-relasi'
 
 type UjianItem = {
   id_pengajuan: string
@@ -112,9 +112,14 @@ export function useJumlahMenungguPenguji(currentUser?: any, penyegar = '') {
     }
     const { data } = await supabase
       .from('pengajuan')
-      .select('id_pengajuan,kelas,unit,nama_penguji,status')
-    const total = (data || []).filter((row) => menungguJadwal(row.status) && barisUntukPenguji(row, currentUser)).length
-    setJumlah(total)
+      .select('id_pengajuan,id_siswa,kelas,unit,nama_penguji,status,jilid_diujikan')
+    const menunggu = (data || []).filter((row) => menungguJadwal(row.status) && barisUntukPenguji(row, currentUser))
+    const ids = Array.from(new Set(menunggu.map((row) => String(row.id_siswa || '')).filter(Boolean)))
+    const rekap =
+      ids.length === 0
+        ? []
+        : (await supabase.from('rekapan').select('id_siswa,jilid_asal,tanggal_ujian').in('id_siswa', ids)).data || []
+    setJumlah(menunggu.filter((row) => !cariRekapan(row, rekap)).length)
   }, [currentUser, penyegar])
 
   useEffect(() => {
@@ -176,27 +181,42 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     }
 
     const milik = ((data || []) as UjianItem[]).filter((row) => barisUntukPenguji(row, currentUser))
-    const selesaiRows = milik.filter((row) => statusInti(row.status) === 'selesai')
-    setMenunggu(milik.filter((row) => menungguJadwal(row.status)))
-    setAntrean(milik.filter((row) => sudahTerjadwal(row.status)))
-    setSelesai(selesaiRows)
-
-    const ids = Array.from(new Set(selesaiRows.map((row) => String(row.id_siswa || '')).filter(Boolean)))
-    if (ids.length === 0) {
-      setRekapans([])
-      setLoading(false)
-      return
-    }
-
     const { data: rekapData, error: rekapError } = await supabase
       .from('rekapan')
       .select(
         'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,kelebihan_siswa,predikat,keputusan,nilai_akhir',
       )
-      .in('id_siswa', ids)
+    const daftarRekap = rekapError ? [] : ((rekapData || []) as RekapanUjian[])
 
-    setRekapans(rekapError ? [] : ((rekapData || []) as RekapanUjian[]))
+    const sudahDiuji = (row: UjianItem) => ujianSudahSelesai(row.status, cariRekapan(row, daftarRekap))
+    const selesaiRows = unikPerJilid(milik.filter(sudahDiuji))
+    const tertutup = new Set(selesaiRows.map((row) => `${row.id_siswa}|${kunciJilid(row.jilid_diujikan)}`))
+    const yatim = unikPerJilid(
+      daftarRekap
+        .filter((rekap) => {
+          const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
+          return Boolean(rekap.id_siswa) && !tertutup.has(kunci) && barisUntukPenguji({ kelas: rekap.kelas, nama_penguji: rekap.penguji }, currentUser)
+        })
+        .map((rekap) => ({
+          id_pengajuan: String(rekap.id_ujian || `${rekap.id_siswa}-${kunciJilid(rekap.jilid_asal)}`),
+          tanggal_diajukan: String(rekap.tanggal_ujian || ''),
+          tanggal_pelaksanaan: String(rekap.tanggal_ujian || '').slice(0, 10),
+          unit: '',
+          id_siswa: String(rekap.id_siswa),
+          nama_siswa: rekap.nama || 'Siswa',
+          kelas: rekap.kelas || '-',
+          jilid_diujikan: rekap.jilid_asal || '-',
+          nama_penguji: rekap.penguji || '',
+          status: 'Selesai',
+        })),
+    )
+    const aktif = milik.filter((row) => !sudahDiuji(row))
+    setRekapans(daftarRekap)
+    setSelesai([...selesaiRows, ...yatim])
+    setMenunggu(aktif.filter((row) => menungguJadwal(row.status)))
+    setAntrean(aktif.filter((row) => sudahTerjadwal(row.status)))
     setLoading(false)
+    void selaraskanStatusPengajuan(milik, daftarRekap)
   }, [currentUser])
 
   useEffect(() => {
@@ -286,13 +306,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const rekapanUntuk = (item: UjianItem) => {
-    const milik = rekapans.filter((row) => String(row.id_siswa) === String(item.id_siswa))
-    const jilid = String(item.jilid_diujikan || '').trim().toLowerCase()
-    const sama = milik.filter((row) => String(row.jilid_asal || '').trim().toLowerCase() === jilid)
-    const pool = sama.length > 0 ? sama : milik
-    return [...pool].sort((a, b) => String(b.tanggal_ujian || '').localeCompare(String(a.tanggal_ujian || '')))[0]
-  }
+  const rekapanUntuk = (item: UjianItem) => cariRekapan(item, rekapans)
 
   const hasilDariRekapan = (item: UjianItem, rekap: RekapanUjian): HasilUjianCetak => {
     const asal = rekap.jilid_asal || item.jilid_diujikan || ''

@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import { educationCalendar } from '@/lib/teacher-data'
 import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
-import { barisUntukPenguji, pengujiEfektif, sudahTerjadwal, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
+import { barisUntukPenguji, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
+import { cariRekapan, kunciJilid, ringkasHasil, selaraskanStatusPengajuan, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib'
 
@@ -15,7 +16,7 @@ export type NotifikasiItem = {
 
 export type NotifikasiQiroah = NotifikasiItem & {
   peran: 'penguji' | 'pengampu'
-  tahap: 'menunggu' | 'terjadwal'
+  tahap: 'menunggu' | 'terjadwal' | 'selesai'
   nama: string
   kelas: string
   tanggal: string
@@ -176,12 +177,20 @@ export async function muatNotifikasi(currentUser?: any) {
 
   const idSiswa = Array.from(new Set((pengajuan.data || []).map((row) => String(row.id_siswa || '')).filter(Boolean)))
   const pembimbing = new Map<string, string>()
+  const rekap = await supabase
+    .from('rekapan')
+    .select('id_ujian,id_siswa,nama,kelas,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji,guru_pengampu')
+    .order('tanggal_ujian', { ascending: false })
+    .limit(200)
+  if (rekap.error) console.error('Gagal memuat rekapan ujian:', rekap.error.message)
+  const daftarRekap = (rekap.data || []) as Array<RekapanRingkas & { nama?: string; kelas?: string; guru_pengampu?: string }>
   if (idSiswa.length > 0) {
     const relasi = await supabase.from('siswa').select('id_siswa,id_pembimbing').in('id_siswa', idSiswa)
     if (relasi.error) console.error('Gagal memuat pembimbing siswa:', relasi.error.message)
     for (const row of relasi.data || []) pembimbing.set(String(row.id_siswa), String(row.id_pembimbing || ''))
   }
 
+  const selesaiPengampu: { urutan: string; item: NotifikasiQiroah }[] = []
   for (const row of pengajuan.data || []) {
     const relasi = {
       ...row,
@@ -191,7 +200,9 @@ export async function muatNotifikasi(currentUser?: any) {
     const nama = row.nama_siswa || 'Siswa'
     const kelas = row.kelas || '-'
     const jilid = row.jilid_diujikan || 'kenaikan jilid'
-    if (menungguJadwal(row.status) && barisUntukPenguji(relasi, currentUser)) {
+    const rekap = cariRekapan(row, daftarRekap)
+    const selesai = ujianSudahSelesai(row.status, rekap)
+    if (!selesai && menungguJadwal(row.status) && barisUntukPenguji(relasi, currentUser)) {
       qiroah.push({
         id: `qiroah-penguji:${row.id_pengajuan}`,
         kategori: 'qiroah',
@@ -207,7 +218,27 @@ export async function muatNotifikasi(currentUser?: any) {
         penguji: relasi.nama_penguji,
       })
     }
-    if (untukPengampu(relasi, currentUser) && (menungguJadwal(row.status) || sudahTerjadwal(row.status))) {
+    if (selesai && untukPengampu(relasi, currentUser)) {
+      const hasil = ringkasHasil(rekap)
+      selesaiPengampu.push({
+        urutan: String(rekap?.tanggal_ujian || row.tanggal_pelaksanaan || ''),
+        item: {
+          id: `qiroah-pengampu-selesai:${row.id_pengajuan}`,
+          kategori: 'qiroah',
+          peran: 'pengampu',
+          tahap: 'selesai',
+          judul: `Ujian ${nama} selesai`,
+          detail: `${kelas} · ${rekap?.jilid_asal || jilid}${rekap?.jilid_tujuan ? ` menuju ${rekap.jilid_tujuan}` : ''}${hasil ? ` · ${hasil}` : ''}`,
+          tujuan: 'qiroah_menu',
+          nama,
+          kelas,
+          tanggal: tanggalPendek(rekap?.tanggal_ujian || row.tanggal_pelaksanaan),
+          waktu: '',
+          penguji: rekap?.penguji || relasi.nama_penguji || '',
+        },
+      })
+    }
+    if (!selesai && untukPengampu(relasi, currentUser) && (menungguJadwal(row.status) || sudahTerjadwal(row.status))) {
       const terjadwal = sudahTerjadwal(row.status)
       const waktu = waktuDariStatus(row.status)
       const tanggal = tanggalPendek(row.tanggal_pelaksanaan)
@@ -230,6 +261,42 @@ export async function muatNotifikasi(currentUser?: any) {
       })
     }
   }
+
+  const sudahAdaPengajuan = new Set((pengajuan.data || []).map((row) => `${row.id_siswa}|${kunciJilid(row.jilid_diujikan)}`))
+  const namaUser = teacherDisplayName(currentUser)
+  for (const rekap of daftarRekap) {
+    const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
+    if (sudahAdaPengajuan.has(kunci) || !namaPengujiCocok(namaUser, rekap.guru_pengampu)) continue
+    const hasil = ringkasHasil(rekap)
+    selesaiPengampu.push({
+      urutan: String(rekap.tanggal_ujian || ''),
+      item: {
+        id: `qiroah-pengampu-rekap:${rekap.id_ujian || kunci}`,
+        kategori: 'qiroah',
+        peran: 'pengampu',
+        tahap: 'selesai',
+        judul: `Ujian ${rekap.nama || 'siswa'} selesai`,
+        detail: `${rekap.kelas || '-'} · ${rekap.jilid_asal || 'kenaikan jilid'}${rekap.jilid_tujuan ? ` menuju ${rekap.jilid_tujuan}` : ''}${hasil ? ` · ${hasil}` : ''}`,
+        tujuan: 'qiroah_menu',
+        nama: rekap.nama || 'Siswa',
+        kelas: rekap.kelas || '-',
+        tanggal: tanggalPendek(rekap.tanggal_ujian),
+        waktu: '',
+        penguji: rekap.penguji || '',
+      },
+    })
+  }
+
+  const selesaiUnik = new Set<string>()
+  selesaiPengampu
+    .sort((a, b) => b.urutan.localeCompare(a.urutan))
+    .forEach((baris) => {
+      const kunci = `${baris.item.nama}|${baris.item.detail}`
+      if (selesaiUnik.has(kunci) || selesaiUnik.size >= 8) return
+      selesaiUnik.add(kunci)
+      qiroah.push(baris.item)
+    })
+  void selaraskanStatusPengajuan(pengajuan.data || [], daftarRekap)
 
   if (!tahfidz.error) {
     const peta = await namaSiswa((tahfidz.data || []).map((row) => String(row.id_siswa || '')))

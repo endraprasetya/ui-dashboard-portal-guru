@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ambilBarisSiswa, fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
+import { formatTugasRecord, formatZiyadahRecord } from '@/lib/tahfidz'
 import { ArrowLeft, Printer, Search, Target, Users, ChevronDown, ChevronUp } from 'lucide-react'
 
 export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -109,12 +110,9 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
 
   const formatCapaian = (record: any) => {
     if (!record) return <span className="text-slate-400 italic">Belum ada setoran</span>
-    const surah = record.hafalan_baru || '-'
-    const mulai = record.ayat_mulai || ''
-    const selesai = record.ayat_selesai || ''
-    const rangeAyat = mulai || selesai ? ` (${mulai}-${selesai})` : ''
-    
-    return `${surah}${rangeAyat}`
+    const label = formatZiyadahRecord(record)
+    if (!label || label === '-') return <span className="text-slate-400 italic">Belum ada setoran</span>
+    return label
   }
 
   const formatKeterangan = (record: any) => {
@@ -199,7 +197,7 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
     // Query efisien: hanya ambil field yang diperlukan
     const { data } = await supabase
       .from('setoran_tahfidz')
-      .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah')
+      .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah, surah_tugas, ayat_mulai_tugas, ayat_selesai_tugas')
       .eq('id_siswa', String(student.id_siswa))
 
     let setoranList = data || []
@@ -492,8 +490,9 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
                     <thead>
                       <tr className="bg-slate-900 text-white uppercase tracking-wider font-bold">
                         <th className="p-2.5 border border-slate-800">Tanggal</th>
-                        <th className="p-2.5 border border-slate-800">Setoran Ziyadah</th>
+                        <th className="p-2.5 border border-slate-800">Ayat</th>
                         <th className="p-2.5 border border-slate-800 text-center">Status</th>
+                        <th className="p-2.5 border border-slate-800">Tugas di Rumah</th>
                         <th className="p-2.5 border border-slate-800">Catatan</th>
                       </tr>
                     </thead>
@@ -504,10 +503,13 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
                             {formatDateString(row.tanggal)}
                           </td>
                           <td className="p-2.5 border font-bold text-slate-800">
-                            Surah {row.hafalan_baru} (Ayat {row.ayat_mulai} s.d {row.ayat_selesai})
+                            {formatZiyadahRecord(row)}
                           </td>
                           <td className="p-2.5 border text-center font-bold text-emerald-700">
                             {row.status}
+                          </td>
+                          <td className="p-2.5 border text-slate-700">
+                            {formatTugasRecord(row)}
                           </td>
                           <td className="p-2.5 border text-slate-600">
                             {row.keterangan_pesan_hafalan || row.keterangan || '-'}
