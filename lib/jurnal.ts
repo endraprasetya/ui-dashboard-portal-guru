@@ -62,6 +62,7 @@ export const DAFTAR_MAPEL = [
   "Qiro'atul Quran",
   "Hafalan Al Qur'an",
   'Hafalan Hadits',
+  'Hadits Siroh',
   'Fikih Akhlak',
   'Bahasa Arab',
   'Bahasa Indonesia',

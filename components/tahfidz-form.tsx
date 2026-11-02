@@ -183,7 +183,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   const filteredStudents = students.filter((s) => {
     const sudah = siswaSudahSetor.has(String(s.id_siswa))
     const query = studentSearchQuery.trim().toLowerCase()
-    if (!query) return !sudah
+    if (!query) return true
     const name = String(s.nama_siswa || '').toLowerCase()
     const tokens = query.split(/\s+/).filter(Boolean)
     return tokens.every((token) => name.includes(token))
@@ -493,7 +493,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
         <div className="mb-3 relative" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Pilih Siswa</label>
           <p className="mb-1 text-[11px] text-slate-500">
-            Siswa yang sudah diisi hari ini disembunyikan. Ketik nama bila perlu dibuka kembali.
+            Semua siswa binaan ditampilkan. Ketik nama untuk memfilter.
           </p>
           <div className="relative">
             <Search className="absolute left-3 top-3 size-4 text-blue-500" />
@@ -539,7 +539,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 <div className="p-3 text-center text-xs text-slate-400">
                   {studentSearchQuery.trim()
                     ? `Siswa dengan nama "${studentSearchQuery}" tidak ditemukan`
-                    : 'Semua siswa binaan sudah diisi hari ini.'}
+                    : 'Tidak ada siswa binaan.'}
                 </div>
               )}
             </div>

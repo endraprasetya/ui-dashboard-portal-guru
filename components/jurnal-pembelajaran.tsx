@@ -44,6 +44,7 @@ export function JurnalPembelajaran({
   const [entries, setEntries] = useState<Record<number, JurnalJam>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [autoSaving, setAutoSaving] = useState(false)
   const [status, setStatus] = useState('')
   const [statusError, setStatusError] = useState(false)
 
@@ -64,12 +65,31 @@ export function JurnalPembelajaran({
 
   const entryRekap = (entry: JurnalJam) => hitungKehadiran(jumlahKelas, entry.siswaTidakHadir, entry.absen)
 
-  const updateEntry = (jam: number, patch: Partial<JurnalJam>) => {
+  const updateEntry = (jam: number, patch: Partial<JurnalJam>, propagateAbsensi = false) => {
     setEntries((current) => {
       const next = { ...getEntry(jam, current), ...patch }
       const rekap = hitungKehadiran(jumlahKelas, next.siswaTidakHadir, next.absen)
       next.hadir = String(rekap.hadir)
       next.absen = String(rekap.tidakHadir)
+
+      // Auto-fill absensi ke semua jam jika di jam ke-1 dan flag propagateAbsensi aktif
+      if (propagateAbsensi && jam === 1 && jadwal) {
+        const jamAktif = jadwal.map((item) => item.j).filter((j): j is number => typeof j === 'number')
+        const updated = { ...current, [jam]: next }
+        for (const j of jamAktif) {
+          if (j !== 1) {
+            const existing = getEntry(j, updated)
+            updated[j] = {
+              ...existing,
+              siswaTidakHadir: next.siswaTidakHadir,
+              hadir: next.hadir,
+              absen: next.absen,
+            }
+          }
+        }
+        return updated
+      }
+
       return { ...current, [jam]: next }
     })
   }
@@ -126,6 +146,39 @@ export function JurnalPembelajaran({
     muatJurnal()
   }, [muatJurnal])
 
+  // Auto-save dengan debounce
+  useEffect(() => {
+    if (!kelas || !tanggal || !jadwal || loading) return
+
+    const timer = setTimeout(async () => {
+      setAutoSaving(true)
+      const jamAktif = jadwal.map((item) => item.j).filter((jam): jam is number => typeof jam === 'number')
+      const payload: Record<number, JurnalJam> = {}
+      for (const jam of jamAktif) payload[jam] = getEntry(jam)
+
+      const { error } = await simpanJurnalHari({
+        kelas,
+        tanggal,
+        semester: Number(semester),
+        totalSiswa: jumlahKelas,
+        entries: payload,
+      })
+
+      setAutoSaving(false)
+      if (error) {
+        setStatus('Auto-save gagal: ' + error.message)
+        setStatusError(true)
+      } else {
+        setStatus('Auto-save: Data tersimpan otomatis')
+        setStatusError(false)
+        // Clear status after 3 seconds
+        setTimeout(() => setStatus(''), 3000)
+      }
+    }, 2000) // 2 detik debounce
+
+    return () => clearTimeout(timer)
+  }, [entries, kelas, tanggal, semester, jadwal, jumlahKelas, loading])
+
   const handleSimpan = async () => {
     if (!kelas || !tanggal || !jadwal) return
     setSaving(true)
@@ -162,7 +215,8 @@ export function JurnalPembelajaran({
     const nextList: SiswaTidakHadir[] = keterangan
       ? [...tanpaSiswa, { nama: siswa.nama_siswa, keterangan, id_siswa: siswa.id_siswa }]
       : tanpaSiswa
-    updateEntry(jam, { siswaTidakHadir: nextList })
+    // Auto-fill ke semua jam jika di jam ke-1
+    updateEntry(jam, { siswaTidakHadir: nextList }, jam === 1)
   }
 
   const openTtd = (jam: number) => {
@@ -302,6 +356,12 @@ export function JurnalPembelajaran({
             <Save className="size-4" />
             {saving ? 'Menyimpan...' : 'Simpan jurnal'}
           </button>
+          {autoSaving && (
+            <span className="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-bold text-blue-700">
+              <span className="animate-spin size-3 border-2 border-blue-700 border-t-transparent rounded-full" />
+              Auto-saving...
+            </span>
+          )}
 
           <button
             type="button"
@@ -334,6 +394,11 @@ export function JurnalPembelajaran({
               </>
             )}
           </p>
+          {!loading && jadwal && (
+            <p className="text-xs font-semibold text-blue-700 bg-blue-50 rounded-lg px-3 py-2">
+              💡 <b>Auto-fill & Auto-save:</b> Absensi di Jam ke-1 otomatis terisi ke semua jam. Data tersimpan otomatis setiap perubahan.
+            </p>
+          )}
           {dikte.galat && <p className="no-print text-xs font-bold text-red-600">{dikte.galat}</p>}
 
           {!jadwal ? (
@@ -599,7 +664,10 @@ export function JurnalPembelajaran({
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-slate-800">Pilih siswa tidak hadir · Jam ke-{pilihAbsenJam}</p>
-                <p className="text-xs text-slate-500">Siswa yang tidak dipilih tetap dihitung hadir.</p>
+                <p className="text-xs text-slate-500">
+                  Siswa yang tidak dipilih tetap dihitung hadir.
+                  {pilihAbsenJam === 1 && ' <b>Perubahan di Jam ke-1 otomatis diterapkan ke semua jam.</b>'}
+                </p>
               </div>
               <button type="button" onClick={() => setPilihAbsenJam(null)} className="text-slate-400 hover:text-slate-700">
                 <X className="size-4" />

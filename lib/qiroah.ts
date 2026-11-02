@@ -123,8 +123,8 @@ export function generateUjianId() {
 }
 
 export const PEMETAAN_PENGUJI_NOGOSARI = [
-  { kelas: ['1A'], nama: 'Haryono, S.Pd' },
-  { kelas: ['1B'], nama: 'Ali Wahyudin, S.Pd.I' },
+  { kelas: ['1A'], nama: 'Ali Wahyudin, S.Pd.I' },
+  { kelas: ['1B'], nama: 'Haryono, S.Pd' },
   { kelas: ['2A', '2B'], nama: 'Andreas Haryanto, S.Pd' },
   { kelas: ['3A', '3B', '4A', '4B', '5A', '5B', '6A', '6B'], nama: 'Prasetyo, S.Pd' },
   { kelas: ['1C', '1D'], nama: 'Ambar Novitasari, S.Pd' },
