@@ -567,7 +567,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 <thead>
                   <tr className="bg-amber-100/70 font-bold text-amber-900">
                     <th className="border-b border-amber-200 p-2.5">Tgl</th>
-                    <th className="border-b border-amber-200 p-2.5">Ayat</th>
+                    <th className="border-b border-amber-200 p-2.5">Ziyadah</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Status</th>
                     <th className="border-b border-amber-200 p-2.5">Murojaah</th>
                     <th className="border-b border-amber-200 p-2.5">Tugas Di Rumah</th>
@@ -581,7 +581,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                         {formatDateString(rec.tanggal)}
                       </td>
                       <td className="p-2.5 font-bold text-slate-900">
-                        {formatZiyadah(rec)}
+                        {formatLabelAyat(String(rec.hafalan_baru || ''), String(rec.ayat_mulai || ''), String(rec.ayat_selesai || '')) || '-'}
                       </td>
                       <td className="p-2.5 text-center font-bold text-emerald-700">
                         {rec.status || '-'}
