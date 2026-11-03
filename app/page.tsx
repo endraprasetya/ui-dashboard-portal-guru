@@ -16,7 +16,7 @@ import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
-import { isAdminRole, userDariSesi } from '@/lib/guru-bantu/utils'
+import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { educationCalendar, recentActivities } from '@/lib/teacher-data'
 import {
   keteranganJadwal,
@@ -172,6 +172,7 @@ export default function Home() {
   const isAbsensi = currentView.startsWith('absensi')
   const canPenguji = hasPengujiRole(currentUser)
   const guruBantuUser = userDariSesi(currentUser)
+  const bolehAbsensiGuruBantu = isGuruBantuRole(String(currentUser?.role || ''))
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans">
@@ -670,12 +671,14 @@ export default function Home() {
               <ClipboardCheck className="size-5" /> Absensi Siswa
             </button>
 
-            <button
-              onClick={() => setCurrentView('absensi_guru_bantu')}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0f766e] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#115e59] transition"
-            >
-              <Users className="size-5" /> Absensi Guru Bantu
-            </button>
+            {bolehAbsensiGuruBantu ? (
+              <button
+                onClick={() => setCurrentView('absensi_guru_bantu')}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0f766e] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#115e59] transition"
+              >
+                <Users className="size-5" /> Absensi Guru Bantu
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -696,7 +699,11 @@ export default function Home() {
             >
               <ArrowLeft className="size-4" /> Kembali ke Menu Absensi
             </button>
-            {guruBantuUser ? (
+            {!bolehAbsensiGuruBantu ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Menu Absensi Guru Bantu hanya untuk akun dengan peran Guru Bantu.
+              </p>
+            ) : guruBantuUser ? (
               <AbsensiGuruBantu user={guruBantuUser} isAdmin={isAdminRole(guruBantuUser.role)} />
             ) : (
               <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">

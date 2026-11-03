@@ -21,6 +21,7 @@ import {
   untukPengampu,
 } from '@/lib/qiroah'
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
+import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/surah'
 import { cariRekapan, ringkasHasil, selaraskanStatusPengajuan, type RekapanRingkas } from '@/lib/ujian-relasi'
 
 const SETORAN_FIELDS =
@@ -59,6 +60,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   const [editJilid, setEditJilid] = useState('')
   const [menyimpanAntrean, setMenyimpanAntrean] = useState(false)
   const [siswaSudahSetor, setSiswaSudahSetor] = useState<Set<string>>(new Set())
+  const [surahs, setSurahs] = useState<Surah[]>([])
+
+  useEffect(() => {
+    fetchAllSurah().then(setSurahs)
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -212,6 +218,12 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     }
     if (!halaman.trim() || halaman.trim() === '-') {
       alert('Sila isi Halaman / Surah & Ayat terlebih dahulu!')
+      return
+    }
+
+    const galatAyat = validasiTeksHalamanQiroah(surahs, halaman)
+    if (galatAyat) {
+      alert(galatAyat)
       return
     }
 
@@ -626,7 +638,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
             type="text"
             value={halaman}
             onChange={(e) => setHalaman(e.target.value)}
-            placeholder="Contoh: Hal 15 atau Al-Baqarah: 1-10"
+            onBlur={() => {
+              const galat = validasiTeksHalamanQiroah(surahs, halaman)
+              if (galat) alert(galat)
+            }}
+            placeholder="Contoh: Hal 15 atau Adh-Dhuha: 1-11"
             className="w-full rounded-xl border border-slate-300 p-3 text-sm"
           />
         </div>

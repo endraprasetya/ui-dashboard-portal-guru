@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { isKelasAlumni } from "@/lib/siswa";
-import { BidangSuaraMandiri } from "@/components/input-suara";
-import { DEF_NEG, DEF_POS } from "@/lib/aturan-tertib-point";
+import { KeteranganTertibForm } from "@/components/keterangan-tertib-form";
+import { DEF_NEG, DEF_POS, sortAturanTertib } from "@/lib/aturan-tertib-point";
+import {
+  gabungKeteranganTertib,
+  pecahKeteranganTertib,
+  validasiKeteranganTertib,
+} from "@/lib/keterangan-tertib-point";
 
 interface Student {
   id: string;
@@ -186,9 +191,29 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [status, setStatus] = useState("");
   const [statusError, setStatusError] = useState(false);
   const [rulesFromDb, setRulesFromDb] = useState(false);
-  const [keteranganInput, setKeteranganInput] = useState("");
+  const [pilihanKeterangan, setPilihanKeterangan] = useState<string[]>([]);
+  const [lainnyaKeterangan, setLainnyaKeterangan] = useState("");
+  const [keteranganFormError, setKeteranganFormError] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [editKeterangan, setEditKeterangan] = useState("");
+  const [editPilihan, setEditPilihan] = useState<string[]>([]);
+  const [editLainnya, setEditLainnya] = useState("");
+  const [editFormError, setEditFormError] = useState<string | null>(null);
+
+  const resetKeteranganForm = () => {
+    setPilihanKeterangan([]);
+    setLainnyaKeterangan("");
+    setKeteranganFormError(null);
+  };
+
+  const tutupModal = () => {
+    setActiveStudentId(null);
+    setModalType(null);
+    resetKeteranganForm();
+    setEditId(null);
+    setEditPilihan([]);
+    setEditLainnya("");
+    setEditFormError(null);
+  };
 
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   const [modalType, setModalType] = useState<"give" | "report" | null>(null);
@@ -215,19 +240,33 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   }, [currentUnit]);
 
   const fetchRules = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("aturan_tertib_point")
-      .select("id_aturan,label,pts,type")
-      .order("pts", { ascending: true });
+    const fallback = sortAturanTertib([
+      ...DEF_NEG.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "neg" as const })),
+      ...DEF_POS.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "pos" as const })),
+    ]);
 
-    if (error || !data || data.length === 0) {
-      setRules([]);
+    const denganUrutan = await supabase
+      .from("aturan_tertib_point")
+      .select("id_aturan,label,pts,type,urutan")
+      .order("urutan", { ascending: true });
+
+    const baris =
+      !denganUrutan.error && denganUrutan.data?.length
+        ? denganUrutan.data
+        : (
+            await supabase.from("aturan_tertib_point").select("id_aturan,label,pts,type").order("pts", { ascending: true })
+          ).data;
+
+    if (!baris?.length) {
+      setRules(fallback);
       setRulesFromDb(false);
       return;
     }
 
-    const mapped = data.map(mapRuleRow).filter((row): row is Rule => row !== null);
-    setRules(mapped);
+    const mapped = sortAturanTertib(
+      baris.map(mapRuleRow).filter((row): row is Rule => row !== null),
+    );
+    setRules(mapped.length > 0 ? mapped : fallback);
     setRulesFromDb(mapped.length > 0);
   }, []);
 
@@ -281,15 +320,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const allRules = useMemo(() => {
     const fromDbNeg = rules.filter((r) => r.type === "neg");
     const fromDbPos = rules.filter((r) => r.type === "pos");
+    const fallbackNeg = sortAturanTertib(
+      DEF_NEG.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "neg" as const })),
+    );
+    const fallbackPos = sortAturanTertib(
+      DEF_POS.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "pos" as const })),
+    );
     return {
-      neg:
-        fromDbNeg.length > 0
-          ? fromDbNeg
-          : DEF_NEG.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "neg" as const })),
-      pos:
-        fromDbPos.length > 0
-          ? fromDbPos
-          : DEF_POS.map(([label, pts]) => ({ id: `d-${label}`, label, pts, type: "pos" as const })),
+      neg: fromDbNeg.length > 0 ? sortAturanTertib(fromDbNeg) : fallbackNeg,
+      pos: fromDbPos.length > 0 ? sortAturanTertib(fromDbPos) : fallbackPos,
     };
   }, [rules]);
 
@@ -313,6 +352,14 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
 
   const handleApplyRule = async (rule: { label: string; pts: number; type: "pos" | "neg" }, sid: string) => {
     if (busy) return;
+    const validasi = validasiKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
+    if (validasi) {
+      setKeteranganFormError(validasi);
+      setStatus(validasi);
+      setStatusError(true);
+      return;
+    }
+    const keterangan = gabungKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
     const student = students.find((s) => s.id === sid);
     const ptsVal = rule.type === "neg" ? -Math.abs(rule.pts) : Math.abs(rule.pts);
     const payload = {
@@ -322,7 +369,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       guru: currentTeacherName,
       bulan,
       unit: student?.unit || (currentUnit !== "Semua Unit" ? currentUnit : ""),
-      keterangan: keteranganInput.trim(),
+      keterangan,
     };
 
     setBusy(true);
@@ -340,7 +387,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     }
 
     if (data) setLogs((current) => [mapLogRow(data), ...current]);
-    setKeteranganInput("");
+    resetKeteranganForm();
     setStatus("Poin berhasil dicatat.");
   };
 
@@ -358,7 +405,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     setBusy(true);
     setStatus("");
     setStatusError(false);
-    const keterangan = editKeterangan.trim();
+    const validasi = validasiKeteranganTertib(editPilihan, editLainnya);
+    if (validasi) {
+      setEditFormError(validasi);
+      setStatus(validasi);
+      setStatusError(true);
+      setBusy(false);
+      return;
+    }
+    const keterangan = gabungKeteranganTertib(editPilihan, editLainnya);
     const { data, error } = await supabase
       .from("tertib_point")
       .update({ keterangan })
@@ -374,7 +429,9 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     }
     setLogs((current) => current.map((item) => (String(item.id) === String(log.id) ? mapLogRow(data) : item)));
     setEditId(null);
-    setEditKeterangan("");
+    setEditPilihan([]);
+    setEditLainnya("");
+    setEditFormError(null);
     setStatus("Keterangan poin diperbarui.");
   };
 
@@ -405,7 +462,9 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     setLogs((current) => current.filter((l) => String(l.id) !== String(log.id)));
     if (editId === String(log.id)) {
       setEditId(null);
-      setEditKeterangan("");
+      setEditPilihan([]);
+      setEditLainnya("");
+      setEditFormError(null);
     }
     setStatus("Catatan poin dihapus.");
   };
@@ -656,11 +715,13 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                         <td className="p-3 text-center space-x-2 whitespace-nowrap">
                           <button
                             onClick={() => {
+                              resetKeteranganForm();
                               setActiveStudentId(s.id);
                               setModalType("give");
                               setEditId(null);
-                              setEditKeterangan("");
-                              setKeteranganInput("");
+                              setEditPilihan([]);
+                              setEditLainnya("");
+                              setEditFormError(null);
                             }}
                             className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm"
                           >
@@ -767,13 +828,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                   Kelas {activeStudent.kelas} · Sisa Poin: <strong className="text-slate-900">{activeStudentCalc.sisa}</strong>
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setActiveStudentId(null);
-                  setModalType(null);
-                }}
-                className="text-slate-400 hover:text-slate-700 font-bold px-2 py-1"
-              >
+              <button onClick={tutupModal} className="text-slate-400 hover:text-slate-700 font-bold px-2 py-1">
                 ✕
               </button>
             </div>
@@ -781,18 +836,20 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
             {modalType === "give" && (
               <div>
                 <p className="text-xs text-emerald-700 font-semibold mb-3">Pencatat poin saat ini: {currentTeacherName}</p>
-                <label className="mb-4 block">
-                  <span className="mb-1 block text-xs font-bold text-slate-700">
-                    Keterangan <span className="font-normal text-slate-400">(opsional)</span>
-                  </span>
-                  <BidangSuaraMandiri
-                    value={keteranganInput}
-                    onChange={setKeteranganInput}
-                    rows={2}
-                    placeholder="Catatan tambahan untuk poin yang akan dicatat"
-                    className="w-full rounded-xl border border-slate-300 p-3 text-sm"
-                  />
-                </label>
+                <KeteranganTertibForm
+                  pilihan={pilihanKeterangan}
+                  lainnya={lainnyaKeterangan}
+                  onPilihanChange={(next) => {
+                    setPilihanKeterangan(next);
+                    setKeteranganFormError(null);
+                  }}
+                  onLainnyaChange={(next) => {
+                    setLainnyaKeterangan(next);
+                    setKeteranganFormError(null);
+                  }}
+                  error={keteranganFormError}
+                  idPrefix="give-ktr"
+                />
                 <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {allRules.pos.map((r) => (
@@ -846,8 +903,11 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                                   type="button"
                                   disabled={busy}
                                   onClick={() => {
+                                    const parsed = pecahKeteranganTertib(l.keterangan);
                                     setEditId(String(l.id));
-                                    setEditKeterangan(l.keterangan);
+                                    setEditPilihan(parsed.pilihan);
+                                    setEditLainnya(parsed.lainnya);
+                                    setEditFormError(null);
                                   }}
                                   className="font-semibold text-sky-700 hover:underline disabled:opacity-50"
                                 >
@@ -867,12 +927,19 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                         </div>
                         {editId === String(l.id) && (
                           <div className="mt-2 space-y-2">
-                            <BidangSuaraMandiri
-                              value={editKeterangan}
-                              onChange={setEditKeterangan}
-                              rows={2}
-                              placeholder="Keterangan"
-                              className="w-full rounded-lg border border-slate-300 p-2 text-sm"
+                            <KeteranganTertibForm
+                              pilihan={editPilihan}
+                              lainnya={editLainnya}
+                              onPilihanChange={(next) => {
+                                setEditPilihan(next);
+                                setEditFormError(null);
+                              }}
+                              onLainnyaChange={(next) => {
+                                setEditLainnya(next);
+                                setEditFormError(null);
+                              }}
+                              error={editFormError}
+                              idPrefix={`edit-ktr-${l.id}`}
                             />
                             <div className="flex justify-end gap-2">
                               <button
@@ -880,7 +947,9 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                                 disabled={busy}
                                 onClick={() => {
                                   setEditId(null);
-                                  setEditKeterangan("");
+                                  setEditPilihan([]);
+                                  setEditLainnya("");
+                                  setEditFormError(null);
                                 }}
                                 className="rounded-lg border border-slate-300 px-2 py-1 font-semibold text-slate-600"
                               >
@@ -903,10 +972,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
 
                 <div className="flex justify-end pt-3 border-t border-slate-100">
                   <button
-                    onClick={() => {
-                      setActiveStudentId(null);
-                      setModalType(null);
-                    }}
+                    onClick={tutupModal}
                     className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm px-5 py-2.5 rounded-xl shadow-md transition"
                   >
                     Simpan & Tutup

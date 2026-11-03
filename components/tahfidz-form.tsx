@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
-import { fetchAllSurah } from '@/lib/surah'
+import { fetchAllSurah, peringatanAyatMelebihi, validasiAyatSurat, type Surah } from '@/lib/surah'
 import {
   formatLabelAyat,
   formatMurojaahRecord,
@@ -81,7 +81,30 @@ async function fetchSetoranSiswa(idSiswa: string) {
 
 export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
   const [students, setStudents] = useState<any[]>([])
-  const [surahs, setSurahs] = useState<any[]>([])
+  const [surahs, setSurahs] = useState<Surah[]>([])
+
+  const peringatAyat = (surah: string, ayat: string, konteks: string) => {
+    const pesan = peringatanAyatMelebihi(surahs, surah, ayat, konteks)
+    if (pesan) alert(pesan)
+  }
+
+  const validasiFormTahfidz = () => {
+    const cek: [string, string, string, string][] = [
+      ['Ziyadah', hSurah, hMulai, hSelesai],
+      ['Murojaah (surah awal)', mSurahMulai, mMulaiA, mSelesaiA],
+      ['Murojaah (surah akhir)', mSurahSelesai, mMulaiE, mSelesaiE],
+    ]
+    if (tugasH) cek.push(['Tugas ziyadah', tugasZSurah, tugasZAyatMulai, tugasZAyatSelesai])
+    if (tugasM) {
+      cek.push(['Tugas murojaah (surah awal)', tugasMSurah, tugasMAyatMulai, tugasMAyatSelesai])
+      cek.push(['Tugas murojaah (surah akhir)', tugasMSurahSelesai, tugasMAyatMulaiE, tugasMAyatSelesaiE])
+    }
+    for (const [konteks, surah, mulai, selesai] of cek) {
+      const galat = validasiAyatSurat(surahs, surah, mulai, selesai, konteks)
+      if (galat) return galat
+    }
+    return null
+  }
   const [loading, setLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
@@ -361,6 +384,12 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       return
     }
 
+    const galatAyat = validasiFormTahfidz()
+    if (galatAyat) {
+      alert(galatAyat)
+      return
+    }
+
     setLoading(true)
     setSuccessMessage('')
 
@@ -634,6 +663,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 placeholder="Mulai"
                 value={hMulai}
                 onChange={(e) => setHMulai(e.target.value)}
+                onBlur={() => peringatAyat(hSurah, hMulai, 'Ziyadah')}
                 className="rounded-lg border border-slate-300 p-2 text-sm bg-white"
               />
               <input
@@ -641,6 +671,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 placeholder="Sampai"
                 value={hSelesai}
                 onChange={(e) => setHSelesai(e.target.value)}
+                onBlur={() => peringatAyat(hSurah, hSelesai, 'Ziyadah (ayat selesai)')}
                 className="rounded-lg border border-slate-300 p-2 text-sm bg-white"
               />
             </div>
@@ -697,17 +728,17 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
             
             <div className="grid grid-cols-12 gap-1 items-center mb-2">
               <div className="col-span-3">
-                <input type="number" placeholder="Ayat A" value={mMulaiA} onChange={(e) => setMMulaiA(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
+                <input type="number" placeholder="Ayat A" value={mMulaiA} onChange={(e) => setMMulaiA(e.target.value)} onBlur={() => peringatAyat(mSurahMulai, mMulaiA, 'Murojaah (surah awal)')} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
               </div>
               <div className="col-span-3">
-                <input type="number" placeholder="Selesai A" value={mSelesaiA} onChange={(e) => setMSelesaiA(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
+                <input type="number" placeholder="Selesai A" value={mSelesaiA} onChange={(e) => setMSelesaiA(e.target.value)} onBlur={() => peringatAyat(mSurahMulai, mSelesaiA, 'Murojaah (surah awal, ayat selesai)')} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
               </div>
               <div className="col-span-1 text-center font-bold text-xs text-slate-500">sd</div>
               <div className="col-span-2">
-                <input type="number" placeholder="Mulai E" value={mMulaiE} onChange={(e) => setMMulaiE(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
+                <input type="number" placeholder="Mulai E" value={mMulaiE} onChange={(e) => setMMulaiE(e.target.value)} onBlur={() => peringatAyat(mSurahSelesai, mMulaiE, 'Murojaah (surah akhir)')} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
               </div>
               <div className="col-span-3">
-                <input type="number" placeholder="Selesai E" value={mSelesaiE} onChange={(e) => setMSelesaiE(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
+                <input type="number" placeholder="Selesai E" value={mSelesaiE} onChange={(e) => setMSelesaiE(e.target.value)} onBlur={() => peringatAyat(mSurahSelesai, mSelesaiE, 'Murojaah (surah akhir, ayat selesai)')} className="w-full rounded border border-slate-300 p-1.5 text-xs bg-white" />
               </div>
             </div>
 
@@ -738,8 +769,8 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
               <div className="mt-2 space-y-2">
                 <input type="text" list="listSurah" autoComplete="off" placeholder="Cari Surah..." value={tugasZSurah} onChange={(e) => setTugasZSurah(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-sm" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="number" placeholder="Mulai" value={tugasZAyatMulai} onChange={(e) => setTugasZAyatMulai(e.target.value)} className="rounded border border-slate-300 p-1.5 text-sm" />
-                  <input type="number" placeholder="Sampai" value={tugasZAyatSelesai} onChange={(e) => setTugasZAyatSelesai(e.target.value)} className="rounded border border-slate-300 p-1.5 text-sm" />
+                  <input type="number" placeholder="Mulai" value={tugasZAyatMulai} onChange={(e) => setTugasZAyatMulai(e.target.value)} onBlur={() => peringatAyat(tugasZSurah, tugasZAyatMulai, 'Tugas ziyadah')} className="rounded border border-slate-300 p-1.5 text-sm" />
+                  <input type="number" placeholder="Sampai" value={tugasZAyatSelesai} onChange={(e) => setTugasZAyatSelesai(e.target.value)} onBlur={() => peringatAyat(tugasZSurah, tugasZAyatSelesai, 'Tugas ziyadah (ayat selesai)')} className="rounded border border-slate-300 p-1.5 text-sm" />
                 </div>
                 <input type="text" placeholder="Keterangan tugas..." value={tugasZPesan} onChange={(e) => setTugasZPesan(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-sm" />
               </div>
@@ -764,11 +795,11 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                   <input type="text" list="listSurah" autoComplete="off" placeholder="Surah E" value={tugasMSurahSelesai} onChange={(e) => setTugasMSurahSelesai(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-sm" />
                 </div>
                 <div className="grid grid-cols-12 gap-1 items-center">
-                  <div className="col-span-3"><input type="number" placeholder="Mulai A" value={tugasMAyatMulai} onChange={(e) => setTugasMAyatMulai(e.target.value)} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
-                  <div className="col-span-3"><input type="number" placeholder="Selesai A" value={tugasMAyatSelesai} onChange={(e) => setTugasMAyatSelesai(e.target.value)} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
+                  <div className="col-span-3"><input type="number" placeholder="Mulai A" value={tugasMAyatMulai} onChange={(e) => setTugasMAyatMulai(e.target.value)} onBlur={() => peringatAyat(tugasMSurah, tugasMAyatMulai, 'Tugas murojaah (surah awal)')} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
+                  <div className="col-span-3"><input type="number" placeholder="Selesai A" value={tugasMAyatSelesai} onChange={(e) => setTugasMAyatSelesai(e.target.value)} onBlur={() => peringatAyat(tugasMSurah, tugasMAyatSelesai, 'Tugas murojaah (surah awal, ayat selesai)')} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
                   <div className="col-span-1 text-center font-bold text-xs text-slate-500">sd</div>
-                  <div className="col-span-2"><input type="number" placeholder="Mulai E" value={tugasMAyatMulaiE} onChange={(e) => setTugasMAyatMulaiE(e.target.value)} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
-                  <div className="col-span-3"><input type="number" placeholder="Selesai E" value={tugasMAyatSelesaiE} onChange={(e) => setTugasMAyatSelesaiE(e.target.value)} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
+                  <div className="col-span-2"><input type="number" placeholder="Mulai E" value={tugasMAyatMulaiE} onChange={(e) => setTugasMAyatMulaiE(e.target.value)} onBlur={() => peringatAyat(tugasMSurahSelesai, tugasMAyatMulaiE, 'Tugas murojaah (surah akhir)')} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
+                  <div className="col-span-3"><input type="number" placeholder="Selesai E" value={tugasMAyatSelesaiE} onChange={(e) => setTugasMAyatSelesaiE(e.target.value)} onBlur={() => peringatAyat(tugasMSurahSelesai, tugasMAyatSelesaiE, 'Tugas murojaah (surah akhir, ayat selesai)')} className="w-full rounded border border-slate-300 p-1 text-xs" /></div>
                 </div>
                 <input type="text" placeholder="Keterangan tugas..." value={tugasMPesan} onChange={(e) => setTugasMPesan(e.target.value)} className="w-full rounded border border-slate-300 p-1.5 text-sm" />
               </div>

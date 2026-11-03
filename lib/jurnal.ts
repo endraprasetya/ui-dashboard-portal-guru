@@ -630,3 +630,126 @@ export function buildRekapMatriks(opts: {
 
   return { jumlahHari, hariEfektif, libur, baris }
 }
+
+export type StatusAbsenLabel = 'Sakit' | 'Izin' | 'Alpa'
+
+export type RincianTidakHadir = {
+  tanggal: string
+  status: StatusAbsenLabel
+  keterangan: string
+}
+
+export type RekapSiswaPerHari = {
+  key: string
+  nama: string
+  hariHadir: number
+  hariTidakHadir: number
+  persen: number | null
+  sakit: number
+  izin: number
+  alpa: number
+  rincian: RincianTidakHadir[]
+}
+
+const STATUS_ABSEN_LABEL: Record<'sakit' | 'izin' | 'alpa', StatusAbsenLabel> = {
+  sakit: 'Sakit',
+  izin: 'Izin',
+  alpa: 'Alpa',
+}
+
+function kunciAbsenSiswa(id?: string, nama?: string) {
+  return [
+    id ? `id:${String(id).trim()}` : '',
+    nama ? `nama:${String(nama).trim().toLowerCase()}` : '',
+  ].filter(Boolean)
+}
+
+/**
+ * Rekap kehadiran per siswa berdasarkan hari efektif (tanggal unik yang punya jurnal),
+ * bukan per sesi jam pelajaran.
+ */
+export function buildRekapSiswaPerHari(opts: {
+  rows: { tanggal?: string; siswa_tidak_hadir?: unknown }[]
+  siswa: { id_siswa: string; nama_siswa: string }[]
+  roster?: SiswaKelas[] | null
+}): { hariEfektif: number; baris: RekapSiswaPerHari[] } {
+  const hariEfektifSet = new Set<string>()
+  const absenHari = new Map<
+    string,
+    Map<string, { rank: number; status: StatusAbsenLabel; alasan: Set<string> }>
+  >()
+
+  for (const row of opts.rows) {
+    const tanggal = String(row.tanggal || '').slice(0, 10)
+    if (!tanggal) continue
+    hariEfektifSet.add(tanggal)
+
+    const daftar = saringAbsenKelas(normalizeSiswaTidakHadir(row.siswa_tidak_hadir), opts.roster)
+    if (daftar.length === 0) continue
+    if (!absenHari.has(tanggal)) absenHari.set(tanggal, new Map())
+    const peta = absenHari.get(tanggal)!
+
+    for (const item of daftar) {
+      const jenis = jenisAbsen(item.keterangan)
+      const status = STATUS_ABSEN_LABEL[jenis]
+      const rank = RANK_ABSEN[jenis]
+      const catatan = String(item.keterangan || '').trim()
+
+      for (const key of kunciAbsenSiswa(item.id_siswa, item.nama)) {
+        const lama = peta.get(key)
+        if (!lama) {
+          peta.set(key, { rank, status, alasan: new Set(catatan ? [catatan] : []) })
+          continue
+        }
+        if (catatan) lama.alasan.add(catatan)
+        if (rank >= lama.rank) {
+          lama.rank = rank
+          lama.status = status
+        }
+      }
+    }
+  }
+
+  const hariEfektif = hariEfektifSet.size
+  const tanggalUrut = Array.from(hariEfektifSet).sort()
+
+  const baris = opts.siswa.map((siswa) => {
+    const idKey = siswa.id_siswa ? `id:${String(siswa.id_siswa).trim()}` : ''
+    const namaKey = `nama:${String(siswa.nama_siswa || '').trim().toLowerCase()}`
+    const rincian: RincianTidakHadir[] = []
+
+    for (const tanggal of tanggalUrut) {
+      const peta = absenHari.get(tanggal)
+      const rec = (idKey && peta?.get(idKey)) || peta?.get(namaKey)
+      if (!rec) continue
+      rincian.push({
+        tanggal,
+        status: rec.status,
+        keterangan: Array.from(rec.alasan)
+          .filter((teks) => teks && teks.toLowerCase() !== rec.status.toLowerCase())
+          .join('; '),
+      })
+    }
+
+    const sakit = rincian.filter((item) => item.status === 'Sakit').length
+    const izin = rincian.filter((item) => item.status === 'Izin').length
+    const alpa = rincian.filter((item) => item.status === 'Alpa').length
+    const hariTidakHadir = rincian.length
+    const hariHadir = Math.max(0, hariEfektif - hariTidakHadir)
+    const persen = hariEfektif > 0 ? Math.round((hariHadir / hariEfektif) * 1000) / 10 : null
+
+    return {
+      key: String(siswa.id_siswa || siswa.nama_siswa),
+      nama: siswa.nama_siswa,
+      hariHadir,
+      hariTidakHadir,
+      persen,
+      sakit,
+      izin,
+      alpa,
+      rincian,
+    }
+  })
+
+  return { hariEfektif, baris }
+}

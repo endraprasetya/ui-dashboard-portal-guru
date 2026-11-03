@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, BarChart2, CalendarDays, Printer, Table2 } from 'lucide-react'
 import { AbsensiMatriks } from '@/components/absensi-matriks'
+import { AbsensiRekapBulanan } from '@/components/absensi-rekap-bulanan'
 import {
   fetchJurnalRentang,
   fetchKelasDanJumlahSiswa,
@@ -52,7 +53,7 @@ export function AbsensiRekap({
   }, [currentUser])
 
   const { start, end } = useMemo(() => {
-    if (mode === 'matriks' || periode === 'bulan') return monthRange(bulan)
+    if (mode === 'matriks' || mode === 'bulanan' || periode === 'bulan') return monthRange(bulan)
     return semesterRange(Number(tahun), semester)
   }, [mode, periode, bulan, semester, tahun])
 
@@ -162,31 +163,11 @@ export function AbsensiRekap({
       })
   }, [rows, siswa])
 
-  const rekapBulanan = useMemo(() => {
-    const map = new Map<string, { bulan: string; sesi: number; hadir: number; sakit: number; izin: number; alpa: number }>()
-    for (const row of rows) {
-      const key = String(row.tanggal || '').slice(0, 7)
-      if (!key) continue
-      if (!map.has(key)) map.set(key, { bulan: key, sesi: 0, hadir: 0, sakit: 0, izin: 0, alpa: 0 })
-      const rec = map.get(key)!
-      rec.sesi += 1
-      const roster = siswa.length > 0 ? siswa : null
-      const total = roster?.length || Number(row.hadir) + Number(row.tidak_hadir) || 0
-      const rekap = rekapBarisJurnal(row, total, roster)
-      rec.hadir += rekap.hadir
-      if (rekap.daftar.length > 0) {
-        for (const item of rekap.daftar) {
-          const jenis = jenisAbsen(item.keterangan)
-          if (jenis === 'sakit') rec.sakit += 1
-          else if (jenis === 'izin') rec.izin += 1
-          else rec.alpa += 1
-        }
-      } else {
-        rec.alpa += rekap.tidakHadir
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.bulan.localeCompare(b.bulan))
-  }, [rows, siswa])
+  const labelBulan = useMemo(() => {
+    const [year, month] = bulan.split('-').map(Number)
+    if (!year || !month) return bulan
+    return new Date(year, month - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+  }, [bulan])
 
   return (
     <div className="space-y-4">
@@ -222,7 +203,7 @@ export function AbsensiRekap({
               onChange={(e) => setKelas(e.target.value)}
               className="mt-1 block min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"
             >
-              <option value="">{mode === 'matriks' ? 'Pilih kelas' : 'Semua kelas'}</option>
+              <option value="">{mode === 'matriks' || mode === 'bulanan' ? 'Pilih kelas' : 'Semua kelas'}</option>
               {kelasList.map((nama) => (
                 <option key={nama} value={nama}>
                   {nama}
@@ -231,6 +212,7 @@ export function AbsensiRekap({
             </select>
           </label>
 
+          {mode !== 'matriks' && mode !== 'bulanan' && (
           <label className="text-xs font-bold text-slate-600">
             Periode
             <select
@@ -242,8 +224,9 @@ export function AbsensiRekap({
               <option value="semester">Semester</option>
             </select>
           </label>
+          )}
 
-          {periode === 'bulan' || mode === 'matriks' ? (
+          {periode === 'bulan' || mode === 'matriks' || mode === 'bulanan' ? (
             <label className="text-xs font-bold text-slate-600">
               Bulan
               <input
@@ -288,7 +271,7 @@ export function AbsensiRekap({
         </div>
 
         <div className="absensi-body space-y-4 px-5 py-4">
-          {mode !== 'matriks' && (
+          {mode !== 'matriks' && mode !== 'bulanan' && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-[11px] font-bold uppercase text-slate-500">Sesi jurnal</p>
@@ -336,8 +319,10 @@ export function AbsensiRekap({
           </div>
 
           {error && <p className="text-xs font-bold text-red-600">{error}</p>}
-          {loading && mode !== 'matriks' && <p className="text-xs text-slate-500">Memuat rekap absensi...</p>}
-          {!loading && rows.length === 0 && mode !== 'matriks' && (
+          {loading && mode !== 'matriks' && mode !== 'bulanan' && (
+            <p className="text-xs text-slate-500">Memuat rekap absensi...</p>
+          )}
+          {!loading && rows.length === 0 && mode !== 'matriks' && mode !== 'bulanan' && (
             <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
               Belum ada data jurnal pada periode ini. Isi presensi lewat menu Jurnal Pembelajaran.
             </p>
@@ -424,33 +409,14 @@ export function AbsensiRekap({
             />
           )}
 
-          {!loading && mode === 'bulanan' && rekapBulanan.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[640px] text-left text-xs">
-                <thead className="bg-slate-50 font-bold text-slate-600">
-                  <tr>
-                    <th className="p-2.5">Bulan</th>
-                    <th className="p-2.5 text-center">Sesi</th>
-                    <th className="p-2.5 text-center">Total hadir</th>
-                    <th className="p-2.5 text-center">Sakit</th>
-                    <th className="p-2.5 text-center">Izin</th>
-                    <th className="p-2.5 text-center">Alpa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rekapBulanan.map((item) => (
-                    <tr key={item.bulan} className="hover:bg-slate-50">
-                      <td className="p-2.5 font-semibold">{item.bulan}</td>
-                      <td className="p-2.5 text-center">{item.sesi}</td>
-                      <td className="p-2.5 text-center font-bold text-emerald-700">{item.hadir}</td>
-                      <td className="p-2.5 text-center">{item.sakit}</td>
-                      <td className="p-2.5 text-center">{item.izin}</td>
-                      <td className="p-2.5 text-center">{item.alpa}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {mode === 'bulanan' && (
+            <AbsensiRekapBulanan
+              kelas={kelas}
+              labelPeriode={labelBulan}
+              siswa={siswa}
+              rows={rows}
+              loading={loading}
+            />
           )}
         </div>
       </div>

@@ -320,12 +320,90 @@ export function JurnalPembelajaran({
   const absenDipilih = pilihAbsenJam != null ? absenKelas(getEntry(pilihAbsenJam).siswaTidakHadir) : []
 
   return (
-    <div className="space-y-4">
+    <div className="jurnal-print-root space-y-4">
       <style>{`
         @media print {
-          header, .no-print { display: none !important; }
-          body { background: white !important; }
-          .jurnal-print { box-shadow: none !important; border: none !important; }
+          @page {
+            size: 330mm 210mm landscape;
+            margin: 6mm 5mm;
+          }
+          html, body {
+            width: 330mm !important;
+            height: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          header, nav, .no-print { display: none !important; }
+          main { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+          .jurnal-print-root {
+            width: 100% !important;
+            max-height: 198mm !important;
+            overflow: hidden !important;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .jurnal-print {
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            overflow: hidden !important;
+          }
+          .jurnal-print-meta {
+            padding: 2mm 3mm !important;
+            border-bottom-width: 1px !important;
+          }
+          .jurnal-print-body {
+            padding: 2mm 3mm !important;
+          }
+          .jurnal-print-table-wrap {
+            overflow: hidden !important;
+            border-radius: 0 !important;
+          }
+          .jurnal-print-table {
+            width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed;
+            font-size: 6.5pt !important;
+            line-height: 1.12 !important;
+          }
+          .jurnal-print-table th,
+          .jurnal-print-table td {
+            padding: 1.5px 2px !important;
+            vertical-align: top !important;
+            word-break: break-word;
+            overflow: hidden;
+          }
+          .jurnal-print-table th:nth-child(1) { width: 4%; }
+          .jurnal-print-table th:nth-child(2) { width: 6%; }
+          .jurnal-print-table th:nth-child(3) { width: 9%; }
+          .jurnal-print-table th:nth-child(4) { width: 14%; }
+          .jurnal-print-table th:nth-child(5) { width: 14%; }
+          .jurnal-print-table th:nth-child(6) { width: 10%; }
+          .jurnal-print-table th:nth-child(7) { width: 10%; }
+          .jurnal-print-table th:nth-child(8) { width: 5%; }
+          .jurnal-print-table th:nth-child(9) { width: 8%; }
+          .jurnal-print-table th:nth-child(10) { width: 10%; }
+          .jurnal-print-table input,
+          .jurnal-print-table textarea {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            font: inherit !important;
+            color: inherit !important;
+            resize: none !important;
+          }
+          .jurnal-print-table img {
+            max-height: 10mm !important;
+            max-width: 100% !important;
+          }
         }
       `}</style>
 
@@ -343,8 +421,8 @@ export function JurnalPembelajaran({
           <p className="text-xs text-emerald-100">Catatan KBM harian dan presensi per jam pelajaran</p>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
-          <label className="text-xs font-bold text-slate-600">
+        <div className="jurnal-print-meta flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
+          <label className="no-print text-xs font-bold text-slate-600">
             Kelas
             <select
               value={kelas}
@@ -360,7 +438,7 @@ export function JurnalPembelajaran({
             </select>
           </label>
 
-          <label className="text-xs font-bold text-slate-600">
+          <label className="no-print text-xs font-bold text-slate-600">
             Tanggal
             <input
               type="date"
@@ -370,7 +448,7 @@ export function JurnalPembelajaran({
             />
           </label>
 
-          <label className="text-xs font-bold text-slate-600">
+          <label className="no-print text-xs font-bold text-slate-600">
             Semester
             <select
               value={semester}
@@ -418,8 +496,8 @@ export function JurnalPembelajaran({
           </div>
         </div>
 
-        <div className="space-y-3 px-5 py-4">
-          <p className={`text-xs ${statusError ? 'font-bold text-red-600' : 'text-slate-500'}`}>
+        <div className="jurnal-print-body space-y-3 px-5 py-4">
+          <p className={`no-print text-xs ${statusError ? 'font-bold text-red-600' : 'text-slate-500'}`}>
             {loading ? 'Memuat jurnal...' : status}
             {!loading && jumlahKelas > 0 && (
               <>
@@ -441,8 +519,8 @@ export function JurnalPembelajaran({
               Hari {hariIndex >= 0 ? NAMA_HARI[hariIndex] : '-'} libur. Tidak ada jam pelajaran.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1320px] border-collapse text-left text-xs">
+            <div className="jurnal-print-table-wrap overflow-x-auto rounded-xl border border-slate-200">
+              <table className="jurnal-print-table w-full min-w-[1320px] border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-emerald-50 text-center font-bold text-emerald-900">
                     <th className="border border-slate-200 p-2">Jam ke</th>
