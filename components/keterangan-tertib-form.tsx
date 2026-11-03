@@ -10,6 +10,7 @@ type Props = {
   onLainnyaChange: (next: string) => void;
   error?: string | null;
   idPrefix?: string;
+  sorotError?: boolean;
 };
 
 export function KeteranganTertibForm({
@@ -19,6 +20,7 @@ export function KeteranganTertibForm({
   onLainnyaChange,
   error,
   idPrefix = "ktr",
+  sorotError = false,
 }: Props) {
   const toggle = (opsi: string) => {
     if (pilihan.includes(opsi)) onPilihanChange(pilihan.filter((o) => o !== opsi));
@@ -31,7 +33,11 @@ export function KeteranganTertibForm({
         Keterangan / tindakan guru <span className="text-red-600">*</span>
       </legend>
       <p className="mb-2 text-[11px] text-slate-500">Pilih satu atau lebih (wajib).</p>
-      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+      <div
+        className={`space-y-2 rounded-xl border bg-slate-50/80 p-3 ${
+          sorotError || error ? "border-red-400 ring-1 ring-red-200" : "border-slate-200"
+        }`}
+      >
         {KETERANGAN_TERTIB_OPSI.map((opsi) => {
           const id = `${idPrefix}-${opsi.replace(/\s+/g, "-")}`;
           const checked = pilihan.includes(opsi);
@@ -52,8 +58,10 @@ export function KeteranganTertibForm({
                   value={lainnya}
                   onChange={onLainnyaChange}
                   rows={2}
-                  placeholder="Tulis keterangan tambahan"
-                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm"
+                  placeholder="Tulis keterangan tambahan (wajib)"
+                  className={`mt-2 w-full rounded-lg border bg-white p-2.5 text-sm ${
+                    sorotError && !lainnya.trim() ? "border-red-400" : "border-slate-300"
+                  }`}
                 />
               )}
             </div>

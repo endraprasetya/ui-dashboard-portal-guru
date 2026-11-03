@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { isKelasAlumni } from "@/lib/siswa";
 import { KeteranganTertibForm } from "@/components/keterangan-tertib-form";
+import { PeringatanTertibDialog } from "@/components/peringatan-tertib-dialog";
 import { DEF_NEG, DEF_POS, sortAturanTertib } from "@/lib/aturan-tertib-point";
 import {
   gabungKeteranganTertib,
@@ -194,6 +195,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [pilihanKeterangan, setPilihanKeterangan] = useState<string[]>([]);
   const [lainnyaKeterangan, setLainnyaKeterangan] = useState("");
   const [keteranganFormError, setKeteranganFormError] = useState<string | null>(null);
+  const [peringatanKeterangan, setPeringatanKeterangan] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editPilihan, setEditPilihan] = useState<string[]>([]);
   const [editLainnya, setEditLainnya] = useState("");
@@ -203,6 +205,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     setPilihanKeterangan([]);
     setLainnyaKeterangan("");
     setKeteranganFormError(null);
+    setPeringatanKeterangan(null);
   };
 
   const tutupModal = () => {
@@ -213,6 +216,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     setEditPilihan([]);
     setEditLainnya("");
     setEditFormError(null);
+    setPeringatanKeterangan(null);
+  };
+
+  /** Validasi gagal: modal Beri Nilai tetap terbuka, isian checkbox tidak direset. */
+  const tampilkanGagalValidasiKeterangan = (pesan: string) => {
+    setKeteranganFormError(pesan);
+    setPeringatanKeterangan(pesan);
+    setStatus(pesan);
+    setStatusError(true);
   };
 
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
@@ -354,9 +366,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
     if (busy) return;
     const validasi = validasiKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
     if (validasi) {
-      setKeteranganFormError(validasi);
-      setStatus(validasi);
-      setStatusError(true);
+      tampilkanGagalValidasiKeterangan(validasi);
       return;
     }
     const keterangan = gabungKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
@@ -402,17 +412,17 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       tolakBukanPencatat();
       return;
     }
-    setBusy(true);
-    setStatus("");
-    setStatusError(false);
     const validasi = validasiKeteranganTertib(editPilihan, editLainnya);
     if (validasi) {
       setEditFormError(validasi);
+      setPeringatanKeterangan(validasi);
       setStatus(validasi);
       setStatusError(true);
-      setBusy(false);
       return;
     }
+    setBusy(true);
+    setStatus("");
+    setStatusError(false);
     const keterangan = gabungKeteranganTertib(editPilihan, editLainnya);
     const { data, error } = await supabase
       .from("tertib_point")
@@ -842,12 +852,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                   onPilihanChange={(next) => {
                     setPilihanKeterangan(next);
                     setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
                   }}
                   onLainnyaChange={(next) => {
                     setLainnyaKeterangan(next);
                     setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
                   }}
                   error={keteranganFormError}
+                  sorotError={Boolean(keteranganFormError)}
                   idPrefix="give-ktr"
                 />
                 <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
@@ -939,6 +952,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                                 setEditFormError(null);
                               }}
                               error={editFormError}
+                              sorotError={Boolean(editFormError)}
                               idPrefix={`edit-ktr-${l.id}`}
                             />
                             <div className="flex justify-end gap-2">
@@ -1102,6 +1116,10 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
           </div>
         </div>
       )}
+
+      {peringatanKeterangan ? (
+        <PeringatanTertibDialog pesan={peringatanKeterangan} onTutup={() => setPeringatanKeterangan(null)} />
+      ) : null}
     </div>
   );
 }

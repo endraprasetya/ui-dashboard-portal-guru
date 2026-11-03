@@ -27,10 +27,16 @@ export function gabungKeteranganTertib(pilihan: readonly string[], lainnya: stri
   return bagian.join(PEMISAH)
 }
 
+export const PESAN_KETERANGAN_WAJIB =
+  'Harap pilih minimal satu tindakan / keterangan terlebih dahulu!'
+
+export const PESAN_LAINNYA_WAJIB =
+  'Harap isi keterangan pada opsi Lainnya sebelum menyimpan.'
+
 export function validasiKeteranganTertib(pilihan: readonly string[], lainnya: string): string | null {
-  if (pilihan.length === 0) return 'Pilih minimal satu keterangan / tindakan.'
+  if (pilihan.length === 0) return PESAN_KETERANGAN_WAJIB
   if (pilihan.includes(KETERANGAN_TERTIB_LAINNYA) && !lainnya.trim()) {
-    return 'Isi keterangan tambahan untuk opsi Lainnya.'
+    return PESAN_LAINNYA_WAJIB
   }
   return null
 }
@@ -46,8 +52,9 @@ export function pecahKeteranganTertib(simpan: string): { pilihan: string[]; lain
   let adaLegacy = false
 
   for (const part of parts) {
-    if ((OPSI_TANPA_LAINNYA as readonly string[]).includes(part)) {
-      if (!pilihan.includes(part)) pilihan.push(part)
+    const opsiResmi = OPSI_TANPA_LAINNYA.find((o) => o.toLowerCase() === part.toLowerCase())
+    if (opsiResmi) {
+      if (!pilihan.includes(opsiResmi)) pilihan.push(opsiResmi)
       continue
     }
     if (part === KETERANGAN_TERTIB_LAINNYA) {
