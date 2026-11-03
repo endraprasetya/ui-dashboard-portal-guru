@@ -58,7 +58,7 @@ export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void 
         target_id: baris.target_id || baris.id_user || baris.username,
         nama_lengkap: baris.nama_lengkap || baris.nama || baris.username,
         unit: baris.unit || 'Semua Unit',
-        role: baris.role || 'Ustadz',
+        role: String(baris.role || 'Ustadz').trim(),
       }
 
       localStorage.setItem('user_session', JSON.stringify(userData))

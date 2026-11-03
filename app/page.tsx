@@ -12,9 +12,11 @@ import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/componen
 import TertibPoint from '@/components/tertib-point'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
+import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { isAdminRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { educationCalendar, recentActivities } from '@/lib/teacher-data'
 import {
   keteranganJadwal,
@@ -40,6 +42,7 @@ import {
   Plus,
   ShieldAlert,
   Settings,
+  Users,
 } from 'lucide-react'
 
 export default function Home() {
@@ -166,7 +169,9 @@ export default function Home() {
 
   const isTahfidz = currentView.startsWith('tahfidz')
   const isQiroah = currentView.startsWith('qiroah')
+  const isAbsensi = currentView.startsWith('absensi')
   const canPenguji = hasPengujiRole(currentUser)
+  const guruBantuUser = userDariSesi(currentUser)
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans">
@@ -221,7 +226,7 @@ export default function Home() {
             { id: 'tahfidz_menu', label: "Tahfidzul Qur'an", active: isTahfidz },
             { id: 'qiroah_menu', label: "Qiroatul Qur'an", active: isQiroah },
             { id: 'jurnal', label: 'Jurnal Pembelajaran', active: currentView === 'jurnal' },
-            { id: 'absensi', label: 'Absensi', active: currentView === 'absensi' },
+            { id: 'absensi_menu', label: 'Absensi', active: isAbsensi },
             { id: 'data_siswa', label: 'Data Siswa', href: '/data-siswa' },
             { id: 'tertib_point', label: 'Tertib Point', active: currentView === 'tertib_point' },
             { id: 'pengumuman', label: 'Pengumuman', active: currentView === 'pengumuman' },
@@ -303,7 +308,7 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => setCurrentView('absensi')}
+                onClick={() => setCurrentView('absensi_menu')}
                 className="rounded-2xl bg-[#334155] p-5 text-left text-white shadow transition hover:shadow-lg hover:-translate-y-0.5"
               >
                 <div className="flex items-center justify-between pb-6">
@@ -313,7 +318,7 @@ export default function Home() {
                   <ArrowRight className="size-4 opacity-75" />
                 </div>
                 <h3 className="text-sm font-extrabold">Absensi</h3>
-                <p className="mt-1 text-[11px] opacity-80">Rekap dan laporan kehadiran dari jurnal harian</p>
+                <p className="mt-1 text-[11px] opacity-80">Absensi siswa dan absensi guru bantu</p>
               </button>
 
               {/* CARD TERTIB POINT WARNA MERAH CERAH */}
@@ -645,8 +650,60 @@ export default function Home() {
           <JurnalPembelajaran onBack={() => setCurrentView('dashboard')} currentUser={currentUser} />
         )}
 
+        {currentView === 'absensi_menu' && (
+          <div className="mx-auto max-w-2xl space-y-4 pt-4">
+            <div className="flex items-center justify-between rounded-2xl bg-[#334155] px-6 py-4 text-white shadow-md">
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white/20 px-4 py-2 text-xs font-bold hover:bg-white/30 transition"
+              >
+                <ArrowLeft className="size-4" /> Kembali
+              </button>
+              <h2 className="text-base font-black tracking-wide">Menu Absensi</h2>
+              <div className="w-16" />
+            </div>
+
+            <button
+              onClick={() => setCurrentView('absensi')}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#059669] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#047857] transition"
+            >
+              <ClipboardCheck className="size-5" /> Absensi Siswa
+            </button>
+
+            <button
+              onClick={() => setCurrentView('absensi_guru_bantu')}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0f766e] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#115e59] transition"
+            >
+              <Users className="size-5" /> Absensi Guru Bantu
+            </button>
+          </div>
+        )}
+
         {currentView === 'absensi' && (
-          <AbsensiRekap onBack={() => setCurrentView('dashboard')} currentUser={currentUser} />
+          <AbsensiRekap
+            onBack={() => setCurrentView('absensi_menu')}
+            currentUser={currentUser}
+            backLabel="Kembali ke Menu Absensi"
+          />
+        )}
+
+        {currentView === 'absensi_guru_bantu' && (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setCurrentView('absensi_menu')}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-300 transition"
+            >
+              <ArrowLeft className="size-4" /> Kembali ke Menu Absensi
+            </button>
+            {guruBantuUser ? (
+              <AbsensiGuruBantu user={guruBantuUser} isAdmin={isAdminRole(guruBantuUser.role)} />
+            ) : (
+              <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                Sesi login tidak valid. Silakan masuk kembali.
+              </p>
+            )}
+          </div>
         )}
 
         {currentView === 'pengumuman' && (

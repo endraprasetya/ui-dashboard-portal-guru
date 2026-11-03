@@ -23,21 +23,17 @@ export const KEPALA_SEKOLAH = {
   niy: '197805202013 0208',
 }
 
-export function adalahKepalaSekolah(user?: {
-  nama_lengkap?: string
-  nama?: string
-  username?: string
-  role?: string
-  niy?: string
-  NIY?: string
-  nip?: string
-  NIP?: string
-} | null) {
-  if (!user) return false
-  const nama = String(user.nama_lengkap || user.nama || user.username || '').toLowerCase()
-  const role = String(user.role || '').toLowerCase()
-  const nomor = String(user.niy || user.NIY || user.nip || user.NIP || '').replace(/\D/g, '')
-  return nama.includes('sri sunarko') || nomor.includes('1978052020130208') || role.includes('kepala') || role.includes('kepsek')
+export function teksPeran(role?: string | null) {
+  return String(role || '').trim().toLowerCase()
+}
+
+export function adalahPeranKepala(role?: string | null) {
+  const peran = teksPeran(role)
+  return peran.includes('kepala') || peran.includes('kepsek')
+}
+
+export function adalahKepalaSekolah(user?: { role?: string } | null) {
+  return adalahPeranKepala(user?.role)
 }
 
 export type BarisGuru = {

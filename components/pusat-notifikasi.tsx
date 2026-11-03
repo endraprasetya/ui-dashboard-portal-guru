@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Bell, BookCheck, ArrowRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -90,12 +91,21 @@ export function PusatNotifikasi({
   onTandaiSemua: () => void
 }) {
   const [buka, setBuka] = useState(false)
+  const [siapPortal, setSiapPortal] = useState(false)
   const bungkus = useRef<HTMLDivElement>(null)
+  const panelMobile = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setSiapPortal(true)
+  }, [])
 
   useEffect(() => {
     if (!buka) return
     const tutup = (event: MouseEvent) => {
-      if (!bungkus.current?.contains(event.target as Node)) setBuka(false)
+      const target = event.target as Node
+      if (bungkus.current?.contains(target)) return
+      if (panelMobile.current?.contains(target)) return
+      setBuka(false)
     }
     const esc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setBuka(false)
@@ -112,6 +122,60 @@ export function PusatNotifikasi({
     () => URUTAN.map((kategori) => ({ kategori, items: semua.filter((item) => item.kategori === kategori) })).filter((grup) => grup.items.length > 0),
     [semua],
   )
+
+  const panel = (
+    <>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div>
+          <p className="text-sm font-extrabold text-slate-900">Pusat Notifikasi</p>
+          <p className="text-[11px] text-slate-500">
+            {belumDibaca > 0 ? `${belumDibaca} belum dibaca` : 'Semua sudah dibaca'}
+          </p>
+        </div>
+        {belumDibaca > 0 && (
+          <button type="button" onClick={onTandaiSemua} className="text-[11px] font-bold text-emerald-700 hover:underline">
+            Tandai dibaca
+          </button>
+        )}
+      </div>
+      <div className="max-h-[70vh] overflow-y-auto sm:max-h-96">
+        {kelompok.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">Belum ada notifikasi.</p>
+        ) : (
+          kelompok.map((grup) => (
+            <section key={grup.kategori} className="border-b border-slate-100 last:border-b-0">
+              <p className="bg-slate-50 px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                {LABEL_KATEGORI[grup.kategori]}
+              </p>
+              {grup.items.map((item) => {
+                const terbaca = sudah(item.id)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setBuka(false)
+                      onBuka(item)
+                    }}
+                    className={`flex w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-emerald-50 ${terbaca ? 'opacity-60' : ''}`}
+                  >
+                    <span className={`mt-1.5 size-2 shrink-0 rounded-full ${terbaca ? 'bg-slate-300' : 'bg-emerald-600'}`} />
+                    <span>
+                      <span className="block text-xs font-bold text-slate-900">{item.judul}</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{item.detail}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </section>
+          ))
+        )}
+      </div>
+    </>
+  )
+
+  const panelClass =
+    'overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl w-[min(22rem,calc(100vw-2rem))]'
 
   return (
     <div className="relative" ref={bungkus}>
@@ -130,54 +194,21 @@ export function PusatNotifikasi({
         )}
       </button>
       {buka && (
-        <div className="fixed left-1/2 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:left-auto sm:right-0 sm:translate-x-0">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">Pusat Notifikasi</p>
-              <p className="text-[11px] text-slate-500">
-                {belumDibaca > 0 ? `${belumDibaca} belum dibaca` : 'Semua sudah dibaca'}
-              </p>
-            </div>
-            {belumDibaca > 0 && (
-              <button type="button" onClick={onTandaiSemua} className="text-[11px] font-bold text-emerald-700 hover:underline">
-                Tandai dibaca
-              </button>
+        <>
+          <div className={`absolute right-0 z-50 mt-2 hidden sm:block ${panelClass}`}>{panel}</div>
+          {siapPortal &&
+            createPortal(
+              <div
+                ref={panelMobile}
+                className={`fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] z-[100] -translate-x-1/2 sm:hidden ${panelClass}`}
+                role="dialog"
+                aria-label="Pusat notifikasi"
+              >
+                {panel}
+              </div>,
+              document.body,
             )}
-          </div>
-          <div className="max-h-[70vh] overflow-y-auto">
-            {kelompok.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">Belum ada notifikasi.</p>
-            ) : (
-              kelompok.map((grup) => (
-                <section key={grup.kategori} className="border-b border-slate-100 last:border-b-0">
-                  <p className="bg-slate-50 px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
-                    {LABEL_KATEGORI[grup.kategori]}
-                  </p>
-                  {grup.items.map((item) => {
-                    const terbaca = sudah(item.id)
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setBuka(false)
-                          onBuka(item)
-                        }}
-                        className={`flex w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-emerald-50 ${terbaca ? 'opacity-60' : ''}`}
-                      >
-                        <span className={`mt-1.5 size-2 shrink-0 rounded-full ${terbaca ? 'bg-slate-300' : 'bg-emerald-600'}`} />
-                        <span>
-                          <span className="block text-xs font-bold text-slate-900">{item.judul}</span>
-                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{item.detail}</span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </section>
-              ))
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   )

@@ -9,7 +9,8 @@ import {
   fetchSiswaKelas,
   jenisAbsen,
   monthRange,
-  normalizeSiswaTidakHadir,
+  rekapBarisJurnal,
+  saringAbsenKelas,
   semesterRange,
   teacherName,
   teacherNip,
@@ -27,9 +28,11 @@ function currentMonthValue() {
 export function AbsensiRekap({
   onBack,
   currentUser,
+  backLabel = 'Kembali ke Dashboard',
 }: {
   onBack: () => void
   currentUser?: any
+  backLabel?: string
 }) {
   const unit = teacherUnit(currentUser)
   const [mode, setMode] = useState<Mode>('siswa')
@@ -80,25 +83,27 @@ export function AbsensiRekap({
     let sakit = 0
     let izin = 0
     let alpa = 0
+    const roster = siswa.length > 0 ? siswa : null
 
     for (const row of rows) {
       sesi += 1
-      hadir += Number(row.hadir) || 0
-      const absen = normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
-      if (absen.length > 0) {
-        for (const item of absen) {
+      const total = roster?.length || Number(row.hadir) + Number(row.tidak_hadir) || 0
+      const rekap = rekapBarisJurnal(row, total, roster)
+      hadir += rekap.hadir
+      if (rekap.daftar.length > 0) {
+        for (const item of rekap.daftar) {
           const jenis = jenisAbsen(item.keterangan)
           if (jenis === 'sakit') sakit += 1
           else if (jenis === 'izin') izin += 1
           else alpa += 1
         }
       } else {
-        alpa += Number(row.tidak_hadir) || 0
+        alpa += rekap.tidakHadir
       }
     }
 
     return { sesi, hadir, sakit, izin, alpa, tidakHadir: sakit + izin + alpa }
-  }, [rows])
+  }, [rows, siswa])
 
   const rekapSiswa = useMemo(() => {
     const sesiPerKelas = new Map<string, number>()
@@ -120,7 +125,8 @@ export function AbsensiRekap({
 
     for (const row of rows) {
       sesiPerKelas.set(row.kelas, (sesiPerKelas.get(row.kelas) || 0) + 1)
-      for (const absen of normalizeSiswaTidakHadir(row.siswa_tidak_hadir)) {
+      const roster = siswa.length > 0 ? siswa : null
+      for (const absen of saringAbsenKelas(rekapBarisJurnal(row, 0, roster).daftar, roster)) {
         const key = absen.id_siswa || `${row.kelas}:${absen.nama}`
         const rec = pastikan(key, absen.nama, row.kelas)
         const jenis = jenisAbsen(absen.keterangan)
@@ -141,13 +147,20 @@ export function AbsensiRekap({
   }, [rows, siswa])
 
   const rekapHarian = useMemo(() => {
+    const roster = siswa.length > 0 ? siswa : null
     return [...rows]
       .sort((a, b) => String(a.tanggal).localeCompare(String(b.tanggal)) || Number(a.jam) - Number(b.jam))
-      .map((row) => ({
-        ...row,
-        absen: normalizeSiswaTidakHadir(row.siswa_tidak_hadir),
-      }))
-  }, [rows])
+      .map((row) => {
+        const total = roster?.length || Number(row.hadir) + Number(row.tidak_hadir) || 0
+        const rekap = rekapBarisJurnal(row, total, roster)
+        return {
+          ...row,
+          hadir: rekap.hadir,
+          tidak_hadir: rekap.tidakHadir,
+          absen: rekap.daftar,
+        }
+      })
+  }, [rows, siswa])
 
   const rekapBulanan = useMemo(() => {
     const map = new Map<string, { bulan: string; sesi: number; hadir: number; sakit: number; izin: number; alpa: number }>()
@@ -157,21 +170,23 @@ export function AbsensiRekap({
       if (!map.has(key)) map.set(key, { bulan: key, sesi: 0, hadir: 0, sakit: 0, izin: 0, alpa: 0 })
       const rec = map.get(key)!
       rec.sesi += 1
-      rec.hadir += Number(row.hadir) || 0
-      const absen = normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
-      if (absen.length > 0) {
-        for (const item of absen) {
+      const roster = siswa.length > 0 ? siswa : null
+      const total = roster?.length || Number(row.hadir) + Number(row.tidak_hadir) || 0
+      const rekap = rekapBarisJurnal(row, total, roster)
+      rec.hadir += rekap.hadir
+      if (rekap.daftar.length > 0) {
+        for (const item of rekap.daftar) {
           const jenis = jenisAbsen(item.keterangan)
           if (jenis === 'sakit') rec.sakit += 1
           else if (jenis === 'izin') rec.izin += 1
           else rec.alpa += 1
         }
       } else {
-        rec.alpa += Number(row.tidak_hadir) || 0
+        rec.alpa += rekap.tidakHadir
       }
     }
     return Array.from(map.values()).sort((a, b) => a.bulan.localeCompare(b.bulan))
-  }, [rows])
+  }, [rows, siswa])
 
   return (
     <div className="space-y-4">
@@ -187,7 +202,7 @@ export function AbsensiRekap({
         onClick={onBack}
         className="no-print inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600"
       >
-        <ArrowLeft className="size-4" /> Kembali ke Dashboard
+        <ArrowLeft className="size-4" /> {backLabel}
       </button>
 
       <div className="absensi-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

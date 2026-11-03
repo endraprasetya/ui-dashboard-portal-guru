@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { isKelasAlumni } from "@/lib/siswa";
 import { BidangSuaraMandiri } from "@/components/input-suara";
+import { DEF_NEG, DEF_POS } from "@/lib/aturan-tertib-point";
 
 interface Student {
   id: string;
@@ -48,29 +49,6 @@ function milikPencatat(guru: string, user?: { nama_lengkap?: string; nama?: stri
 }
 
 const MODAL_PTS = 200;
-
-const DEF_NEG: [string, number][] = [
-  ["Keluar kelas tanpa ijin", 10],
-  ["Membuang sampah sembarangan", 10],
-  ["Terlambat datang", 10],
-  ["Tidak membawa buku", 10],
-  ["Tidak berseragam lengkap", 10],
-  ["Tidak mengikuti pelajaran", 10],
-  ["Tidak tertib di masjid", 10],
-  ["Tidak tidur siang", 20],
-  ["Bicara kotor", 30],
-  ["Mengejek teman", 30],
-  ["Tidak menghormati guru", 30],
-  ["Berbohong", 40],
-  ["Berkelahi", 50],
-  ["Membolos", 50],
-];
-
-const DEF_POS: [string, number][] = [
-  ["Menolong teman", 10],
-  ["Berbagi", 10],
-  ["Membantu ustadz", 10],
-];
 
 function mapSiswaRow(row: any): Student {
   return {
@@ -831,7 +809,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                 </div>
 
                 <h4 className="font-bold text-red-700 text-sm mb-2">Pelanggaran</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-60 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-[28rem] overflow-y-auto pr-1">
                   {allRules.neg.map((r) => (
                     <button
                       key={r.id}

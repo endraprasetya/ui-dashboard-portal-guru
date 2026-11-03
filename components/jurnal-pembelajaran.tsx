@@ -16,6 +16,7 @@ import {
   hitungKehadiran,
   jamHariIni,
   rowsToEntries,
+  saringAbsenKelas,
   simpanJurnalHari,
   teacherName,
   teacherUnit,
@@ -38,6 +39,7 @@ export function JurnalPembelajaran({
   const [kelasList, setKelasList] = useState<string[]>([])
   const [jumlahSiswa, setJumlahSiswa] = useState<Record<string, number>>({})
   const [siswaKelas, setSiswaKelas] = useState<SiswaKelas[]>([])
+  const [rosterKelas, setRosterKelas] = useState('')
   const [kelas, setKelas] = useState('')
   const [tanggal, setTanggal] = useState(todayInputValue())
   const [semester, setSemester] = useState(defaultSemester())
@@ -47,6 +49,8 @@ export function JurnalPembelajaran({
   const [autoSaving, setAutoSaving] = useState(false)
   const [status, setStatus] = useState('')
   const [statusError, setStatusError] = useState(false)
+  const dirtyJam = useRef<Set<number>>(new Set())
+  const skipAutoSave = useRef(true)
 
   const [ttdJam, setTtdJam] = useState<number | null>(null)
   const [pilihAbsenJam, setPilihAbsenJam] = useState<number | null>(null)
@@ -63,19 +67,32 @@ export function JurnalPembelajaran({
   const getEntry = (jam: number, source = entries) =>
     source[jam] || emptyJurnalJam(jumlahKelas ? String(jumlahKelas) : '')
 
-  const entryRekap = (entry: JurnalJam) => hitungKehadiran(jumlahKelas, entry.siswaTidakHadir, entry.absen)
+  const absenKelas = (absen: SiswaTidakHadir[]) => saringAbsenKelas(absen, siswaKelas)
+
+  const entryRekap = (entry: JurnalJam) => hitungKehadiran(jumlahKelas, absenKelas(entry.siswaTidakHadir))
+
+  const tandaiDirty = (jam: number, lainnya: number[] = []) => {
+    dirtyJam.current.add(jam)
+    for (const item of lainnya) dirtyJam.current.add(item)
+    skipAutoSave.current = false
+  }
 
   const updateEntry = (jam: number, patch: Partial<JurnalJam>, propagateAbsensi = false) => {
     setEntries((current) => {
       const next = { ...getEntry(jam, current), ...patch }
-      const rekap = hitungKehadiran(jumlahKelas, next.siswaTidakHadir, next.absen)
+      next.siswaTidakHadir = absenKelas(next.siswaTidakHadir || [])
+      const rekap = hitungKehadiran(jumlahKelas, next.siswaTidakHadir)
       next.hadir = String(rekap.hadir)
       next.absen = String(rekap.tidakHadir)
+      const hanyaAbsensi = Object.keys(patch).every((kunci) =>
+        ['siswaTidakHadir', 'hadir', 'absen'].includes(kunci),
+      )
+      if (!hanyaAbsensi) next.guru = guru
 
-      // Auto-fill absensi ke semua jam jika di jam ke-1 dan flag propagateAbsensi aktif
       if (propagateAbsensi && jam === 1 && jadwal) {
         const jamAktif = jadwal.map((item) => item.j).filter((j): j is number => typeof j === 'number')
-        const updated = { ...current, [jam]: next }
+        tandaiDirty(jam, jamAktif)
+        const updated: Record<number, JurnalJam> = { ...current, [jam]: next }
         for (const j of jamAktif) {
           if (j !== 1) {
             const existing = getEntry(j, updated)
@@ -90,6 +107,7 @@ export function JurnalPembelajaran({
         return updated
       }
 
+      tandaiDirty(jam)
       return { ...current, [jam]: next }
     })
   }
@@ -110,27 +128,38 @@ export function JurnalPembelajaran({
   useEffect(() => {
     if (!kelas) {
       setSiswaKelas([])
+      setRosterKelas('')
       return
     }
-    fetchSiswaKelas(kelas, currentUser).then(setSiswaKelas)
+    let batal = false
+    fetchSiswaKelas(kelas, currentUser).then((rows) => {
+      if (batal) return
+      setSiswaKelas(rows)
+      setRosterKelas(kelas)
+    })
+    return () => {
+      batal = true
+    }
   }, [kelas, currentUser])
 
   const muatJurnal = useCallback(async () => {
-    if (!kelas || !tanggal) return
+    if (!kelas || !tanggal || rosterKelas !== kelas) return
     dikte.hentikan()
+    skipAutoSave.current = true
+    dirtyJam.current.clear()
     setLoading(true)
     setStatus('')
     setStatusError(false)
 
     const { rows, error } = await fetchJurnalHari(kelas, tanggal)
-    const total = jumlahSiswa[kelas] || 0
+    const total = siswaKelas.length || jumlahSiswa[kelas] || 0
 
     if (error) {
       setStatus('Gagal memuat jurnal dari Supabase. ' + error.message)
       setStatusError(true)
       setEntries({})
     } else if (rows.length > 0) {
-      setEntries(rowsToEntries(rows, total))
+      setEntries(rowsToEntries(rows, total, siswaKelas))
       const smt = rows.find((row) => row.semester != null)?.semester
       if (smt) setSemester(String(smt))
       setStatus('Jurnal hari ini dimuat dari Supabase.')
@@ -140,21 +169,21 @@ export function JurnalPembelajaran({
     }
 
     setLoading(false)
-  }, [kelas, tanggal, jumlahSiswa, dikte.hentikan])
+  }, [kelas, tanggal, jumlahSiswa, siswaKelas, rosterKelas, dikte.hentikan])
 
   useEffect(() => {
     muatJurnal()
   }, [muatJurnal])
 
-  // Auto-save dengan debounce
   useEffect(() => {
-    if (!kelas || !tanggal || !jadwal || loading) return
+    if (!kelas || !tanggal || !jadwal || loading || rosterKelas !== kelas || skipAutoSave.current) return
 
     const timer = setTimeout(async () => {
+      const jamDirty = Array.from(dirtyJam.current)
+      if (jamDirty.length === 0) return
       setAutoSaving(true)
-      const jamAktif = jadwal.map((item) => item.j).filter((jam): jam is number => typeof jam === 'number')
       const payload: Record<number, JurnalJam> = {}
-      for (const jam of jamAktif) payload[jam] = getEntry(jam)
+      for (const jam of jamDirty) payload[jam] = getEntry(jam)
 
       const { error } = await simpanJurnalHari({
         kelas,
@@ -162,6 +191,9 @@ export function JurnalPembelajaran({
         semester: Number(semester),
         totalSiswa: jumlahKelas,
         entries: payload,
+        guru,
+        roster: siswaKelas,
+        jamDisimpan: jamDirty,
       })
 
       setAutoSaving(false)
@@ -169,15 +201,15 @@ export function JurnalPembelajaran({
         setStatus('Auto-save gagal: ' + error.message)
         setStatusError(true)
       } else {
+        dirtyJam.current.clear()
         setStatus('Auto-save: Data tersimpan otomatis')
         setStatusError(false)
-        // Clear status after 3 seconds
         setTimeout(() => setStatus(''), 3000)
       }
-    }, 2000) // 2 detik debounce
+    }, 2000)
 
     return () => clearTimeout(timer)
-  }, [entries, kelas, tanggal, semester, jadwal, jumlahKelas, loading])
+  }, [entries, kelas, tanggal, semester, jadwal, jumlahKelas, loading, guru, rosterKelas, siswaKelas])
 
   const handleSimpan = async () => {
     if (!kelas || !tanggal || !jadwal) return
@@ -195,6 +227,8 @@ export function JurnalPembelajaran({
       semester: Number(semester),
       totalSiswa: jumlahKelas,
       entries: payload,
+      guru,
+      roster: siswaKelas,
     })
 
     setSaving(false)
@@ -203,20 +237,21 @@ export function JurnalPembelajaran({
       setStatusError(true)
       return
     }
+    dirtyJam.current.clear()
+    skipAutoSave.current = true
     setStatus('Jurnal dan presensi tersimpan ke Supabase.')
     setStatusError(false)
   }
 
   const setAbsenSiswa = (jam: number, siswa: SiswaKelas, keterangan: string | null) => {
     const entry = getEntry(jam)
-    const tanpaSiswa = entry.siswaTidakHadir.filter(
+    const tanpaSiswa = absenKelas(entry.siswaTidakHadir).filter(
       (item) => item.id_siswa !== siswa.id_siswa && item.nama !== siswa.nama_siswa,
     )
     const nextList: SiswaTidakHadir[] = keterangan
       ? [...tanpaSiswa, { nama: siswa.nama_siswa, keterangan, id_siswa: siswa.id_siswa }]
       : tanpaSiswa
-    // Auto-fill ke semua jam jika di jam ke-1
-    updateEntry(jam, { siswaTidakHadir: nextList }, jam === 1)
+    updateEntry(jam, { siswaTidakHadir: nextList, absen: String(nextList.length) }, jam === 1)
   }
 
   const openTtd = (jam: number) => {
@@ -281,8 +316,8 @@ export function JurnalPembelajaran({
     ? selectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '-'
 
-  const absenDilihat = lihatAbsenJam != null ? getEntry(lihatAbsenJam).siswaTidakHadir : []
-  const absenDipilih = pilihAbsenJam != null ? getEntry(pilihAbsenJam).siswaTidakHadir : []
+  const absenDilihat = lihatAbsenJam != null ? absenKelas(getEntry(lihatAbsenJam).siswaTidakHadir) : []
+  const absenDipilih = pilihAbsenJam != null ? absenKelas(getEntry(pilihAbsenJam).siswaTidakHadir) : []
 
   return (
     <div className="space-y-4">
@@ -594,6 +629,9 @@ export function JurnalPembelajaran({
                         <td className="w-28 border border-slate-200 p-1.5 text-center">
                           {entry.ttd && (
                             <img src={entry.ttd} alt="Paraf" className="mx-auto mb-1 max-h-11 max-w-24" />
+                          )}
+                          {(entry.guru || guru) && (
+                            <p className="mb-1 text-[10px] font-semibold leading-tight text-slate-600">{entry.guru || guru}</p>
                           )}
                           <button
                             type="button"

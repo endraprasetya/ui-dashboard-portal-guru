@@ -29,6 +29,7 @@ export type JurnalJam = {
   siswaTidakHadir: SiswaTidakHadir[]
   ttd: string | null
   tugas: string
+  guru?: string
 }
 
 export type JadwalItem = {
@@ -89,7 +90,39 @@ export const TIPE_LINK: [string, string][] = [
 export const KETERANGAN_ABSEN = ['Sakit', 'Izin', 'Alpa'] as const
 
 export const JURNAL_FIELDS =
+  'id,kelas,tanggal,jam,semester,mapel,materi,kegiatan,links,hadir,tidak_hadir,siswa_tidak_hadir,ttd,tugas,guru'
+
+export const JURNAL_FIELDS_TANPA_GURU =
   'id,kelas,tanggal,jam,semester,mapel,materi,kegiatan,links,hadir,tidak_hadir,siswa_tidak_hadir,ttd,tugas'
+
+let kolomGuruTersedia: boolean | null = null
+
+export function kolomGuruTidakAda(error?: { code?: string; message?: string } | null) {
+  const pesan = String(error?.message || '').toLowerCase()
+  return (
+    error?.code === 'PGRST204' ||
+    error?.code === '42703' ||
+    (pesan.includes('guru') && pesan.includes('does not exist'))
+  )
+}
+
+function bidangJurnal(): string {
+  return kolomGuruTersedia === false ? JURNAL_FIELDS_TANPA_GURU : JURNAL_FIELDS
+}
+
+function catatKolomGuru(error?: { code?: string; message?: string } | null, baris?: { guru?: unknown }[] | null) {
+  if (kolomGuruTidakAda(error)) {
+    kolomGuruTersedia = false
+    return
+  }
+  if (baris && baris.some((row) => Object.prototype.hasOwnProperty.call(row, 'guru'))) {
+    kolomGuruTersedia = true
+  }
+}
+
+function tanpaKolomGuru<T extends { guru?: unknown }>(rows: T[]) {
+  return rows.map(({ guru: _guru, ...row }) => row)
+}
 
 export function emptyJurnalJam(hadirDefault = ''): JurnalJam {
   return {
@@ -102,6 +135,7 @@ export function emptyJurnalJam(hadirDefault = ''): JurnalJam {
     siswaTidakHadir: [],
     ttd: null,
     tugas: '',
+    guru: '',
   }
 }
 
@@ -139,12 +173,55 @@ export function teacherNip(currentUser?: any) {
   return String(nip || '').trim()
 }
 
+export function saringAbsenKelas(
+  absen: SiswaTidakHadir[],
+  roster?: { id_siswa?: string; nama_siswa?: string }[] | null,
+): SiswaTidakHadir[] {
+  const bersih = absen.filter((item) => item.nama)
+  if (!roster || roster.length === 0) return bersih
+
+  const ids = new Set(roster.map((siswa) => String(siswa.id_siswa || '').trim()).filter(Boolean))
+  const names = new Set(
+    roster.map((siswa) => String(siswa.nama_siswa || '').trim().toLowerCase()).filter(Boolean),
+  )
+
+  return bersih.filter((item) => {
+    const id = String(item.id_siswa || '').trim()
+    if (id) return ids.has(id)
+    return names.has(item.nama.trim().toLowerCase())
+  })
+}
+
+function punyaDaftarAbsen(value: unknown) {
+  if (Array.isArray(value)) return true
+  return typeof value === 'string' && value.trim() !== ''
+}
+
 export function hitungKehadiran(totalSiswa: number, absen: SiswaTidakHadir[], absenManual?: string) {
   const dariDaftar = absen.length
+  if (dariDaftar > 0) {
+    return { hadir: Math.max(0, totalSiswa - dariDaftar), tidakHadir: dariDaftar }
+  }
+  if (absenManual == null || absenManual === '') {
+    return { hadir: Math.max(0, totalSiswa), tidakHadir: 0 }
+  }
   const manual = Number(absenManual)
-  const tidakHadir = dariDaftar > 0 ? dariDaftar : Number.isFinite(manual) && manual > 0 ? manual : 0
-  const hadir = Math.max(0, totalSiswa - tidakHadir)
-  return { hadir, tidakHadir }
+  const tidakHadir = Number.isFinite(manual) && manual > 0 ? manual : 0
+  return { hadir: Math.max(0, totalSiswa - tidakHadir), tidakHadir }
+}
+
+export function rekapBarisJurnal(
+  row: { hadir?: unknown; tidak_hadir?: unknown; siswa_tidak_hadir?: unknown },
+  totalSiswa = 0,
+  roster?: SiswaKelas[] | null,
+) {
+  const daftar = saringAbsenKelas(normalizeSiswaTidakHadir(row.siswa_tidak_hadir), roster)
+  const { hadir, tidakHadir } = hitungKehadiran(
+    totalSiswa,
+    daftar,
+    punyaDaftarAbsen(row.siswa_tidak_hadir) ? undefined : row.tidak_hadir == null ? '' : String(row.tidak_hadir),
+  )
+  return { daftar, hadir, tidakHadir }
 }
 
 export async function fetchKelasDanJumlahSiswa(currentUser?: any) {
@@ -234,14 +311,27 @@ export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise
 }
 
 export async function fetchJurnalHari(kelas: string, tanggal: string) {
-  const { data, error } = await supabase
+  const pertama =
+    kolomGuruTersedia === false
+      ? await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS_TANPA_GURU).eq('kelas', kelas).eq('tanggal', tanggal)
+      : await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS).eq('kelas', kelas).eq('tanggal', tanggal)
+
+  if (!pertama.error) {
+    catatKolomGuru(null, (pertama.data || []) as { guru?: unknown }[])
+    return { rows: (pertama.data || []) as any[], error: null }
+  }
+
+  if (!kolomGuruTidakAda(pertama.error)) return { rows: [] as any[], error: pertama.error }
+
+  kolomGuruTersedia = false
+  const cadangan = await supabase
     .from('jurnal_pembelajaran')
-    .select(JURNAL_FIELDS)
+    .select(JURNAL_FIELDS_TANPA_GURU)
     .eq('kelas', kelas)
     .eq('tanggal', tanggal)
 
-  if (error) return { rows: [], error }
-  return { rows: data || [], error: null }
+  if (cadangan.error) return { rows: [] as any[], error: cadangan.error }
+  return { rows: (cadangan.data || []) as any[], error: null }
 }
 
 export async function fetchJurnalRentang(opts: {
@@ -255,9 +345,10 @@ export async function fetchJurnalRentang(opts: {
   let from = 0
 
   while (true) {
+    const kolom = bidangJurnal()
     let query = supabase
       .from('jurnal_pembelajaran')
-      .select(JURNAL_FIELDS)
+      .select(kolom as typeof JURNAL_FIELDS)
       .gte('tanggal', opts.start)
       .lte('tanggal', opts.end)
       .order('tanggal', { ascending: true })
@@ -266,8 +357,24 @@ export async function fetchJurnalRentang(opts: {
     if (opts.kelas) query = query.eq('kelas', opts.kelas)
     if (opts.semester) query = query.eq('semester', Number(opts.semester))
 
-    const { data, error } = await query
+    let { data, error } = await query
+    if (error && kolomGuruTidakAda(error)) {
+      kolomGuruTersedia = false
+      let ulang = supabase
+        .from('jurnal_pembelajaran')
+        .select(JURNAL_FIELDS_TANPA_GURU)
+        .gte('tanggal', opts.start)
+        .lte('tanggal', opts.end)
+        .order('tanggal', { ascending: true })
+        .range(from, from + pageSize - 1)
+      if (opts.kelas) ulang = ulang.eq('kelas', opts.kelas)
+      if (opts.semester) ulang = ulang.eq('semester', Number(opts.semester))
+      const cadangan = await ulang
+      data = cadangan.data as typeof data
+      error = cadangan.error
+    }
     if (error) return { rows: all, error }
+    catatKolomGuru(null, (data || []) as { guru?: unknown }[])
 
     const rows = data || []
     all.push(...rows)
@@ -321,27 +428,23 @@ export function normalizeSiswaTidakHadir(value: unknown): SiswaTidakHadir[] {
   return []
 }
 
-export function rowsToEntries(rows: any[], totalSiswa = 0): Record<number, JurnalJam> {
+export function rowsToEntries(rows: any[], totalSiswa = 0, kelasSiswaList?: SiswaKelas[]): Record<number, JurnalJam> {
   const entries: Record<number, JurnalJam> = {}
   for (const row of rows) {
     const jam = Number(row.jam)
     if (!Number.isFinite(jam)) continue
-    const siswaTidakHadir = normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
-    const { hadir, tidakHadir } = hitungKehadiran(
-      totalSiswa,
-      siswaTidakHadir,
-      row.tidak_hadir == null ? '' : String(row.tidak_hadir),
-    )
+    const { daftar, hadir, tidakHadir } = rekapBarisJurnal(row, totalSiswa, kelasSiswaList)
     entries[jam] = {
       mapel: row.mapel || '',
       materi: row.materi || '',
       kegiatan: row.kegiatan || '',
       links: normalizeLinks(row.links),
-      hadir: String(row.hadir ?? hadir),
-      absen: String(row.tidak_hadir ?? tidakHadir),
-      siswaTidakHadir,
+      hadir: String(hadir),
+      absen: String(tidakHadir),
+      siswaTidakHadir: daftar,
       ttd: row.ttd || null,
       tugas: row.tugas || '',
+      guru: row.guru || row.nama_guru || '',
     }
   }
   return entries
@@ -353,30 +456,55 @@ export async function simpanJurnalHari(payload: {
   semester: number
   totalSiswa: number
   entries: Record<number, JurnalJam>
+  guru?: string
+  roster?: SiswaKelas[]
+  jamDisimpan?: number[]
 }) {
-  const rows = Object.entries(payload.entries).map(([jamKey, entry]) => {
-    const { hadir, tidakHadir } = hitungKehadiran(payload.totalSiswa, entry.siswaTidakHadir || [], entry.absen)
-    return {
-      kelas: payload.kelas,
-      tanggal: payload.tanggal,
-      jam: Number(jamKey),
-      semester: payload.semester,
-      mapel: entry.mapel || '',
-      materi: entry.materi || '',
-      kegiatan: entry.kegiatan || '',
-      links: (entry.links || []).filter((link) => link.url),
-      hadir,
-      tidak_hadir: tidakHadir,
-      siswa_tidak_hadir: entry.siswaTidakHadir || [],
-      ttd: entry.ttd || null,
-      tugas: entry.tugas || '',
-    }
-  })
+  const jamKeys = payload.jamDisimpan?.length
+    ? payload.jamDisimpan.map((jam) => String(jam))
+    : Object.keys(payload.entries)
 
-  const { error } = await supabase.from('jurnal_pembelajaran').upsert(rows, {
+  const rows = jamKeys
+    .map((jamKey) => {
+      const entry = payload.entries[Number(jamKey)]
+      if (!entry) return null
+      const siswaTidakHadir = saringAbsenKelas(entry.siswaTidakHadir || [], payload.roster)
+      const { hadir, tidakHadir } = hitungKehadiran(payload.totalSiswa, siswaTidakHadir)
+      return {
+        kelas: payload.kelas,
+        tanggal: payload.tanggal,
+        jam: Number(jamKey),
+        semester: payload.semester,
+        mapel: entry.mapel || '',
+        materi: entry.materi || '',
+        kegiatan: entry.kegiatan || '',
+        links: (entry.links || []).filter((link) => link.url),
+        hadir,
+        tidak_hadir: tidakHadir,
+        siswa_tidak_hadir: siswaTidakHadir,
+        ttd: entry.ttd || null,
+        tugas: entry.tugas || '',
+        guru: entry.guru || payload.guru || '',
+      }
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+  if (rows.length === 0) return { error: null }
+
+  const payloadBaris = kolomGuruTersedia === false ? tanpaKolomGuru(rows) : rows
+  const { error } = await supabase.from('jurnal_pembelajaran').upsert(payloadBaris, {
     onConflict: 'kelas,tanggal,jam',
   })
 
+  if (error && kolomGuruTidakAda(error)) {
+    kolomGuruTersedia = false
+    const ulang = await supabase.from('jurnal_pembelajaran').upsert(tanpaKolomGuru(rows), {
+      onConflict: 'kelas,tanggal,jam',
+    })
+    return { error: ulang.error }
+  }
+
+  if (!error) kolomGuruTersedia = kolomGuruTersedia === false ? false : true
   return { error }
 }
 
