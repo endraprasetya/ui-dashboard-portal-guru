@@ -25,6 +25,30 @@ export type BarisMateriUjian = {
 
 export const CONTOH_KETERANGAN_UJIAN = 'siswa dapat menyetorkan surah dengan lancar dan benar'
 
+export const JUDUL_JADWAL_UJIAN_TAHFIDZ = "Jadwal Ujian Hafalan Qur'an"
+
+export const TEKS_JADWAL_UJIAN_TAHFIDZ_KOSONG =
+  'Tanggal ujian belum diatur. Silakan koordinasi dengan koordinator tahfidz untuk penjadwalan ujian hafalan.'
+
+/** Teks jadwal dari tabel `setting` (nama_variabel mengandung jadwal ujian tahfidz), atau teks default. */
+export async function fetchTeksJadwalUjianTahfidz() {
+  const { data, error } = await supabase.from('setting').select('nama_variabel,nilai,keterangan')
+  if (error || !data?.length) return TEKS_JADWAL_UJIAN_TAHFIDZ_KOSONG
+
+  const baris = data.find((row) => {
+    const k = teks(row.nama_variabel).toLowerCase().replace(/[\s_-]+/g, '')
+    return k.includes('jadwal') && k.includes('ujian') && (k.includes('tahfidz') || k.includes('hafalan'))
+  })
+  if (!baris) return TEKS_JADWAL_UJIAN_TAHFIDZ_KOSONG
+
+  const nilai = teks(baris.nilai)
+  const ket = teks(baris.keterangan)
+  if (nilai && ket) return `${nilai} — ${ket}`
+  if (nilai) return nilai
+  if (ket) return ket
+  return TEKS_JADWAL_UJIAN_TAHFIDZ_KOSONG
+}
+
 function teks(value: unknown) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')

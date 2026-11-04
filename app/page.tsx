@@ -15,10 +15,12 @@ import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
+import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
-import { educationCalendar, recentActivities } from '@/lib/teacher-data'
+import { educationCalendar } from '@/lib/teacher-data'
+import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
   keteranganJadwal,
   muatAgendaGuru,
@@ -56,6 +58,8 @@ export default function Home() {
   })
   const [agendaSiap, setAgendaSiap] = useState(false)
   const [sesiSiap, setSesiSiap] = useState(false)
+  const [aktivitasGuru, setAktivitasGuru] = useState<BarisAktivitasGuru[]>([])
+  const [aktivitasSiap, setAktivitasSiap] = useState(false)
 
   useEffect(() => {
     try {
@@ -106,6 +110,24 @@ export default function Home() {
       batal = true
     }
   }, [currentUser])
+
+  useEffect(() => {
+    if (!currentUser) {
+      setAktivitasGuru([])
+      setAktivitasSiap(false)
+      return
+    }
+    let batal = false
+    setAktivitasSiap(false)
+    muatAktivitasGuruTerbaru(currentUser, 15).then((baris) => {
+      if (batal) return
+      setAktivitasGuru(baris)
+      setAktivitasSiap(true)
+    })
+    return () => {
+      batal = true
+    }
+  }, [currentUser, currentView])
 
   const tugasHariIni = useMemo(() => {
     const daftar = [...agenda.tugas]
@@ -464,35 +486,11 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <h3 className="text-sm font-extrabold text-slate-900">Absensi Cepat Kelas</h3>
-                  <ClipboardCheck className="size-5 text-emerald-600" />
-                </div>
-                <div className="flex items-center gap-5">
-                  <div
-                    className="relative flex size-24 shrink-0 items-center justify-center rounded-full"
-                    style={{ background: 'conic-gradient(#059669 0 86%, #f59e0b 86% 91%, #e2e8f0 91% 100%)' }}
-                  >
-                    <div className="flex size-16 flex-col items-center justify-center rounded-full bg-white">
-                      <strong className="text-lg text-slate-900">28</strong>
-                      <span className="text-[10px] text-slate-500">dari 30</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    <p><span className="mr-2 inline-block size-2 rounded-full bg-emerald-500" />Hadir <strong>28</strong></p>
-                    <p><span className="mr-2 inline-block size-2 rounded-full bg-amber-400" />Izin <strong>1</strong></p>
-                    <p><span className="mr-2 inline-block size-2 rounded-full bg-slate-300" />Sakit <strong>1</strong></p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('absensi')}
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Buka Absensi Santri
-                </button>
-              </div>
+              <AbsensiCepatKelas
+                currentUser={currentUser}
+                penyegar={currentView === 'dashboard' ? 'dashboard' : currentView}
+                onBukaAbsensi={() => setCurrentView('absensi')}
+              />
             </div>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -537,18 +535,32 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {recentActivities.map((item) => (
-                      <tr key={`${item.student}-${item.time}`} className="hover:bg-emerald-50/40">
-                        <td className="px-5 py-4 font-semibold text-slate-800">{item.student}</td>
-                        <td className="px-5 py-4 text-slate-600">{item.activity}</td>
-                        <td className="px-5 py-4">
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                            {item.type}
-                          </span>
+                    {!aktivitasSiap ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-8 text-center text-sm text-slate-500">
+                          Memuat riwayat aktivitas Anda…
                         </td>
-                        <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">{item.time}</td>
                       </tr>
-                    ))}
+                    ) : aktivitasGuru.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-8 text-center text-sm text-slate-500">
+                          Belum ada input tercatat untuk akun Anda.
+                        </td>
+                      </tr>
+                    ) : (
+                      aktivitasGuru.map((item) => (
+                        <tr key={item.id} className="hover:bg-emerald-50/40">
+                          <td className="px-5 py-4 font-semibold text-slate-800">{item.student}</td>
+                          <td className="px-5 py-4 text-slate-600">{item.activity}</td>
+                          <td className="px-5 py-4">
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                              {item.type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">{item.time}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

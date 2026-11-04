@@ -65,6 +65,17 @@ function mapSiswaRow(row: any): Student {
   };
 }
 
+function formatTanggalInputPoin(ts: number) {
+  if (!Number.isFinite(ts) || ts <= 0) return "—";
+  return new Date(ts).toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function mapLogRow(row: any): Log {
   const created = row.created_at ? Date.parse(row.created_at) : NaN;
   return {
@@ -845,62 +856,18 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
 
             {modalType === "give" && (
               <div>
-                <p className="text-xs text-emerald-700 font-semibold mb-3">Pencatat poin saat ini: {currentTeacherName}</p>
-                <KeteranganTertibForm
-                  pilihan={pilihanKeterangan}
-                  lainnya={lainnyaKeterangan}
-                  onPilihanChange={(next) => {
-                    setPilihanKeterangan(next);
-                    setKeteranganFormError(null);
-                    setPeringatanKeterangan(null);
-                  }}
-                  onLainnyaChange={(next) => {
-                    setLainnyaKeterangan(next);
-                    setKeteranganFormError(null);
-                    setPeringatanKeterangan(null);
-                  }}
-                  error={keteranganFormError}
-                  sorotError={Boolean(keteranganFormError)}
-                  idPrefix="give-ktr"
-                />
-                <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                  {allRules.pos.map((r) => (
-                    <button
-                      key={r.id}
-                      disabled={busy}
-                      onClick={() => handleApplyRule(r, activeStudent.id)}
-                      className="flex justify-between items-center p-2.5 border border-emerald-300 hover:bg-emerald-50 rounded-lg text-emerald-800 text-xs font-semibold text-left transition disabled:opacity-50"
-                    >
-                      <span>{r.label}</span>
-                      <span className="font-bold">+{r.pts}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <h4 className="font-bold text-red-700 text-sm mb-2">Pelanggaran</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-[28rem] overflow-y-auto pr-1">
-                  {allRules.neg.map((r) => (
-                    <button
-                      key={r.id}
-                      disabled={busy}
-                      onClick={() => handleApplyRule(r, activeStudent.id)}
-                      className="flex justify-between items-center p-2.5 border border-red-300 hover:bg-red-50 rounded-lg text-red-800 text-xs font-semibold text-left transition disabled:opacity-50"
-                    >
-                      <span>{r.label}</span>
-                      <span className="font-bold">−{r.pts}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <h4 className="font-bold text-slate-800 text-sm mb-2">Riwayat Bulan {formatMonthName(bulan)}</h4>
-                <div className="space-y-2 mb-6">
-                  {logs
-                    .filter((l) => String(l.sid) === String(activeStudent.id) && l.month === bulan)
-                    .map((l) => (
-                      <div key={String(l.id)} className="rounded-lg bg-slate-50 p-2 text-xs">
+                <h4 className="font-bold text-slate-800 text-sm mb-2">
+                  Riwayat Poin <span className="font-normal text-slate-500">· {formatMonthName(bulan)}</span>
+                </h4>
+                <div className="space-y-2 mb-5 max-h-48 overflow-y-auto pr-1 rounded-xl border border-slate-100 bg-slate-50/50 p-2">
+                  {studentLogs.length === 0 ? (
+                    <p className="py-3 text-center text-xs text-slate-400">Belum ada riwayat poin pada bulan ini.</p>
+                  ) : (
+                    studentLogs.map((l) => (
+                      <div key={String(l.id)} className="rounded-lg bg-white p-2 text-xs border border-slate-100">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
+                            <p className="text-[10px] font-semibold text-slate-500">Tanggal input: {formatTanggalInputPoin(l.ts)}</p>
                             <span className="font-medium">{l.label}</span> <span className="text-slate-400">({l.guru})</span>
                             {l.keterangan && editId !== String(l.id) && (
                               <p className="mt-1 text-slate-600">{l.keterangan}</p>
@@ -981,7 +948,56 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                           </div>
                         )}
                       </div>
-                    ))}
+                    ))
+                  )}
+                </div>
+
+                <p className="text-xs text-emerald-700 font-semibold mb-3">Pencatat poin saat ini: {currentTeacherName}</p>
+                <KeteranganTertibForm
+                  pilihan={pilihanKeterangan}
+                  lainnya={lainnyaKeterangan}
+                  onPilihanChange={(next) => {
+                    setPilihanKeterangan(next);
+                    setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
+                  }}
+                  onLainnyaChange={(next) => {
+                    setLainnyaKeterangan(next);
+                    setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
+                  }}
+                  error={keteranganFormError}
+                  sorotError={Boolean(keteranganFormError)}
+                  idPrefix="give-ktr"
+                />
+                <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                  {allRules.pos.map((r) => (
+                    <button
+                      key={r.id}
+                      disabled={busy}
+                      onClick={() => handleApplyRule(r, activeStudent.id)}
+                      className="flex justify-between items-center p-2.5 border border-emerald-300 hover:bg-emerald-50 rounded-lg text-emerald-800 text-xs font-semibold text-left transition disabled:opacity-50"
+                    >
+                      <span>{r.label}</span>
+                      <span className="font-bold">+{r.pts}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <h4 className="font-bold text-red-700 text-sm mb-2">Pelanggaran</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-[28rem] overflow-y-auto pr-1">
+                  {allRules.neg.map((r) => (
+                    <button
+                      key={r.id}
+                      disabled={busy}
+                      onClick={() => handleApplyRule(r, activeStudent.id)}
+                      className="flex justify-between items-center p-2.5 border border-red-300 hover:bg-red-50 rounded-lg text-red-800 text-xs font-semibold text-left transition disabled:opacity-50"
+                    >
+                      <span>{r.label}</span>
+                      <span className="font-bold">−{r.pts}</span>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="flex justify-end pt-3 border-t border-slate-100">

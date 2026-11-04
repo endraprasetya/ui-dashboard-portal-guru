@@ -11,8 +11,10 @@ import {
   ASESMEN_TAHFIDZ,
   CONTOH_KETERANGAN_UJIAN,
   fetchMateriUjianTahfidz,
+  fetchTeksJadwalUjianTahfidz,
   formatLabelMateri,
   gabungMateriSiswa,
+  JUDUL_JADWAL_UJIAN_TAHFIDZ,
   simpanMateriUjianTahfidz,
   validasiMateriUjian,
   type AsesmenTahfidz,
@@ -41,6 +43,7 @@ export function InputRaporTahfidz({
   const [status, setStatus] = useState('')
   const [galat, setGalat] = useState(false)
   const [nilaiTarget, setNilaiTarget] = useState<TargetNilaiUjian | null>(null)
+  const [teksJadwalUjian, setTeksJadwalUjian] = useState('')
   const panelRef = useRef<HTMLDivElement>(null)
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
@@ -57,6 +60,16 @@ export function InputRaporTahfidz({
       batal = true
     }
   }, [currentUser])
+
+  useEffect(() => {
+    let batal = false
+    fetchTeksJadwalUjianTahfidz().then((teks) => {
+      if (!batal) setTeksJadwalUjian(teks)
+    })
+    return () => {
+      batal = true
+    }
+  }, [])
 
   useEffect(() => {
     if (siswa.length === 0) {
@@ -351,6 +364,10 @@ export function InputRaporTahfidz({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
+        <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-sky-900">{JUDUL_JADWAL_UJIAN_TAHFIDZ}</p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-700">{teksJadwalUjian || 'Memuat informasi jadwal…'}</p>
+        </div>
         {rekap.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">Belum ada materi ujian untuk siswa binaan ini.</p>
         ) : (
@@ -359,10 +376,10 @@ export function InputRaporTahfidz({
               <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Siswa</th>
-                  <th className="px-3 py-2">Kelas</th>
                   <th className="px-3 py-2">Asesmen</th>
                   <th className="px-3 py-2">Materi ujian</th>
                   <th className="px-3 py-2">Keterangan</th>
+                  <th className="px-3 py-2">Guru</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -370,10 +387,10 @@ export function InputRaporTahfidz({
                 {rekap.map((row) => (
                   <tr key={`${row.idSiswa}-${row.asesmen}`} className="border-t border-slate-100">
                     <td className="px-3 py-2 font-semibold text-slate-800">{row.nama}</td>
-                    <td className="px-3 py-2">{row.kelas}</td>
                     <td className="px-3 py-2">{row.asesmen}</td>
                     <td className="px-3 py-2">{row.materi}</td>
                     <td className="px-3 py-2 text-slate-600">{row.keterangan || '-'}</td>
+                    <td className="px-3 py-2 text-slate-700">{row.guru || '-'}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex flex-wrap justify-end gap-1">
                         <button
