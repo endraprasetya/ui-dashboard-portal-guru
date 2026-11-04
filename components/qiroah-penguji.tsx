@@ -17,6 +17,7 @@ import {
   statusDenganWaktu,
   sudahTerjadwal,
   teacherDisplayName,
+  hitungNilaiAkhirUjianQiroah,
   waktuDariStatus,
 } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, selaraskanStatusPengajuan, ujianSudahSelesai, unikPerJilid } from '@/lib/ujian-relasi'
@@ -52,6 +53,7 @@ type RekapanUjian = {
   tajwid?: number
   adab?: number
   kelebihan_siswa?: string
+  keterangan?: string
   predikat?: string
   keputusan?: string
   nilai_akhir?: number
@@ -184,7 +186,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     const { data: rekapData, error: rekapError } = await supabase
       .from('rekapan')
       .select(
-        'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,kelebihan_siswa,predikat,keputusan,nilai_akhir',
+        'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,keterangan,kelebihan_siswa,predikat,keputusan,nilai_akhir',
       )
     const daftarRekap = rekapError ? [] : ((rekapData || []) as RekapanUjian[])
 
@@ -280,11 +282,19 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     return Array.from(new Set(semua))
   }, [jilidAsal, jilidTujuan])
 
-  const aspekCount = isJilid12 ? 4 : 5
   const nilaiAspek = isJilid12 ? [kelancaran, makhraj, harakat, adab] : [kelancaran, makhraj, harakat, tajwid, adab]
   const nilaiLengkap = nilaiAspek.every((nilai) => nilai !== '' && Number.isFinite(Number(nilai)))
   const totalNilai = nilaiLengkap
-    ? Math.round(nilaiAspek.reduce((jumlah: number, nilai) => jumlah + Number(nilai), 0) / aspekCount)
+    ? hitungNilaiAkhirUjianQiroah(
+        {
+          kelancaran: Number(kelancaran),
+          makhraj: Number(makhraj),
+          harakat: Number(harakat),
+          tajwid: isJilid12 ? null : Number(tajwid),
+          adab: Number(adab),
+        },
+        { tanpaTajwid: isJilid12 },
+      )
     : null
 
   const ringkasan = totalNilai == null ? null : predikatDariNilai(totalNilai)
@@ -329,7 +339,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
       nilaiAkhir: Number(rekap.nilai_akhir || 0),
       predikat: rekap.predikat || '-',
       keputusan: rekap.keputusan || '-',
-      catatan: rekap.kelebihan_siswa && rekap.kelebihan_siswa !== '-' ? rekap.kelebihan_siswa : '',
+      catatan:
+        (rekap.keterangan && rekap.keterangan !== '-' ? rekap.keterangan : '') ||
+        (rekap.kelebihan_siswa && rekap.kelebihan_siswa !== '-' ? rekap.kelebihan_siswa : ''),
     }
   }
 
@@ -390,30 +402,36 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
       .eq('id_siswa', selected.id_siswa)
 
     const idUjian = generateUjianId()
-    const { error: errorRekapan } = await supabase.from('rekapan').insert([
-      {
-        id_ujian: idUjian,
-        tanggal_ujian: tanggalUjian,
-        id_siswa: selected.id_siswa,
-        nama: selected.nama_siswa,
-        kelas: selected.kelas || '-',
-        guru_pengampu: selected.diajukan_oleh || '-',
-        jilid_asal: jilidAsal,
-        jilid_tujuan: jilidTujuan,
-        ujian_ke: (count || 0) + 1,
-        penguji: teacherDisplayName(currentUser),
-        kelancaran: Number(kelancaran),
-        makhraj: Number(makhraj),
-        harakat: Number(harakat),
-        tajwid: isJilid12 ? 0 : Number(tajwid),
-        adab: Number(adab),
-        kelebihan_siswa: catatan || '-',
-        rekomendasi_tindak_lanjut: '-',
-        predikat: ringkasan.predikat,
-        keputusan: ringkasan.keputusan,
-        nilai_akhir: totalNilai,
-      },
-    ])
+    const teksCatatan = catatan.trim() || '-'
+    const barisRekapan = {
+      id_ujian: idUjian,
+      tanggal_ujian: tanggalUjian,
+      id_siswa: selected.id_siswa,
+      nama: selected.nama_siswa,
+      kelas: selected.kelas || '-',
+      guru_pengampu: selected.diajukan_oleh || '-',
+      jilid_asal: jilidAsal,
+      jilid_tujuan: jilidTujuan,
+      ujian_ke: (count || 0) + 1,
+      penguji: teacherDisplayName(currentUser),
+      kelancaran: Number(kelancaran),
+      makhraj: Number(makhraj),
+      harakat: Number(harakat),
+      tajwid: isJilid12 ? 0 : Number(tajwid),
+      adab: Number(adab),
+      keterangan: teksCatatan,
+      kelebihan_siswa: teksCatatan,
+      rekomendasi_tindak_lanjut: '-',
+      predikat: ringkasan.predikat,
+      keputusan: ringkasan.keputusan,
+      nilai_akhir: totalNilai,
+    }
+
+    let errorRekapan = (await supabase.from('rekapan').insert([barisRekapan])).error
+    if (errorRekapan && /keterangan/i.test(errorRekapan.message)) {
+      const { keterangan: _abaikan, ...tanpaKeterangan } = barisRekapan
+      errorRekapan = (await supabase.from('rekapan').insert([tanpaKeterangan])).error
+    }
 
     if (errorRekapan) {
       setSaving(false)
@@ -543,7 +561,23 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
               ))}
             </div>
 
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-700">Catatan Penguji</label>
+              <textarea
+                value={catatan}
+                onChange={(e) => setCatatan(e.target.value)}
+                disabled={nilaiTersimpan}
+                rows={3}
+                placeholder="Catatan penguji (disimpan ke kolom keterangan)"
+                className="w-full rounded-xl border border-slate-300 p-2 text-sm disabled:bg-slate-100"
+              />
+            </div>
+
             <div className="rounded-xl border bg-slate-50 p-3 text-center">
+              <p className="text-[11px] text-slate-500">
+                Bobot: Kelancaran 30%, Makhraj 25%, Harakat 15%
+                {!isJilid12 ? ', Tajwid 20%' : ''}, Adab 10%
+              </p>
               <p className="text-xs font-bold">
                 Jumlah Nilai Akhir: <span className="text-lg text-sky-700">{totalNilai == null ? '—' : totalNilai}</span>
               </p>

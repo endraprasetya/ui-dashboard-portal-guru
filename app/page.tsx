@@ -14,6 +14,7 @@ import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
+import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
 import { hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
@@ -634,17 +635,17 @@ export default function Home() {
           <TahfidzRekap onBack={() => setCurrentView('tahfidz_menu')} currentUser={currentUser} />
         )}
 
-        {(currentView === 'tahfidz_cetak' || currentView === 'tahfidz_rapor') && (
+        {currentView === 'tahfidz_cetak' && (
           <PlaceholderModule
-            title={currentView === 'tahfidz_cetak' ? 'Cetak Kartu Hafalan' : 'Input Rapor Tahfidz'}
-            description={
-              currentView === 'tahfidz_cetak'
-                ? 'Fitur cetak kartu hafalan akan dihubungkan pada tahap berikutnya.'
-                : 'Fitur input rapor berkala HQ akan dihubungkan pada tahap berikutnya.'
-            }
+            title="Cetak Kartu Hafalan"
+            description="Fitur cetak kartu hafalan akan dihubungkan pada tahap berikutnya."
             onBack={() => setCurrentView('tahfidz_menu')}
             backLabel="Kembali ke Menu Tahfidz"
           />
+        )}
+
+        {currentView === 'tahfidz_rapor' && (
+          <InputRaporTahfidz currentUser={currentUser} onBack={() => setCurrentView('tahfidz_menu')} />
         )}
 
         {currentView === 'jurnal' && (

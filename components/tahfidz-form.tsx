@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSiswa } from '@/lib/siswa'
 import { fetchAllSurah, peringatanAyatMelebihi, validasiAyatSurat, type Surah } from '@/lib/surah'
@@ -152,6 +152,33 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   const [tugasMAyatMulaiE, setTugasMAyatMulaiE] = useState('')
   const [tugasMAyatSelesaiE, setTugasMAyatSelesaiE] = useState('')
   const [tugasMPesan, setTugasMPesan] = useState('')
+
+  const galatAyat = useMemo(
+    () => validasiFormTahfidz(),
+    [
+      surahs,
+      hSurah,
+      hMulai,
+      hSelesai,
+      mSurahMulai,
+      mSurahSelesai,
+      mMulaiA,
+      mSelesaiA,
+      mMulaiE,
+      mSelesaiE,
+      tugasH,
+      tugasM,
+      tugasZSurah,
+      tugasZAyatMulai,
+      tugasZAyatSelesai,
+      tugasMSurah,
+      tugasMSurahSelesai,
+      tugasMAyatMulai,
+      tugasMAyatSelesai,
+      tugasMAyatMulaiE,
+      tugasMAyatSelesaiE,
+    ],
+  )
 
   // Tutup dropdown pencarian siswa saat klik di luar
   useEffect(() => {
@@ -807,11 +834,18 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
           </div>
         </div>
 
+        {galatAyat && (
+          <p role="alert" className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">
+            {galatAyat} Perbaiki nomor ayat agar tombol simpan aktif.
+          </p>
+        )}
+
         {/* Tombol Simpan / Update */}
         <button
           type="submit"
-          disabled={loading}
-          className={`w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-base font-bold text-white shadow-lg transition disabled:opacity-50 ${
+          disabled={loading || Boolean(galatAyat)}
+          title={galatAyat ? galatAyat : undefined}
+          className={`w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-base font-bold text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50 ${
             editIdSetoran ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
           }`}
         >

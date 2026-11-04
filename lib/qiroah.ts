@@ -262,3 +262,51 @@ export function barisUntukPenguji(
   }
   return admin
 }
+
+/** Bobot penilaian ujian kenaikan jilid (input aspek 0–100). */
+export const BOBOT_UJIAN_QIROAH = {
+  kelancaran: 0.3,
+  makhraj: 0.25,
+  harakat: 0.15,
+  tajwid: 0.2,
+  adab: 0.1,
+} as const
+
+/** Jilid 1–2 tanpa aspek tajwid: bobot tajwid diabaikan, skor dinormalisasi ke skala 0–100. */
+export function hitungNilaiAkhirUjianQiroah(
+  nilai: {
+    kelancaran: number
+    makhraj: number
+    harakat: number
+    tajwid?: number | null
+    adab: number
+  },
+  opsi?: { tanpaTajwid?: boolean },
+): number | null {
+  const k = Number(nilai.kelancaran)
+  const m = Number(nilai.makhraj)
+  const h = Number(nilai.harakat)
+  const a = Number(nilai.adab)
+  if (![k, m, h, a].every((n) => Number.isFinite(n))) return null
+
+  const tanpaTajwid = opsi?.tanpaTajwid ?? nilai.tajwid == null
+  if (tanpaTajwid) {
+    const bobot = BOBOT_UJIAN_QIROAH.kelancaran + BOBOT_UJIAN_QIROAH.makhraj + BOBOT_UJIAN_QIROAH.harakat + BOBOT_UJIAN_QIROAH.adab
+    const jumlah =
+      k * BOBOT_UJIAN_QIROAH.kelancaran +
+      m * BOBOT_UJIAN_QIROAH.makhraj +
+      h * BOBOT_UJIAN_QIROAH.harakat +
+      a * BOBOT_UJIAN_QIROAH.adab
+    return Math.round(jumlah / bobot)
+  }
+
+  const t = Number(nilai.tajwid)
+  if (!Number.isFinite(t)) return null
+  const jumlah =
+    k * BOBOT_UJIAN_QIROAH.kelancaran +
+    m * BOBOT_UJIAN_QIROAH.makhraj +
+    h * BOBOT_UJIAN_QIROAH.harakat +
+    t * BOBOT_UJIAN_QIROAH.tajwid +
+    a * BOBOT_UJIAN_QIROAH.adab
+  return Math.round(jumlah)
+}
