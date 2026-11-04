@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { Printer, X } from 'lucide-react'
+import { fetchPejabatUntukCetak, type PejabatCetakTerselesaikan } from '@/lib/setting-cetak'
 
 export type HasilUjianCetak = {
   nomor: string
   nama: string
   kelas: string
   unit: string
+  idSiswa?: string
   tanggal: string
   penguji: string
   guruPengampu: string
@@ -23,17 +25,6 @@ export type HasilUjianCetak = {
   keputusan: string
   catatan: string
 }
-
-type TandaTangan = {
-  tempat: string
-  kepsekNama: string
-  kepsekNip: string
-  koordinatorNama: string
-  koordinatorNip: string
-}
-
-const TTD_KEY = 'portal-guru-ttd-ujian'
-const TTD_ABSENSI_KEY = 'portal-guru-ttd-absensi'
 
 function garis(value: string, panjang = 24) {
   const teks = value.trim()
@@ -68,45 +59,55 @@ export function CetakUjianQiroah({
   onClose: () => void
   kepsekTetap?: { nama: string; niy: string }
 }) {
-  const [ttd, setTtd] = useState<TandaTangan>({
-    tempat: '',
-    kepsekNama: '',
-    kepsekNip: '',
-    koordinatorNama: '',
-    koordinatorNip: '',
-  })
-  const [siap, setSiap] = useState(false)
+  const [pejabat, setPejabat] = useState<PejabatCetakTerselesaikan | null>(null)
+  const [memuat, setMemuat] = useState(true)
   const skl = jenis === 'skl'
   const nomor = `${skl ? 'SKL' : 'LN'}/QQ/${tahunDokumen(data.tanggal)}/${data.nomor || '-'}`
-  const tempatTanggal = `${ttd.tempat.trim() ? `${ttd.tempat.trim()}, ` : ''}${tanggalPanjang(data.tanggal)}`
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(TTD_KEY)
-      const absensi = localStorage.getItem(TTD_ABSENSI_KEY)
-      const saved = raw ? JSON.parse(raw) : {}
-      const kepsekLama = absensi ? JSON.parse(absensi) : {}
-      setTtd({
-        tempat: typeof saved.tempat === 'string' ? saved.tempat : typeof kepsekLama.tempat === 'string' ? kepsekLama.tempat : '',
-        kepsekNama: kepsekTetap?.nama || (typeof saved.kepsekNama === 'string' ? saved.kepsekNama : typeof kepsekLama.kepsekNama === 'string' ? kepsekLama.kepsekNama : ''),
-        kepsekNip: kepsekTetap?.niy || (typeof saved.kepsekNip === 'string' ? saved.kepsekNip : typeof kepsekLama.kepsekNip === 'string' ? kepsekLama.kepsekNip : ''),
-        koordinatorNama: typeof saved.koordinatorNama === 'string' ? saved.koordinatorNama : '',
-        koordinatorNip: typeof saved.koordinatorNip === 'string' ? saved.koordinatorNip : '',
+    let batal = false
+
+    async function muat() {
+      setMemuat(true)
+      const hasil = await fetchPejabatUntukCetak({
+        unit: data.unit,
+        kelas: data.kelas,
+        penguji: data.penguji,
+        guruPengampu: data.guruPengampu,
+        idSiswa: data.idSiswa,
+        namaSiswa: data.nama,
       })
-    } catch {
-      /* data tanda tangan yang rusak diabaikan */
+
+      if (batal) return
+
+      if (!hasil.kepsek.nama && kepsekTetap && hasil.unit.toLowerCase() === 'nogosari') {
+        hasil.kepsek = { nama: kepsekTetap.nama, niy: kepsekTetap.niy }
+      }
+
+      setPejabat(hasil)
+      setMemuat(false)
     }
-    setSiap(true)
-  }, [kepsekTetap?.nama, kepsekTetap?.niy])
 
-  useEffect(() => {
-    if (!siap) return
-    localStorage.setItem(TTD_KEY, JSON.stringify(ttd))
-  }, [siap, ttd])
+    muat()
+    return () => {
+      batal = true
+    }
+  }, [
+    data.unit,
+    data.kelas,
+    data.nama,
+    data.idSiswa,
+    data.penguji,
+    data.guruPengampu,
+    kepsekTetap?.nama,
+    kepsekTetap?.niy,
+  ])
 
-  const setField = (key: keyof TandaTangan, value: string) => {
-    setTtd((prev) => ({ ...prev, [key]: value }))
-  }
+  const lokasi = pejabat?.lokasi || data.unit || 'Nogosari'
+  const tempatTanggal = `${lokasi}, ${tanggalPanjang(data.tanggal)}`
+  const kepsek = pejabat?.kepsek || { nama: '', niy: '' }
+  const koordinator = pejabat?.koordinator || { nama: '', niy: '' }
+  const pengujiNiy = pejabat?.pengujiNiy || ''
 
   const aspek = [
     ['Kelancaran Membaca', String(data.kelancaran)],
@@ -117,13 +118,17 @@ export function CetakUjianQiroah({
   ]
 
   return (
-    <div className="overlay-cetak fixed inset-0 z-[80] overflow-auto bg-slate-900/60 p-4">
+    <div className="overlay-cetak fixed inset-0 z-[80] overflow-auto bg-slate-200/90 p-4 print:bg-white print:p-0">
       <style>{`
         @page { size: 210mm 330mm; margin: 12mm 15mm; }
         .lembar-cetak { font-family: "Times New Roman", Times, serif; color: #111; }
         .lembar-cetak table { width: 100%; border-collapse: collapse; }
         .lembar-cetak .nilai td, .lembar-cetak .nilai th { border: 1px solid #111; padding: 4px 8px; }
-        .ttd-ujian td { border: none !important; width: 33.33%; text-align: center; vertical-align: top; }
+        .ttd-ujian td { border: none !important; width: 33.33%; text-align: center; vertical-align: top; padding: 0 6px; }
+        .ttd-ujian .ruang-ttd { height: 28mm; }
+        .ttd-ujian .nama-pejabat { display: inline-block; min-width: 9em; font-weight: bold; text-decoration: underline; }
+        .ttd-ujian .niy-pejabat { display: block; margin-top: 2px; white-space: nowrap; }
+        .ttd-ujian .tempat-tanggal { text-align: center; font-size: 11pt; padding-bottom: 8px; }
         @media print {
           body * { visibility: hidden; }
           .lembar-cetak, .lembar-cetak * { visibility: visible; }
@@ -133,46 +138,32 @@ export function CetakUjianQiroah({
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 max-w-[210mm] rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-bold">Pratinjau cetak · kertas F4</p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900">
-              <Printer className="size-3.5" /> Cetak F4
-            </button>
-            <button type="button" onClick={onClose} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white">
-              <X className="size-3.5" /> Tutup
-            </button>
-          </div>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-[11px] font-bold">
-            Tempat
-            <input value={ttd.tempat} onChange={(event) => setField('tempat', event.target.value)} placeholder="Kota" className="mt-1 block w-full rounded-lg border border-white/20 bg-white px-2 py-1.5 text-sm text-slate-900" />
-          </label>
-          <label className="text-[11px] font-bold">
-            Koordinator QQ
-            <input value={ttd.koordinatorNama} onChange={(event) => setField('koordinatorNama', event.target.value)} className="mt-1 block w-full rounded-lg border border-white/20 bg-white px-2 py-1.5 text-sm text-slate-900" />
-          </label>
-          <label className="text-[11px] font-bold">
-            NIP koordinator
-            <input value={ttd.koordinatorNip} onChange={(event) => setField('koordinatorNip', event.target.value)} className="mt-1 block w-full rounded-lg border border-white/20 bg-white px-2 py-1.5 text-sm text-slate-900" />
-          </label>
-          <label className="text-[11px] font-bold">
-            Kepala sekolah
-            <input value={ttd.kepsekNama} readOnly={Boolean(kepsekTetap)} onChange={(event) => setField('kepsekNama', event.target.value)} className="mt-1 block w-full rounded-lg border border-white/20 bg-white px-2 py-1.5 text-sm text-slate-900 read-only:bg-slate-100" />
-          </label>
-          <label className="text-[11px] font-bold">
-            {kepsekTetap ? 'NIY kepala sekolah' : 'NIP kepala sekolah'}
-            <input value={ttd.kepsekNip} readOnly={Boolean(kepsekTetap)} onChange={(event) => setField('kepsekNip', event.target.value)} className="mt-1 block w-full rounded-lg border border-white/20 bg-white px-2 py-1.5 text-sm text-slate-900 read-only:bg-slate-100" />
-          </label>
-        </div>
+      <div className="no-print fixed right-4 top-4 z-[90] flex gap-2">
+        <button
+          type="button"
+          onClick={() => window.print()}
+          disabled={memuat}
+          className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 shadow-md ring-1 ring-slate-200 disabled:opacity-50"
+        >
+          <Printer className="size-3.5" /> Cetak F4
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white shadow-md"
+        >
+          <X className="size-3.5" /> Tutup
+        </button>
       </div>
 
-      <article className="lembar-cetak mx-auto min-h-[330mm] max-w-[210mm] bg-white px-8 py-7 text-[12pt] leading-relaxed shadow-xl">
+      <article className="lembar-cetak relative mx-auto min-h-[330mm] max-w-[210mm] bg-white px-8 py-7 text-[12pt] leading-relaxed shadow-xl print:shadow-none">
+        {memuat && (
+          <p className="no-print absolute inset-x-0 top-2 text-center text-[10pt] text-slate-500">Memuat data pejabat…</p>
+        )}
+
         <header className="border-b-4 border-double border-black pb-2 text-center">
           <p className="text-[11pt] font-bold tracking-wide">SD ISLAM TERPADU AL MADINAH</p>
-          <p className="text-[10pt]">{data.unit ? `Unit ${data.unit}` : 'Qiroatul Qur’an'}</p>
+          <p className="text-[10pt]">{pejabat?.unit || data.unit ? `Unit ${pejabat?.unit || data.unit}` : 'Qiroatul Qur’an'}</p>
           <p className="text-[10pt]">Program Qiroatul Qur’an (At-Tartil)</p>
         </header>
 
@@ -199,7 +190,7 @@ export function CetakUjianQiroah({
                 </tr>
                 <tr>
                   <td className="py-0.5">Unit</td>
-                  <td>: {data.unit || '-'}</td>
+                  <td>: {pejabat?.unit || data.unit || '-'}</td>
                 </tr>
                 <tr>
                   <td className="py-0.5">Jilid asal</td>
@@ -230,7 +221,9 @@ export function CetakUjianQiroah({
                 </tr>
                 <tr>
                   <td className="py-0.5">Kelas / Unit</td>
-                  <td>: {data.kelas || '-'} / {data.unit || '-'}</td>
+                  <td>
+                    : {data.kelas || '-'} / {pejabat?.unit || data.unit || '-'}
+                  </td>
                 </tr>
                 <tr>
                   <td className="py-0.5">Guru pengampu</td>
@@ -300,34 +293,32 @@ export function CetakUjianQiroah({
         <table className="ttd-ujian mt-8 text-[11pt]">
           <tbody>
             <tr>
+              <td />
+              <td />
+              <td className="tempat-tanggal">{tempatTanggal}</td>
+            </tr>
+            <tr>
               <td>Penguji</td>
               <td>Koordinator QQ</td>
-              <td>
-                {tempatTanggal}
-                <br />
-                Kepala Sekolah
-              </td>
+              <td>Kepala Sekolah</td>
             </tr>
             <tr>
-              <td style={{ height: '28mm' }} />
-              <td />
-              <td />
+              <td className="ruang-ttd" />
+              <td className="ruang-ttd" />
+              <td className="ruang-ttd" />
             </tr>
             <tr>
               <td>
-                <span className="font-bold underline">{garis(data.penguji, 18)}</span>
-                <br />
-                <span className="whitespace-nowrap">NIP. {garis('', 14)}</span>
+                <span className="nama-pejabat">{garis(data.penguji, 18)}</span>
+                <span className="niy-pejabat">NIY. {garis(pengujiNiy, 14)}</span>
               </td>
               <td>
-                <span className="font-bold underline">{garis(ttd.koordinatorNama, 18)}</span>
-                <br />
-                <span className="whitespace-nowrap">NIP. {garis(ttd.koordinatorNip, 14)}</span>
+                <span className="nama-pejabat">{garis(koordinator.nama, 18)}</span>
+                <span className="niy-pejabat">NIY. {garis(koordinator.niy, 14)}</span>
               </td>
               <td>
-                <span className="font-bold underline">{garis(ttd.kepsekNama, 18)}</span>
-                <br />
-                <span className="whitespace-nowrap">{kepsekTetap ? 'NIY' : 'NIP'}. {garis(ttd.kepsekNip, 14)}</span>
+                <span className="nama-pejabat">{garis(kepsek.nama, 18)}</span>
+                <span className="niy-pejabat">NIY. {garis(kepsek.niy, 14)}</span>
               </td>
             </tr>
           </tbody>

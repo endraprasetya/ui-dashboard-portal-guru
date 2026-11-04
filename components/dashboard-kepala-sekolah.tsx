@@ -42,6 +42,7 @@ function keHasil(row: RekapLulus): HasilUjianCetak {
     nama: row.nama,
     kelas: row.kelas,
     unit: row.unit,
+    idSiswa: row.id_siswa,
     tanggal: row.tanggal_ujian,
     penguji: row.penguji,
     guruPengampu: row.guru_pengampu,
