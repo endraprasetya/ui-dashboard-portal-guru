@@ -11,6 +11,7 @@ import {
   TABEL_IZIN,
   TABEL_USERS,
 } from "./constants";
+import { uploadFotoPresensi } from "./storage";
 import type {
   Absensi,
   BarisMonitor,
@@ -26,17 +27,6 @@ import { cekRadius, dalamJendela, eachDate, isHadir, isIzin, kompresGambar, nowJ
 const gagal = (message: string): Result => ({ ok: false, message });
 const sukses = (message: string): Result => ({ ok: true, message });
 const pesanError = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e));
-
-/* ================= Storage ================= */
-async function uploadFoto(bucket: string, idInduk: string, prefix: string, blob: Blob) {
-  const path = `${idInduk}/${prefix}_${Date.now()}.jpg`;
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-    contentType: "image/jpeg",
-    upsert: false,
-  });
-  if (error) throw error;
-  return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
-}
 
 /* ================= Presensi ================= */
 export async function getAbsensiHariIni(idInduk: string, tanggal: string): Promise<Absensi | null> {
@@ -70,7 +60,7 @@ export async function absenMasuk(user: GuruUser, posisi: Posisi, foto: Blob): Pr
     }
 
     const kecil = await kompresGambar(foto);
-    const urlFoto = await uploadFoto(BUCKET_ABSENSI, user.target_id, "masuk", kecil);
+    const urlFoto = await uploadFotoPresensi(BUCKET_ABSENSI, user.target_id, "masuk", kecil);
     const status = now.jam > BATAS_TERLAMBAT ? "Terlambat" : "Hadir";
 
     const { error } = await supabase.from(TABEL_ABSENSI).insert({
@@ -108,7 +98,7 @@ export async function absenPulang(user: GuruUser, posisi: Posisi, foto: Blob): P
     if (ada.jam_pulang) return gagal("Anda sudah absen pulang hari ini.");
 
     const kecil = await kompresGambar(foto);
-    const urlFoto = await uploadFoto(BUCKET_ABSENSI, user.target_id, "pulang", kecil);
+    const urlFoto = await uploadFotoPresensi(BUCKET_ABSENSI, user.target_id, "pulang", kecil);
 
     const { error } = await supabase
       .from(TABEL_ABSENSI)
@@ -152,7 +142,7 @@ export async function ajukanIzin(user: GuruUser, f: FormIzin): Promise<Result> {
     let link: string | null = null;
     if (f.lampiran) {
       const kecil = await kompresGambar(f.lampiran);
-      link = await uploadFoto(BUCKET_IZIN, user.target_id, "izin", kecil);
+      link = await uploadFotoPresensi(BUCKET_IZIN, user.target_id, "izin", kecil);
     }
 
     const { error } = await supabase.from(TABEL_IZIN).insert({

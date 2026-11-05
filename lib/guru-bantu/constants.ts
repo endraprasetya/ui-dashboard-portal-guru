@@ -16,8 +16,13 @@ export const TABEL_ABSENSI = "absensi_guru_bantu";
 export const TABEL_IZIN = "perizinan_guru_bantu";
 export const TABEL_USERS = "users";
 
-export const BUCKET_ABSENSI = "absensi-guru-bantu";
-export const BUCKET_IZIN = "izin-guru-bantu";
+/** Nama bucket harus sama dengan id di Supabase Storage (lihat supabase/guru-bantu.sql). */
+export const BUCKET_ABSENSI =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_BUCKET_ABSENSI?.trim()) ||
+  "absensi-guru-bantu";
+export const BUCKET_IZIN =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_BUCKET_IZIN?.trim()) ||
+  "izin-guru-bantu";
 
 export const STATUS_HADIR = ["Hadir", "Terlambat"];
 

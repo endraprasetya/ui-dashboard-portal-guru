@@ -14,14 +14,24 @@ create index if not exists idx_izin_gb_status     on public.perizinan_guru_bantu
 create index if not exists idx_izin_gb_induk      on public.perizinan_guru_bantu (id_induk);
 
 -- 2) Storage bucket (public agar foto bisa dibuka lewat link)
+--    Nama HARUS sama dengan BUCKET_ABSENSI / BUCKET_IZIN di lib/guru-bantu/constants.ts
 insert into storage.buckets (id, name, public)
 values ('absensi-guru-bantu', 'absensi-guru-bantu', true),
        ('izin-guru-bantu',    'izin-guru-bantu',    true)
-on conflict (id) do nothing;
+on conflict (id) do update set public = excluded.public;
 
--- 3) Policy storage: user login boleh upload. Baca publik lewat URL bucket public.
-create policy "gb upload foto" on storage.objects
-  for insert to authenticated
+-- 3) Policy storage (portal memakai anon key + login custom, bukan Supabase Auth)
+drop policy if exists "gb upload foto" on storage.objects;
+drop policy if exists "gb baca foto publik" on storage.objects;
+drop policy if exists "gb upload foto anon" on storage.objects;
+
+create policy "gb baca foto publik" on storage.objects
+  for select
+  using (bucket_id in ('absensi-guru-bantu', 'izin-guru-bantu'));
+
+create policy "gb upload foto anon" on storage.objects
+  for insert
+  to anon, authenticated
   with check (bucket_id in ('absensi-guru-bantu', 'izin-guru-bantu'));
 
 -- 4) RLS — CONTOH. Sesuaikan dengan cara login Anda (mis. kolom auth_id di tabel users).
