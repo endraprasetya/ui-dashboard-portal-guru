@@ -23,6 +23,12 @@ import {
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
 import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/surah'
 import { cariRekapan, ringkasHasil, selaraskanStatusPengajuan, type RekapanRingkas } from '@/lib/ujian-relasi'
+import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
+import {
+  cekAbsenSiswaPadaTanggal,
+  tanggalKemarinJakarta,
+  type HasilCekAbsenSiswa,
+} from '@/lib/absensi-siswa-hari'
 
 const SETORAN_FIELDS =
   'id_qiroah, tanggal, unit, id_siswa, nama_siswa, ustadz, jilid, halaman, status, catatan, tugas_rumah, status_setoran, nilai, catatan_audio, murojaah_di_rumah, membaca_di_sekolah, murojaah_bersama_teman'
@@ -61,6 +67,8 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   const [menyimpanAntrean, setMenyimpanAntrean] = useState(false)
   const [siswaSudahSetor, setSiswaSudahSetor] = useState<Set<string>>(new Set())
   const [surahs, setSurahs] = useState<Surah[]>([])
+  const [absenHariIni, setAbsenHariIni] = useState<HasilCekAbsenSiswa | null>(null)
+  const [peringatanKemarin, setPeringatanKemarin] = useState<string | null>(null)
 
   useEffect(() => {
     fetchAllSurah().then(setSurahs)
@@ -116,13 +124,48 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     setStatus('Lancar')
   }
 
-  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string) => {
+  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string, kelas?: string) => {
     setIdSiswa(selectedId)
     if (studentName) setStudentSearchQuery(studentName)
     setLatestRecords([])
     resetFormFields()
     setIsStudentSearchOpen(false)
+    setAbsenHariIni(null)
+    setPeringatanKemarin(null)
     if (!selectedId) return
+
+    const siswa =
+      kelas !== undefined
+        ? { kelas, nama: studentName || '' }
+        : (() => {
+            const baris = students.find((s) => String(s.id_siswa) === String(selectedId))
+            return { kelas: String(baris?.kelas || ''), nama: String(baris?.nama_siswa || studentName || '') }
+          })()
+
+    const hari = kunciHariJakarta()
+    const kemarin = tanggalKemarinJakarta(hari)
+    void Promise.all([
+      cekAbsenSiswaPadaTanggal({
+        idSiswa: selectedId,
+        namaSiswa: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: hari,
+      }),
+      cekAbsenSiswaPadaTanggal({
+        idSiswa: selectedId,
+        namaSiswa: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: kemarin,
+      }),
+    ]).then(([hariIni, kemarinAbsen]) => {
+      setAbsenHariIni(hariIni)
+      if (kemarinAbsen.tidakMasuk) {
+        const nama = siswa.nama || studentName || 'siswa'
+        setPeringatanKemarin(
+          `Ananda ${nama} kemarin tidak masuk, mohon didahulukan untuk setoran Tahfidz dan Qiroahnya`,
+        )
+      }
+    })
 
     const { data, error } = await supabase
       .from('setoran_qiroah')
@@ -137,7 +180,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     } else if (error) {
       console.error('Gagal mengambil riwayat setoran qiroah:', error.message)
     }
-  }, [])
+  }, [resetFormFields, students])
 
   const filteredStudents = students
     .filter((s) => {
@@ -162,8 +205,12 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     setStudentSearchQuery('')
     setLatestRecords([])
     setIsStudentSearchOpen(false)
+    setAbsenHariIni(null)
+    setPeringatanKemarin(null)
     setSiswaSudahSetor((prev) => new Set(prev).add(String(idTersimpan)))
   }
+
+  const inputSetoranDiblokir = Boolean(absenHariIni?.tidakMasuk && !editIdQiroah)
 
   const handleLoadEdit = (record: any) => {
     if (!record) return
@@ -214,6 +261,12 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     e.preventDefault()
     if (!idSiswa) {
       alert('Sila pilih siswa terlebih dahulu!')
+      return
+    }
+    if (inputSetoranDiblokir) {
+      alert(
+        `Siswa berstatus tidak masuk hari ini (${absenHariIni?.status || 'Sakit/Izin/Alpa'}). Setoran Qiroah tidak dapat diinput.`,
+      )
       return
     }
     if (!halaman.trim() || halaman.trim() === '-') {
@@ -465,7 +518,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   <button
                     key={student.id_siswa}
                     type="button"
-                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa)}
+                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)}
                     className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-sky-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
@@ -491,6 +544,18 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
             </div>
           )}
         </div>
+
+        {inputSetoranDiblokir && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800"
+          >
+            Siswa berstatus tidak masuk hari ini ({absenHariIni?.status || 'Sakit/Izin/Alpa'}). Form setoran Qiroah
+            dinonaktifkan untuk hari ini.
+          </div>
+        )}
+
+        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
 
         {/* 5 RIWAYAT SETORAN TERAKHIR DALAM BENTUK JADUAL */}
         {latestRecords.length > 0 && (
@@ -705,7 +770,12 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
             {successMessage}
           </p>
         )}
+        </fieldset>
       </form>
+
+      {peringatanKemarin ? (
+        <PeringatanPrioritasSetoranDialog pesan={peringatanKemarin} onTutup={() => setPeringatanKemarin(null)} />
+      ) : null}
 
       {showPengajuan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

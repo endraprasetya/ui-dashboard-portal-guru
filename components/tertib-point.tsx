@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { isKelasAlumni } from "@/lib/siswa";
 import { KeteranganTertibForm } from "@/components/keterangan-tertib-form";
 import { PeringatanTertibDialog } from "@/components/peringatan-tertib-dialog";
+import { PanduanTertibGuruModal } from "@/components/panduan-tertib-guru-modal";
 import { DEF_NEG, DEF_POS, sortAturanTertib } from "@/lib/aturan-tertib-point";
 import {
   gabungKeteranganTertib,
@@ -1136,6 +1137,8 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       {peringatanKeterangan ? (
         <PeringatanTertibDialog pesan={peringatanKeterangan} onTutup={() => setPeringatanKeterangan(null)} />
       ) : null}
+
+      <PanduanTertibGuruModal />
     </div>
   );
 }

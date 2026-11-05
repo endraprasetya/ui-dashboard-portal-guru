@@ -17,6 +17,12 @@ import {
 } from '@/lib/tahfidz'
 import { ArrowLeft, Save, Edit3, Trash2, XCircle, Search } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
+import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
+import {
+  cekAbsenSiswaPadaTanggal,
+  tanggalKemarinJakarta,
+  type HasilCekAbsenSiswa,
+} from '@/lib/absensi-siswa-hari'
 
 function parseSetoranDate(dateStr: unknown): Date | null {
   if (!dateStr) return null
@@ -128,6 +134,8 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
   const [siswaSudahSetor, setSiswaSudahSetor] = useState<Set<string>>(new Set())
   const [tugasDimuat, setTugasDimuat] = useState(false)
+  const [absenHariIni, setAbsenHariIni] = useState<HasilCekAbsenSiswa | null>(null)
+  const [peringatanKemarin, setPeringatanKemarin] = useState<string | null>(null)
 
   const [mSurahMulai, setMSurahMulai] = useState('')
   const [mSurahSelesai, setMSurahSelesai] = useState('')
@@ -204,60 +212,6 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     fetchData()
   }, [currentUser])
 
-  // Fungsi saat Siswa Dipilih (Menampilkan Riwayat Terakhir)
-  // Menggunakan useCallback untuk mencegah re-creation function pada setiap render
-  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string) => {
-    setIdSiswa(selectedId)
-    if (studentName) setStudentSearchQuery(studentName)
-    resetInputFields()
-    setLatestRecords([])
-    setIsStudentSearchOpen(false)
-
-    if (!selectedId) return
-
-    // Jangan order by kolom tanggal di Supabase: nilainya teks DD/MM/YYYY,
-    // sehingga 31/08 terurut di atas 10/10. Ambil semua setoran siswa, lalu
-    // urutkan di klien berdasarkan tanggal yang sudah di-parse.
-    const { data, error } = await fetchSetoranSiswa(selectedId)
-
-    if (error) {
-      console.error('Gagal mengambil riwayat setoran:', error.message)
-      return
-    }
-
-    if (data.length > 0) {
-      setLatestRecords(pickLatestSetoran(data, 5))
-    }
-  }, [])
-
-  const filteredStudents = students.filter((s) => {
-    const sudah = siswaSudahSetor.has(String(s.id_siswa))
-    const query = studentSearchQuery.trim().toLowerCase()
-    if (!query) return true
-    const name = String(s.nama_siswa || '').toLowerCase()
-    const tokens = query.split(/\s+/).filter(Boolean)
-    return tokens.every((token) => name.includes(token))
-  }).slice(0, 50)
-
-  // Format tanggal untuk display
-  const formatDateString = (dateStr: string) => {
-    if (!dateStr) return '-'
-    if (dateStr.includes('/')) {
-      return dateStr.split(' ')[0]
-    }
-    try {
-      const d = new Date(dateStr)
-      if (isNaN(d.getTime())) return dateStr
-      return d.toLocaleDateString('id-ID')
-    } catch {
-      return dateStr
-    }
-  }
-
-  const formatZiyadah = (record: any) => formatZiyadahRecord(record)
-  const formatMurojaah = (record: any) => formatMurojaahRecord(record)
-  const formatTugasRumah = (record: any) => formatTugasRecord(record)
-
   const resetInputFields = useCallback(() => {
     setEditIdSetoran('')
     setTugasDimuat(false)
@@ -288,13 +242,106 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     setTugasMPesan('')
   }, [])
 
+  // Fungsi saat Siswa Dipilih (Menampilkan Riwayat Terakhir)
+  // Menggunakan useCallback untuk mencegah re-creation function pada setiap render
+  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string, kelas?: string) => {
+    setIdSiswa(selectedId)
+    if (studentName) setStudentSearchQuery(studentName)
+    resetInputFields()
+    setLatestRecords([])
+    setIsStudentSearchOpen(false)
+    setAbsenHariIni(null)
+    setPeringatanKemarin(null)
+
+    if (!selectedId) return
+
+    const siswa =
+      kelas !== undefined
+        ? { kelas, nama: studentName || '' }
+        : (() => {
+            const baris = students.find((s) => String(s.id_siswa) === String(selectedId))
+            return { kelas: String(baris?.kelas || ''), nama: String(baris?.nama_siswa || studentName || '') }
+          })()
+
+    const hari = kunciHariJakarta()
+    const kemarin = tanggalKemarinJakarta(hari)
+    void Promise.all([
+      cekAbsenSiswaPadaTanggal({
+        idSiswa: selectedId,
+        namaSiswa: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: hari,
+      }),
+      cekAbsenSiswaPadaTanggal({
+        idSiswa: selectedId,
+        namaSiswa: siswa.nama,
+        kelas: siswa.kelas,
+        tanggal: kemarin,
+      }),
+    ]).then(([hariIni, kemarinAbsen]) => {
+      setAbsenHariIni(hariIni)
+      if (kemarinAbsen.tidakMasuk) {
+        const nama = siswa.nama || studentName || 'siswa'
+        setPeringatanKemarin(
+          `Ananda ${nama} kemarin tidak masuk, mohon didahulukan untuk setoran Tahfidz dan Qiroahnya`,
+        )
+      }
+    })
+
+    // Jangan order by kolom tanggal di Supabase: nilainya teks DD/MM/YYYY,
+    // sehingga 31/08 terurut di atas 10/10. Ambil semua setoran siswa, lalu
+    // urutkan di klien berdasarkan tanggal yang sudah di-parse.
+    const { data, error } = await fetchSetoranSiswa(selectedId)
+
+    if (error) {
+      console.error('Gagal mengambil riwayat setoran:', error.message)
+      return
+    }
+
+    if (data.length > 0) {
+      setLatestRecords(pickLatestSetoran(data, 5))
+    }
+  }, [resetInputFields, students])
+
+  const filteredStudents = students.filter((s) => {
+    const sudah = siswaSudahSetor.has(String(s.id_siswa))
+    const query = studentSearchQuery.trim().toLowerCase()
+    if (!query) return true
+    const name = String(s.nama_siswa || '').toLowerCase()
+    const tokens = query.split(/\s+/).filter(Boolean)
+    return tokens.every((token) => name.includes(token))
+  }).slice(0, 50)
+
+  // Format tanggal untuk display
+  const formatDateString = (dateStr: string) => {
+    if (!dateStr) return '-'
+    if (dateStr.includes('/')) {
+      return dateStr.split(' ')[0]
+    }
+    try {
+      const d = new Date(dateStr)
+      if (isNaN(d.getTime())) return dateStr
+      return d.toLocaleDateString('id-ID')
+    } catch {
+      return dateStr
+    }
+  }
+
+  const formatZiyadah = (record: any) => formatZiyadahRecord(record)
+  const formatMurojaah = (record: any) => formatMurojaahRecord(record)
+  const formatTugasRumah = (record: any) => formatTugasRecord(record)
+
   const resetSetelahSimpan = () => {
     resetInputFields()
     setIdSiswa('')
     setStudentSearchQuery('')
     setLatestRecords([])
     setIsStudentSearchOpen(false)
+    setAbsenHariIni(null)
+    setPeringatanKemarin(null)
   }
+
+  const inputSetoranDiblokir = Boolean(absenHariIni?.tidakMasuk && !editIdSetoran)
 
   const muatSiswaSudahSetor = useCallback(async () => {
     const hari = kunciHariJakarta()
@@ -408,6 +455,13 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     e.preventDefault()
     if (!idSiswa) {
       alert('Silakan pilih siswa terlebih dahulu!')
+      return
+    }
+
+    if (inputSetoranDiblokir) {
+      alert(
+        `Siswa berstatus tidak masuk hari ini (${absenHariIni?.status || 'Sakit/Izin/Alpa'}). Setoran Tahfidz tidak dapat diinput.`,
+      )
       return
     }
 
@@ -575,7 +629,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                   <button
                     key={student.id_siswa}
                     type="button"
-                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa)}
+                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)}
                     className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-blue-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
@@ -601,6 +655,18 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
             </div>
           )}
         </div>
+
+        {inputSetoranDiblokir && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800"
+          >
+            Siswa berstatus tidak masuk hari ini ({absenHariIni?.status || 'Sakit/Izin/Alpa'}). Form setoran Tahfidz
+            dinonaktifkan untuk hari ini.
+          </div>
+        )}
+
+        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
 
         {/* Tabel Riwayat Terakhir */}
         {latestRecords.length > 0 && (
@@ -857,7 +923,12 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
             {successMessage}
           </p>
         )}
+        </fieldset>
       </form>
+
+      {peringatanKemarin ? (
+        <PeringatanPrioritasSetoranDialog pesan={peringatanKemarin} onTutup={() => setPeringatanKemarin(null)} />
+      ) : null}
     </div>
   )
 }
