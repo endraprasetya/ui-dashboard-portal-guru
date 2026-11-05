@@ -12,6 +12,13 @@ export type RekapanRingkas = {
   tanggal_ujian?: string
   penguji?: string
   nama?: string
+  keterangan?: string
+}
+
+export function catatanPenguji(rekap?: RekapanRingkas | null) {
+  const teks = String(rekap?.keterangan || '').trim()
+  if (!teks || teks === '-') return ''
+  return teks
 }
 
 type BarisPengajuan = {

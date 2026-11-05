@@ -24,6 +24,8 @@ import {
 
 } from '@/lib/qiroah'
 
+import { catatanPenguji, type RekapanRingkas } from '@/lib/ujian-relasi'
+
 
 
 export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -49,6 +51,8 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
   const [showTarget, setShowTarget] = useState(false)
 
   const [selectedStudent, setSelectedStudent] = useState<any>(null)
+
+  const [ujianRekapan, setUjianRekapan] = useState<RekapanRingkas[]>([])
 
   const searchRef = useRef<HTMLDivElement>(null)
 
@@ -229,6 +233,24 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
     setLoading(true)
 
     setReportType('siswa')
+
+
+
+    const { data: ujianData } = await supabase
+
+      .from('rekapan')
+
+      .select(
+
+        'id_ujian,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji,keterangan',
+
+      )
+
+      .eq('id_siswa', String(student.id_siswa))
+
+      .order('tanggal_ujian', { ascending: false })
+
+    setUjianRekapan((ujianData || []) as RekapanRingkas[])
 
 
 
@@ -817,6 +839,86 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
                   </span>
 
                 </div>
+
+                {ujianRekapan.length > 0 && (
+
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+
+                    <h4 className="text-sm font-extrabold text-emerald-900">Hasil ujian kenaikan jilid</h4>
+
+                    <div className="mt-3 overflow-x-auto">
+
+                      <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+
+                        <thead>
+
+                          <tr className="bg-emerald-100/80 font-bold uppercase tracking-wide text-emerald-900">
+
+                            <th className="border border-emerald-200 p-2.5">Tanggal</th>
+
+                            <th className="border border-emerald-200 p-2.5">Jilid</th>
+
+                            <th className="border border-emerald-200 p-2.5">Keputusan</th>
+
+                            <th className="border border-emerald-200 p-2.5">Penguji</th>
+
+                            <th className="border border-emerald-200 p-2.5">Catatan penguji</th>
+
+                          </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                          {ujianRekapan.map((row) => (
+
+                            <tr key={row.id_ujian} className="bg-white/80">
+
+                              <td className="border border-emerald-100 p-2.5 whitespace-nowrap">
+
+                                {formatDateString(row.tanggal_ujian || '')}
+
+                              </td>
+
+                              <td className="border border-emerald-100 p-2.5 font-semibold">
+
+                                {row.jilid_asal || '-'}
+
+                                {row.jilid_tujuan ? ` → ${row.jilid_tujuan}` : ''}
+
+                              </td>
+
+                              <td className="border border-emerald-100 p-2.5">
+
+                                {[row.keputusan, row.predikat, row.nilai_akhir != null ? `nilai ${row.nilai_akhir}` : '']
+
+                                  .filter(Boolean)
+
+                                  .join(' · ') || '-'}
+
+                              </td>
+
+                              <td className="border border-emerald-100 p-2.5 text-slate-600">{row.penguji || '-'}</td>
+
+                              <td className="max-w-[240px] border border-emerald-100 p-2.5 leading-relaxed text-slate-700">
+
+                                {catatanPenguji(row) || '—'}
+
+                              </td>
+
+                            </tr>
+
+                          ))}
+
+                        </tbody>
+
+                      </table>
+
+                    </div>
+
+                  </div>
+
+                )}
 
                 <div className="overflow-x-auto">
 

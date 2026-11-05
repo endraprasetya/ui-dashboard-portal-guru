@@ -20,7 +20,14 @@ import {
   hitungNilaiAkhirUjianQiroah,
   waktuDariStatus,
 } from '@/lib/qiroah'
-import { cariRekapan, kunciJilid, selaraskanStatusPengajuan, ujianSudahSelesai, unikPerJilid } from '@/lib/ujian-relasi'
+import {
+  cariRekapan,
+  catatanPenguji,
+  kunciJilid,
+  selaraskanStatusPengajuan,
+  ujianSudahSelesai,
+  unikPerJilid,
+} from '@/lib/ujian-relasi'
 
 type UjianItem = {
   id_pengajuan: string
@@ -756,19 +763,20 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                 <th className="border p-2">Jilid</th>
                 <th className="border p-2">Predikat</th>
                 <th className="border p-2">Keputusan</th>
+                <th className="border p-2">Catatan penguji</th>
                 <th className="border p-2">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="border p-4 text-slate-400">
+                  <td colSpan={8} className="border p-4 text-slate-400">
                     Memuat hasil penilaian...
                   </td>
                 </tr>
               ) : selesai.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="border p-4 text-slate-400">
+                  <td colSpan={8} className="border p-4 text-slate-400">
                     Belum ada hasil ujian yang tersimpan untuk penguji ini.
                   </td>
                 </tr>
@@ -787,6 +795,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                       <td className="border p-2">{rekap?.predikat || '-'}</td>
                       <td className={`border p-2 font-bold ${lulus ? 'text-emerald-700' : 'text-red-600'}`}>
                         {rekap?.keputusan || '-'}
+                      </td>
+                      <td className="max-w-[220px] border p-2 text-left text-[11px] leading-relaxed text-slate-600">
+                        {catatanPenguji(rekap) || '—'}
                       </td>
                       <td className="border p-2">
                         <TombolCetak

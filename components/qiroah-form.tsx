@@ -22,7 +22,13 @@ import {
 } from '@/lib/qiroah'
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
 import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/surah'
-import { cariRekapan, ringkasHasil, selaraskanStatusPengajuan, type RekapanRingkas } from '@/lib/ujian-relasi'
+import {
+  cariRekapan,
+  catatanPenguji,
+  ringkasHasil,
+  selaraskanStatusPengajuan,
+  type RekapanRingkas,
+} from '@/lib/ujian-relasi'
 import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
 import {
   cekAbsenSiswaPadaTanggal,
@@ -366,7 +372,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
         : (
             await supabase
               .from('rekapan')
-              .select('id_ujian,id_siswa,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji')
+              .select(
+                'id_ujian,id_siswa,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji,keterangan',
+              )
               .in('id_siswa', ids)
           ).data || []
     setRekapAntrean(rekap as RekapanRingkas[])
@@ -871,6 +879,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                       <th className="border p-2.5">Jilid</th>
                       <th className="border p-2.5">Status</th>
                       <th className="border p-2.5">Hasil</th>
+                      <th className="border p-2.5">Catatan penguji</th>
                       <th className="border p-2.5 text-center">Aksi</th>
                     </tr>
                   </thead>
@@ -903,6 +912,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                           </td>
                           <td className="border p-2.5">{rekap ? 'Selesai' : labelStatusPengajuan(row.status)}</td>
                           <td className="border p-2.5">{ringkasHasil(rekap) || '-'}</td>
+                          <td className="max-w-[200px] border p-2.5 text-[11px] leading-relaxed text-slate-600">
+                            {catatanPenguji(rekap) || '—'}
+                          </td>
                           <td className="border p-2.5 text-center">
                             {bisa ? (
                               sedangEdit ? (
