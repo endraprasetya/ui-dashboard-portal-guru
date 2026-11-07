@@ -1,4 +1,4 @@
-import { LOKASI_SEKOLAH, RADIUS_MAKS_METER, STATUS_HADIR } from "./constants";
+import { FOTO_PRESENSI_MAKS_BYTES, LOKASI_SEKOLAH, RADIUS_MAKS_METER, STATUS_HADIR } from "./constants";
 import type { GuruUser, Posisi } from "./types";
 
 /* ---------- Waktu (selalu WIB / Asia/Jakarta) ---------- */
@@ -78,29 +78,56 @@ export function ambilPosisi(): Promise<Posisi> {
   });
 }
 
-/* ---------- Gambar ---------- */
-export function kompresGambar(file: Blob, maxWidth = 800, quality = 0.7): Promise<Blob> {
+/* ---------- Gambar (kompresi client-side untuk selfie presensi) ---------- */
+
+const LEBAR_FOTO_AWAL = 1280;
+const LEBAR_FOTO_MIN = 720;
+const KUALITAS_AWAL = 0.8;
+const KUALITAS_MIN = 0.65;
+const LANGKAH_KUALITAS = 0.05;
+
+let webpDidukung: boolean | null = null;
+
+function dukungWebp(): Promise<boolean> {
+  if (webpDidukung !== null) return Promise.resolve(webpDidukung);
+  if (typeof document === "undefined") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const c = document.createElement("canvas");
+    c.width = 2;
+    c.height = 2;
+    c.toBlob(
+      (b) => {
+        webpDidukung = b?.type === "image/webp";
+        resolve(webpDidukung);
+      },
+      "image/webp",
+      KUALITAS_AWAL
+    );
+  });
+}
+
+function muatGambarKeCanvas(file: Blob, lebarMaks: number): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round(height * (maxWidth / width));
-        width = maxWidth;
+      if (width > lebarMaks) {
+        height = Math.round(height * (lebarMaks / width));
+        width = lebarMaks;
       }
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (b) => {
-          URL.revokeObjectURL(url);
-          b ? resolve(b) : reject(new Error("Gagal memproses foto."));
-        },
-        "image/jpeg",
-        quality
-      );
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("Gagal memproses foto."));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      resolve(canvas);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -108,6 +135,65 @@ export function kompresGambar(file: Blob, maxWidth = 800, quality = 0.7): Promis
     };
     img.src = url;
   });
+}
+
+function canvasKeBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b), mime, quality);
+  });
+}
+
+async function terkecilDiBawahBatas(canvas: HTMLCanvasElement, mime: string, batas: number): Promise<Blob> {
+  let terbaik: Blob | null = null;
+  for (let q = KUALITAS_AWAL; q >= KUALITAS_MIN - 0.001; q -= LANGKAH_KUALITAS) {
+    const b = await canvasKeBlob(canvas, mime, q);
+    if (!b) continue;
+    if (!terbaik || b.size < terbaik.size) terbaik = b;
+    if (b.size <= batas) return b;
+  }
+  if (terbaik) return terbaik;
+  throw new Error("Gagal memproses foto.");
+}
+
+/**
+ * Kompres foto selfie agar < 200 KB (WebP jika didukung, fallback JPEG, quality ~0.7–0.8).
+ * Aman dipanggil ulang: file yang sudah memenuhi batas dikembalikan apa adanya.
+ */
+export async function kompresGambar(
+  file: Blob,
+  batasBytes: number = FOTO_PRESENSI_MAKS_BYTES
+): Promise<Blob> {
+  if (typeof document === "undefined") {
+    throw new Error("Kompresi foto hanya bisa di browser.");
+  }
+  if (
+    file.size <= batasBytes &&
+    (file.type === "image/webp" || file.type === "image/jpeg")
+  ) {
+    return file;
+  }
+
+  const pakaiWebp = await dukungWebp();
+  const urutanMime: ("image/webp" | "image/jpeg")[] = pakaiWebp
+    ? ["image/webp", "image/jpeg"]
+    : ["image/jpeg", "image/webp"];
+
+  let terkecil: Blob | null = null;
+  const catat = (b: Blob) => {
+    if (!terkecil || b.size < terkecil.size) terkecil = b;
+  };
+
+  for (let lebar = LEBAR_FOTO_AWAL; lebar >= LEBAR_FOTO_MIN; lebar -= 160) {
+    const canvas = await muatGambarKeCanvas(file, lebar);
+    for (const mime of urutanMime) {
+      const hasil = await terkecilDiBawahBatas(canvas, mime, batasBytes);
+      catat(hasil);
+      if (hasil.size <= batasBytes) return hasil;
+    }
+  }
+
+  if (terkecil) return terkecil;
+  throw new Error("Gagal memproses foto.");
 }
 
 /* ---------- Status ---------- */

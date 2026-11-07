@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Printer, X } from 'lucide-react'
 import { fetchPejabatUntukCetak, type PejabatCetakTerselesaikan } from '@/lib/setting-cetak'
+import { labelPredikatUjian } from '@/lib/qiroah'
 
 export type HasilUjianCetak = {
   nomor: string
@@ -205,7 +206,7 @@ export function CetakUjianQiroah({
             <p className="mt-4 text-justify">
               telah mengikuti Ujian Kenaikan Jilid Qiroatul Qur’an (At-Tartil) pada tanggal {tanggalPanjang(data.tanggal)} dan
               dinyatakan <strong>LULUS</strong> dengan nilai akhir <strong>{data.nilaiAkhir}</strong> serta predikat{' '}
-              <strong>{data.predikat}</strong>.
+              <strong>{labelPredikatUjian(data.predikat)}</strong>.
             </p>
             <p className="mt-3 text-justify">
               Demikian surat keterangan ini dibuat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.
@@ -268,7 +269,7 @@ export function CetakUjianQiroah({
                 <tr>
                   <td />
                   <td className="font-bold">Predikat</td>
-                  <td className="text-center font-bold">{data.predikat}</td>
+                  <td className="text-center font-bold">{labelPredikatUjian(data.predikat)}</td>
                 </tr>
                 <tr>
                   <td />
@@ -284,7 +285,7 @@ export function CetakUjianQiroah({
               <strong>Catatan penguji:</strong> {data.catatan.trim() || '-'}
             </p>
             <p className="mt-2 text-[10pt]">
-              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79). Nilai di bawah 70 mendapat predikat Maqbul dan
+              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79). Nilai di bawah 70 mendapat predikat Mengulang dan
               dinyatakan tidak lulus.
             </p>
           </div>

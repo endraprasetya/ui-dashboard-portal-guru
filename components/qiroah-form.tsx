@@ -13,7 +13,9 @@ import {
   generateQiroahId,
   generateUjianId,
   isYa,
+  labelPredikatUjian,
   labelStatusPengajuan,
+  labelTindakLanjutKenaikanJilid,
   namaPengujiCocok,
   pengujiUntukKelas,
   statusInti,
@@ -25,10 +27,10 @@ import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/sura
 import {
   cariRekapan,
   catatanPenguji,
-  ringkasHasil,
   selaraskanStatusPengajuan,
   type RekapanRingkas,
 } from '@/lib/ujian-relasi'
+import { lulusUjian } from '@/components/cetak-ujian-qiroah'
 import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
 import {
   cekAbsenSiswaPadaTanggal,
@@ -878,9 +880,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                       <th className="border p-2.5">Kelas</th>
                       <th className="border p-2.5">Jilid</th>
                       <th className="border p-2.5">Status</th>
-                      <th className="border p-2.5">Hasil</th>
+                      <th className="border p-2.5">Hasil / Predikat</th>
                       <th className="border p-2.5">Catatan penguji</th>
-                      <th className="border p-2.5 text-center">Aksi</th>
+                      <th className="border p-2.5 text-center">Tindak lanjut</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -888,6 +890,14 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                       const rekap = cariRekapan(row, rekapAntrean)
                       const bisa = pengajuanBisaDikelola(row.status) && !rekap
                       const sedangEdit = editPengajuanId === row.id_pengajuan
+                      const lulus = rekap ? lulusUjian(rekap.keputusan) : false
+                      const tindak = rekap
+                        ? labelTindakLanjutKenaikanJilid(
+                            lulus,
+                            rekap.jilid_asal || row.jilid_diujikan,
+                            rekap.jilid_tujuan,
+                          )
+                        : ''
                       return (
                         <tr key={row.id_pengajuan} className="hover:bg-slate-50">
                           <td className="border p-2.5 font-bold text-slate-800">{row.nama_siswa}</td>
@@ -910,8 +920,25 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                               row.jilid_diujikan || '-'
                             )}
                           </td>
-                          <td className="border p-2.5">{rekap ? 'Selesai' : labelStatusPengajuan(row.status)}</td>
-                          <td className="border p-2.5">{ringkasHasil(rekap) || '-'}</td>
+                          <td className="border p-2.5">
+                            {rekap ? (
+                              <span className="font-semibold text-slate-600">Ujian selesai</span>
+                            ) : (
+                              labelStatusPengajuan(row.status)
+                            )}
+                          </td>
+                          <td className="border p-2.5">
+                            {rekap ? (
+                              <>
+                                <span className="font-medium">{labelPredikatUjian(rekap.predikat)}</span>
+                                {rekap.nilai_akhir != null && String(rekap.nilai_akhir).trim() !== '' ? (
+                                  <span className="text-slate-500"> · nilai {rekap.nilai_akhir}</span>
+                                ) : null}
+                              </>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td className="max-w-[200px] border p-2.5 text-[11px] leading-relaxed text-slate-600">
                             {catatanPenguji(rekap) || '—'}
                           </td>
@@ -960,7 +987,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                                 </div>
                               )
                             ) : (
-                              <span className="text-[11px] font-semibold text-slate-400">Selesai</span>
+                              <span
+                                className={`text-[11px] font-semibold leading-snug ${lulus ? 'text-emerald-700' : 'text-red-600'}`}
+                              >
+                                {tindak}
+                              </span>
                             )}
                           </td>
                         </tr>

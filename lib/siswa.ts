@@ -6,6 +6,7 @@ export type Siswa = {
   kelas: string
   id_pembimbing?: string
   unit?: string
+  nis?: string
 }
 
 export function isKelasAlumni(kelas?: string | null) {
@@ -70,7 +71,7 @@ export async function fetchDaftarSiswa(): Promise<Siswa[]> {
   while (true) {
     const { data, error } = await supabase
       .from('siswa')
-      .select('id_siswa, nama_siswa, kelas, id_pembimbing, unit')
+      .select('id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis')
       .not('kelas', 'ilike', '%Alumni%')
       .order('nama_siswa', { ascending: true })
       .range(from, from + pageSize - 1)

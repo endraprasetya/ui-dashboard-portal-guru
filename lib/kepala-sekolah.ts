@@ -117,7 +117,7 @@ export type LaporanKepsek = {
   catatan: string[]
 }
 
-const PREDIKAT = ['Mumtaz', 'Jayyid Jiddan', 'Jayyid', 'Maqbul']
+const PREDIKAT = ['Mumtaz', 'Jayyid Jiddan', 'Jayyid', 'Mengulang']
 export const UNIT_KEPALA_SEKOLAH = 'Nogosari'
 const SIMBOL_ABSEN = { sakit: 'S', izin: 'I', alpa: 'A' } as const
 
@@ -361,7 +361,8 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   for (const row of rekapan || []) {
     if (!siswaById.has(String(row.id_siswa))) continue
     const teks = String(row.predikat || '').trim().toLowerCase()
-    const nama = PREDIKAT.find((item) => teks === item.toLowerCase() || teks.startsWith(`${item.toLowerCase()} `) || teks.startsWith(`${item.toLowerCase()}(`)) || 'Lainnya'
+    const normal = teks === 'maqbul' ? 'mengulang' : teks
+    const nama = PREDIKAT.find((item) => normal === item.toLowerCase() || normal.startsWith(`${item.toLowerCase()} `) || normal.startsWith(`${item.toLowerCase()}(`)) || 'Lainnya'
     hitungPredikat.set(nama, (hitungPredikat.get(nama) || 0) + 1)
     if (String(row.keputusan || '').toLowerCase() === 'lulus' && lulus.length < 40) {
       lulus.push({

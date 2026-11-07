@@ -306,7 +306,7 @@ export function NilaiUjianTahfidz({
               <p className="text-slate-500">Lengkapi nilai setiap surah untuk melihat nilai akhir.</p>
             )}
             <p className="mt-1 text-[11px] text-slate-500">
-              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79), Maqbul (di bawah 70).
+              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79), Mengulang (di bawah 70).
             </p>
           </div>
 

@@ -12,6 +12,8 @@ import {
   pecahKeteranganTertib,
   validasiKeteranganTertib,
 } from "@/lib/keterangan-tertib-point";
+import { TertibSaldoKartu } from "@/components/tertib-saldo-kartu";
+import { hitungSaldoTertibBulanan, MODAL_POIN_BULANAN } from "@/lib/tertib-saldo";
 
 interface Student {
   id: string;
@@ -55,7 +57,7 @@ function milikPencatat(guru: string, user?: { nama_lengkap?: string; nama?: stri
   return kandidat.includes(pencatat);
 }
 
-const MODAL_PTS = 200;
+const MODAL_PTS = MODAL_POIN_BULANAN;
 
 function mapSiswaRow(row: any): Student {
   return {
@@ -357,15 +359,10 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   }, [rules]);
 
   const calcPoints = (sid: string) => {
-    let p = 0;
-    let n = 0;
     const studentLogs = logs.filter((l) => String(l.sid) === String(sid) && l.month === bulan);
-    studentLogs.forEach((l) => {
-      if (l.pts > 0) p += l.pts;
-      else n += Math.abs(l.pts);
-    });
+    const saldo = hitungSaldoTertibBulanan(logs, sid, bulan, MODAL_PTS);
     const lastLog = studentLogs.length > 0 ? studentLogs[0].guru : "-";
-    return { p, n, sisa: MODAL_PTS + p - n, lastGuru: lastLog };
+    return { p: saldo.positif, n: saldo.negatif, sisa: saldo.sisa, lastGuru: lastLog };
   };
 
   const getStatus = (sisa: number) => {
@@ -681,15 +678,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
 
       {tab === "poin" && (
         <div className="no-print">
-          <div className="bg-emerald-800 text-white rounded-xl p-5 flex items-center justify-between mb-6 shadow-md">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-emerald-200 font-medium">Point Bekal Awal</p>
-              <div className="text-4xl font-black">{MODAL_PTS}</div>
-            </div>
-            <div className="text-right text-sm text-emerald-100">
-              Periode Penilaian: <br />
-              <span className="font-bold text-white">{formatMonthName(bulan)}</span>
-            </div>
+          <div className="mb-6 space-y-2">
+            <TertibSaldoKartu
+              saldo={{ modal: MODAL_PTS, positif: 0, negatif: 0, sisa: MODAL_PTS }}
+              namaBulan={formatMonthName(bulan)}
+              ringkas
+            />
+            <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center text-xs text-slate-600">
+              Sisa poin tiap santri = <strong>200 + kebaikan − pelanggaran</strong> (lihat kolom &quot;Sisa Poin&quot; di tabel).
+            </p>
           </div>
 
           <div className="mb-4">
@@ -843,16 +840,21 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       {activeStudent && modalType && (
         <div className="print-modal-overlay fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="print-modal-sheet bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl relative max-h-[90vh] overflow-y-auto">
-            <div className="no-print flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">{activeStudent.name}</h3>
-                <p className="text-xs text-slate-500">
-                  Kelas {activeStudent.kelas} · Sisa Poin: <strong className="text-slate-900">{activeStudentCalc.sisa}</strong>
-                </p>
+            <div className="no-print mb-4 space-y-3 border-b border-slate-100 pb-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{activeStudent.name}</h3>
+                  <p className="text-xs text-slate-500">Kelas {activeStudent.kelas}</p>
+                </div>
+                <button onClick={tutupModal} className="text-slate-400 hover:text-slate-700 font-bold px-2 py-1">
+                  ✕
+                </button>
               </div>
-              <button onClick={tutupModal} className="text-slate-400 hover:text-slate-700 font-bold px-2 py-1">
-                ✕
-              </button>
+              <TertibSaldoKartu
+                saldo={hitungSaldoTertibBulanan(logs, activeStudent.id, bulan, MODAL_PTS)}
+                namaBulan={formatMonthName(bulan)}
+                ringkas
+              />
             </div>
 
             {modalType === "give" && (

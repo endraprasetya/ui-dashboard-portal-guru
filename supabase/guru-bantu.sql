@@ -21,15 +21,23 @@ values ('absensi-guru-bantu', 'absensi-guru-bantu', true),
 on conflict (id) do update set public = excluded.public;
 
 -- 3) Policy storage (portal memakai anon key + login custom, bukan Supabase Auth)
+--    Jalankan blok ini jika upload foto gagal dengan pesan RLS / policy.
+--    RLS pada storage.objects sudah aktif di Supabase secara default.
+
 drop policy if exists "gb upload foto" on storage.objects;
 drop policy if exists "gb baca foto publik" on storage.objects;
 drop policy if exists "gb upload foto anon" on storage.objects;
+drop policy if exists "gb select absensi guru bantu" on storage.objects;
+drop policy if exists "gb insert absensi guru bantu" on storage.objects;
 
-create policy "gb baca foto publik" on storage.objects
+-- Baca file (tampil foto di portal, list object di bucket public)
+create policy "gb select absensi guru bantu" on storage.objects
   for select
+  to anon, authenticated
   using (bucket_id in ('absensi-guru-bantu', 'izin-guru-bantu'));
 
-create policy "gb upload foto anon" on storage.objects
+-- Upload foto absensi / lampiran izin
+create policy "gb insert absensi guru bantu" on storage.objects
   for insert
   to anon, authenticated
   with check (bucket_id in ('absensi-guru-bantu', 'izin-guru-bantu'));

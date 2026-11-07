@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { statusInti } from '@/lib/qiroah'
+import { labelPredikatUjian, statusInti } from '@/lib/qiroah'
 
 export type RekapanRingkas = {
   id_ujian?: string
@@ -59,7 +59,7 @@ export function ujianSudahSelesai(status?: string, rekap?: RekapanRingkas | null
 export function ringkasHasil(rekap?: RekapanRingkas | null) {
   if (!rekap) return ''
   const keputusan = String(rekap.keputusan || 'Selesai').trim()
-  const predikat = String(rekap.predikat || '').trim()
+  const predikat = labelPredikatUjian(rekap.predikat)
   const nilai = rekap.nilai_akhir != null && String(rekap.nilai_akhir).trim() !== '' ? `nilai ${rekap.nilai_akhir}` : ''
   return [keputusan, predikat, nilai].filter(Boolean).join(' · ')
 }

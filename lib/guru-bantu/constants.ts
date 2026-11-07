@@ -16,13 +16,12 @@ export const TABEL_ABSENSI = "absensi_guru_bantu";
 export const TABEL_IZIN = "perizinan_guru_bantu";
 export const TABEL_USERS = "users";
 
-/** Nama bucket harus sama dengan id di Supabase Storage (lihat supabase/guru-bantu.sql). */
-export const BUCKET_ABSENSI =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_BUCKET_ABSENSI?.trim()) ||
-  "absensi-guru-bantu";
-export const BUCKET_IZIN =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_BUCKET_IZIN?.trim()) ||
-  "izin-guru-bantu";
+/** Id bucket di Supabase Storage — harus persis sama dengan nama di Dashboard / SQL (supabase/guru-bantu.sql). */
+export const BUCKET_ABSENSI = "absensi-guru-bantu";
+export const BUCKET_IZIN = "izin-guru-bantu";
+
+/** Batas ukuran foto selfie sebelum upload ke Storage (bytes). */
+export const FOTO_PRESENSI_MAKS_BYTES = 200 * 1024;
 
 export const STATUS_HADIR = ["Hadir", "Terlambat"];
 

@@ -80,7 +80,7 @@ export function predikatNilai(nilai: number) {
   if (nilai >= 90) return 'Mumtaz'
   if (nilai >= 80) return 'Jayyid Jiddan'
   if (nilai >= 70) return 'Jayyid'
-  return 'Maqbul'
+  return 'Mengulang'
 }
 
 export function nilaiRataRataSurah(nilaiList: Array<number | null | undefined>) {

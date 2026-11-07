@@ -7,6 +7,8 @@ import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-uji
 import { fetchAllSiswa, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
+import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
+import { formatDateString } from '@/lib/qiroah'
 import {
   ASESMEN_TAHFIDZ,
   CONTOH_KETERANGAN_UJIAN,
@@ -44,6 +46,8 @@ export function InputRaporTahfidz({
   const [galat, setGalat] = useState(false)
   const [nilaiTarget, setNilaiTarget] = useState<TargetNilaiUjian | null>(null)
   const [teksJadwalUjian, setTeksJadwalUjian] = useState('')
+  const [riwayatTahfidz, setRiwayatTahfidz] = useState<RiwayatSetoranTahfidz[]>([])
+  const [memuatRiwayat, setMemuatRiwayat] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
@@ -84,6 +88,22 @@ export function InputRaporTahfidz({
       batal = true
     }
   }, [siswa])
+
+  useEffect(() => {
+    if (!idSiswa) {
+      setRiwayatTahfidz([])
+      return
+    }
+    let batal = false
+    setMemuatRiwayat(true)
+    fetchRiwayatSetoranTahfidz(idSiswa, 5).then((baris) => {
+      if (!batal) setRiwayatTahfidz(baris)
+      setMemuatRiwayat(false)
+    })
+    return () => {
+      batal = true
+    }
+  }, [idSiswa])
 
   useEffect(() => {
     if (!idSiswa || !asesmen) return
@@ -256,6 +276,28 @@ export function InputRaporTahfidz({
             </select>
           </label>
         </div>
+
+        {terpilih && (
+          <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <p className="text-xs font-bold text-emerald-900">5 riwayat setoran tahfidz terakhir · {terpilih.nama_siswa}</p>
+            {memuatRiwayat ? (
+              <p className="mt-2 text-xs text-slate-500">Memuat riwayat…</p>
+            ) : riwayatTahfidz.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">Belum ada setoran tahfidz tercatat.</p>
+            ) : (
+              <ol className="mt-2 space-y-1.5 text-xs text-slate-700">
+                {riwayatTahfidz.map((row, idx) => (
+                  <li key={row.id_setoran || idx} className="rounded-lg bg-white/80 px-2.5 py-1.5">
+                    <span className="font-semibold text-slate-500">{formatDateString(String(row.tanggal || ''))}</span>
+                    {' — '}
+                    {ringkasRiwayatTahfidz(row)}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <p className="mt-2 text-[10px] text-slate-500">Acuan memilih materi ujian rapor sesuai progres hafalan santri.</p>
+          </div>
+        )}
 
         <div ref={panelRef} className="relative mt-4">
           <p className="text-xs font-bold text-slate-600">Materi ujian</p>

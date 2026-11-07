@@ -8,15 +8,18 @@ import { QiroahForm } from '@/components/qiroah-form'
 import { QiroahRekap } from '@/components/qiroah-rekap'
 import { QiroahPenilaian } from '@/components/qiroah-penilaian'
 import { QiroahPenguji } from '@/components/qiroah-penguji'
+import QiroahKoordinator from '@/components/qiroah-koordinator'
 import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/components/pusat-notifikasi'
 import TertibPoint from '@/components/tertib-point'
+import TertibPointWali from '@/components/tertib-point-wali'
+import { isPortalWali } from '@/lib/tertib-saldo'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
-import { hasPengujiRole } from '@/lib/qiroah'
+import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { educationCalendar } from '@/lib/teacher-data'
@@ -46,6 +49,7 @@ import {
   ShieldAlert,
   Settings,
   Users,
+  LayoutDashboard,
 } from 'lucide-react'
 
 export default function Home() {
@@ -194,6 +198,7 @@ export default function Home() {
   const isQiroah = currentView.startsWith('qiroah')
   const isAbsensi = currentView.startsWith('absensi')
   const canPenguji = hasPengujiRole(currentUser)
+  const canKoordinatorQQ = hasKoordinatorQQRole(currentUser)
   const guruBantuUser = userDariSesi(currentUser)
   const bolehAbsensiGuruBantu = isGuruBantuRole(String(currentUser?.role || ''))
 
@@ -577,7 +582,11 @@ export default function Home() {
             >
               <ArrowLeft className="size-4" /> Kembali ke Dashboard
             </button>
-            <TertibPoint currentUser={currentUser} />
+            {isPortalWali(currentUser) ? (
+              <TertibPointWali currentUser={currentUser} />
+            ) : (
+              <TertibPoint currentUser={currentUser} />
+            )}
           </div>
         )}
 
@@ -803,6 +812,15 @@ export default function Home() {
                 )}
               </button>
             )}
+
+            {canKoordinatorQQ && (
+              <button
+                onClick={() => setCurrentView('qiroah_koordinator')}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0f4c5c] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#0c3d49] transition"
+              >
+                <LayoutDashboard className="size-5" /> Koordinator QQ
+              </button>
+            )}
           </div>
         )}
 
@@ -828,6 +846,10 @@ export default function Home() {
 
         {currentView === 'qiroah_penguji' && (
           <QiroahPenguji onBack={() => setCurrentView('qiroah_menu')} currentUser={currentUser} />
+        )}
+
+        {currentView === 'qiroah_koordinator' && (
+          <QiroahKoordinator onBack={() => setCurrentView('qiroah_menu')} currentUser={currentUser} />
         )}
       </main>
     </div>

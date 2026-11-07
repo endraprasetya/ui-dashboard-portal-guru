@@ -91,6 +91,36 @@ export function cekTargetQiroahSiswa(kelas: string, capaianStr: string) {
   return false
 }
 
+/** Tampilan predikat ujian (data lama “Maqbul” ditampilkan sebagai Mengulang). */
+export function labelPredikatUjian(predikat?: string | null) {
+  const p = String(predikat ?? '').trim()
+  if (!p || p === '-') return '—'
+  if (p.toLowerCase() === 'maqbul') return 'Mengulang'
+  return p
+}
+
+function normalisasiJenjangJilid(nama: string): string {
+  const s = String(nama || '').trim()
+  if (!s) return ''
+  if (/at-tartil/i.test(s)) return s.replace(/\s+/g, ' ')
+  const angka = s.match(/jilid\s*(\d+)/i)
+  if (angka) return `At-Tartil Jilid ${angka[1]}`
+  return s
+}
+
+/** Label tindak lanjut hasil ujian kenaikan jilid untuk kolom antrean/hasil. */
+export function labelTindakLanjutKenaikanJilid(
+  lulus: boolean,
+  jilidAsal?: string,
+  jilidTujuan?: string,
+) {
+  if (!lulus) return 'Mengulang / Remedial'
+  const mentah = String(jilidTujuan || nextJilid(jilidAsal || '')).trim()
+  if (!mentah || mentah === 'Lanjut') return 'Naik ke jilid berikutnya'
+  const tujuan = normalisasiJenjangJilid(mentah)
+  return `Naik ke ${tujuan}`
+}
+
 export function nextJilid(jilidAsal: string) {
   const jStr = jilidAsal.toLowerCase()
   if (jStr.includes('jilid 1')) return 'At-Tartil Jilid 2'
@@ -105,6 +135,15 @@ export function nextJilid(jilidAsal: string) {
 export function hasPengujiRole(currentUser?: { role?: string } | null) {
   const role = String(currentUser?.role || '').toLowerCase()
   return role.includes('admin') || role.includes('penguji')
+}
+
+/** Akun Koordinator Qiroatul Qur'an (tab pemantauan, tanpa alur persetujuan penguji). */
+export function hasKoordinatorQQRole(currentUser?: { role?: string } | null) {
+  const role = String(currentUser?.role || '').toLowerCase().replace(/\s+/g, ' ')
+  if (!role) return false
+  if (role.includes('koordinator') && /qiro|qq|qur|qiroatul/.test(role)) return true
+  if (role === 'koordinator qq' || role === 'koordinator qiroah') return true
+  return false
 }
 
 export function teacherDisplayName(currentUser?: any) {

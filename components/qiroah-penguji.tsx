@@ -11,6 +11,8 @@ import {
   generateUjianId,
   labelStatusPengajuan,
   menungguJadwal,
+  labelPredikatUjian,
+  labelTindakLanjutKenaikanJilid,
   nextJilid,
   pengujiEfektif,
   pengujiUntukKelas,
@@ -142,7 +144,7 @@ function predikatDariNilai(total: number) {
   if (total >= 90) return { predikat: 'Mumtaz', keputusan: 'Lulus' }
   if (total >= 80) return { predikat: 'Jayyid Jiddan', keputusan: 'Lulus' }
   if (total >= 70) return { predikat: 'Jayyid', keputusan: 'Lulus' }
-  return { predikat: 'Maqbul', keputusan: 'Tidak Lulus' }
+  return { predikat: 'Mengulang', keputusan: 'Tidak Lulus' }
 }
 
 export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -589,14 +591,20 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                 Jumlah Nilai Akhir: <span className="text-lg text-sky-700">{totalNilai == null ? '—' : totalNilai}</span>
               </p>
               <p className="text-xs">
-                Predikat: <strong>{ringkasan?.predikat || '—'}</strong> | Status:{' '}
+                Predikat: <strong>{labelPredikatUjian(ringkasan?.predikat)}</strong> | Tindak lanjut:{' '}
                 <strong className={ringkasan?.keputusan === 'Lulus' ? 'text-emerald-700' : ringkasan ? 'text-red-600' : 'text-slate-500'}>
-                  {ringkasan?.keputusan || '—'}
+                  {ringkasan
+                    ? labelTindakLanjutKenaikanJilid(
+                        ringkasan.keputusan === 'Lulus',
+                        jilidAsal || selected?.jilid_diujikan,
+                        jilidTujuan,
+                      )
+                    : '—'}
                 </strong>
               </p>
             </div>
             <p className="text-[11px] leading-5 text-slate-500">
-              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79). Nilai di bawah 70 mendapat predikat Maqbul dan dinyatakan tidak lulus.
+              Predikat: Mumtaz (90–100), Jayyid Jiddan (80–89), Jayyid (70–79). Nilai di bawah 70 mendapat predikat Mengulang dan tindak lanjut Mengulang / Remedial.
             </p>
 
             {pesanSimpan && (
@@ -762,9 +770,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                 <th className="border p-2">Nama Siswa</th>
                 <th className="border p-2">Jilid</th>
                 <th className="border p-2">Predikat</th>
-                <th className="border p-2">Keputusan</th>
+                <th className="border p-2">Tindak lanjut</th>
                 <th className="border p-2">Catatan penguji</th>
-                <th className="border p-2">Aksi</th>
+                <th className="border p-2">Cetak</th>
               </tr>
             </thead>
             <tbody>
@@ -792,9 +800,13 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                       </td>
                       <td className="border p-2 font-bold">{item.nama_siswa}</td>
                       <td className="border p-2">{rekap?.jilid_asal || item.jilid_diujikan}</td>
-                      <td className="border p-2">{rekap?.predikat || '-'}</td>
-                      <td className={`border p-2 font-bold ${lulus ? 'text-emerald-700' : 'text-red-600'}`}>
-                        {rekap?.keputusan || '-'}
+                      <td className="border p-2">{labelPredikatUjian(rekap?.predikat)}</td>
+                      <td className={`border p-2 text-left text-[11px] font-bold leading-snug ${lulus ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {labelTindakLanjutKenaikanJilid(
+                          lulus,
+                          rekap?.jilid_asal || item.jilid_diujikan,
+                          rekap?.jilid_tujuan,
+                        )}
                       </td>
                       <td className="max-w-[220px] border p-2 text-left text-[11px] leading-relaxed text-slate-600">
                         {catatanPenguji(rekap) || '—'}
