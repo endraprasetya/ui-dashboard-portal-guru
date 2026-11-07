@@ -12,9 +12,7 @@ export type SaldoTertibBulanan = {
 
 type BarisLog = { sid?: string; month?: string; pts?: number }
 
-export function isPortalWali(user?: { role?: string } | null) {
-  return /wali\s*murid|wali murid|portal\s*wali|^wali$/i.test(String(user?.role || '').trim())
-}
+export { isPortalWali } from '@/lib/portal-wali'
 
 /** Saldo = modal 200 + total kebaikan − total pelanggaran (bulan aktif). */
 export function hitungSaldoTertibBulanan(
@@ -34,6 +32,40 @@ export function hitungSaldoTertibBulanan(
   }
   const sisa = modal + positif - negatif
   return { modal, positif, negatif, sisa }
+}
+
+export type BarisPeringkatKelas = {
+  id: string
+  nama: string
+  kelas: string
+  sisa: number
+  positif: number
+  negatif: number
+  peringkat: number
+}
+
+/** 3 besar sisa poin tertinggi di kelas (modal 200 + kebaikan − pelanggaran). */
+export function tigaBesarKelas(
+  siswaKelas: { id: string; name: string; kelas: string }[],
+  logs: BarisLog[],
+  bulan: string,
+  limit = 3,
+): BarisPeringkatKelas[] {
+  return [...siswaKelas]
+    .map((s) => {
+      const saldo = hitungSaldoTertibBulanan(logs, s.id, bulan)
+      return {
+        id: s.id,
+        nama: s.name,
+        kelas: s.kelas,
+        sisa: saldo.sisa,
+        positif: saldo.positif,
+        negatif: saldo.negatif,
+      }
+    })
+    .sort((a, b) => b.sisa - a.sisa || b.positif - a.positif || a.nama.localeCompare(b.nama, 'id'))
+    .slice(0, limit)
+    .map((row, index) => ({ ...row, peringkat: index + 1 }))
 }
 
 export { SAMBUTAN_TERTIB_WALI }

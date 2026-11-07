@@ -33,8 +33,13 @@ export const PESAN_KETERANGAN_WAJIB =
 export const PESAN_LAINNYA_WAJIB =
   'Harap isi keterangan pada opsi Lainnya sebelum menyimpan.'
 
-export function validasiKeteranganTertib(pilihan: readonly string[], lainnya: string): string | null {
-  if (pilihan.length === 0) return PESAN_KETERANGAN_WAJIB
+export function validasiKeteranganTertib(
+  pilihan: readonly string[],
+  lainnya: string,
+  opsi?: { wajib?: boolean },
+): string | null {
+  const wajib = opsi?.wajib !== false
+  if (wajib && pilihan.length === 0) return PESAN_KETERANGAN_WAJIB
   if (pilihan.includes(KETERANGAN_TERTIB_LAINNYA) && !lainnya.trim()) {
     return PESAN_LAINNYA_WAJIB
   }

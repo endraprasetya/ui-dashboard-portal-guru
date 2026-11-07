@@ -206,9 +206,12 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [status, setStatus] = useState("");
   const [statusError, setStatusError] = useState(false);
   const [rulesFromDb, setRulesFromDb] = useState(false);
-  const [pilihanKeterangan, setPilihanKeterangan] = useState<string[]>([]);
-  const [lainnyaKeterangan, setLainnyaKeterangan] = useState("");
+  const [pilihanKebaikan, setPilihanKebaikan] = useState<string[]>([]);
+  const [lainnyaKebaikan, setLainnyaKebaikan] = useState("");
+  const [pilihanPelanggaran, setPilihanPelanggaran] = useState<string[]>([]);
+  const [lainnyaPelanggaran, setLainnyaPelanggaran] = useState("");
   const [keteranganFormError, setKeteranganFormError] = useState<string | null>(null);
+  const [keteranganMode, setKeteranganMode] = useState<"pos" | "neg" | null>(null);
   const [peringatanKeterangan, setPeringatanKeterangan] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editPilihan, setEditPilihan] = useState<string[]>([]);
@@ -216,10 +219,13 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [editFormError, setEditFormError] = useState<string | null>(null);
 
   const resetKeteranganForm = () => {
-    setPilihanKeterangan([]);
-    setLainnyaKeterangan("");
+    setPilihanKebaikan([]);
+    setLainnyaKebaikan("");
+    setPilihanPelanggaran([]);
+    setLainnyaPelanggaran("");
     setKeteranganFormError(null);
     setPeringatanKeterangan(null);
+    setKeteranganMode(null);
   };
 
   const tutupModal = () => {
@@ -373,12 +379,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
 
   const handleApplyRule = async (rule: { label: string; pts: number; type: "pos" | "neg" }, sid: string) => {
     if (busy) return;
-    const validasi = validasiKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
+    const pilihan = rule.type === "pos" ? pilihanKebaikan : pilihanPelanggaran;
+    const lainnya = rule.type === "pos" ? lainnyaKebaikan : lainnyaPelanggaran;
+    const validasi = validasiKeteranganTertib(pilihan, lainnya, { wajib: rule.type === "neg" });
     if (validasi) {
+      setKeteranganMode(rule.type);
       tampilkanGagalValidasiKeterangan(validasi);
       return;
     }
-    const keterangan = gabungKeteranganTertib(pilihanKeterangan, lainnyaKeterangan);
+    const keterangan = gabungKeteranganTertib(pilihan, lainnya);
     const student = students.find((s) => s.id === sid);
     const ptsVal = rule.type === "neg" ? -Math.abs(rule.pts) : Math.abs(rule.pts);
     const payload = {
@@ -421,7 +430,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
       tolakBukanPencatat();
       return;
     }
-    const validasi = validasiKeteranganTertib(editPilihan, editLainnya);
+    const validasi = validasiKeteranganTertib(editPilihan, editLainnya, { wajib: log.pts <= 0 });
     if (validasi) {
       setEditFormError(validasi);
       setPeringatanKeterangan(validasi);
@@ -924,6 +933,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                               error={editFormError}
                               sorotError={Boolean(editFormError)}
                               idPrefix={`edit-ktr-${l.id}`}
+                              wajib={l.pts <= 0}
                             />
                             <div className="flex justify-end gap-2">
                               <button
@@ -956,24 +966,25 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                 </div>
 
                 <p className="text-xs text-emerald-700 font-semibold mb-3">Pencatat poin saat ini: {currentTeacherName}</p>
+                <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
                 <KeteranganTertibForm
-                  pilihan={pilihanKeterangan}
-                  lainnya={lainnyaKeterangan}
+                  pilihan={pilihanKebaikan}
+                  lainnya={lainnyaKebaikan}
                   onPilihanChange={(next) => {
-                    setPilihanKeterangan(next);
-                    setKeteranganFormError(null);
+                    setPilihanKebaikan(next);
+                    if (keteranganMode === "pos") setKeteranganFormError(null);
                     setPeringatanKeterangan(null);
                   }}
                   onLainnyaChange={(next) => {
-                    setLainnyaKeterangan(next);
-                    setKeteranganFormError(null);
+                    setLainnyaKebaikan(next);
+                    if (keteranganMode === "pos") setKeteranganFormError(null);
                     setPeringatanKeterangan(null);
                   }}
-                  error={keteranganFormError}
-                  sorotError={Boolean(keteranganFormError)}
-                  idPrefix="give-ktr"
+                  error={keteranganMode === "pos" ? keteranganFormError : null}
+                  sorotError={keteranganMode === "pos" && Boolean(keteranganFormError)}
+                  idPrefix="give-ktr-pos"
+                  wajib={false}
                 />
-                <h4 className="font-bold text-emerald-700 text-sm mb-2">Kontribusi Positif</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {allRules.pos.map((r) => (
                     <button
@@ -989,6 +1000,24 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
                 </div>
 
                 <h4 className="font-bold text-red-700 text-sm mb-2">Pelanggaran</h4>
+                <KeteranganTertibForm
+                  pilihan={pilihanPelanggaran}
+                  lainnya={lainnyaPelanggaran}
+                  onPilihanChange={(next) => {
+                    setPilihanPelanggaran(next);
+                    if (keteranganMode === "neg") setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
+                  }}
+                  onLainnyaChange={(next) => {
+                    setLainnyaPelanggaran(next);
+                    if (keteranganMode === "neg") setKeteranganFormError(null);
+                    setPeringatanKeterangan(null);
+                  }}
+                  error={keteranganMode === "neg" ? keteranganFormError : null}
+                  sorotError={keteranganMode === "neg" && Boolean(keteranganFormError)}
+                  idPrefix="give-ktr-neg"
+                  wajib
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-[28rem] overflow-y-auto pr-1">
                   {allRules.neg.map((r) => (
                     <button

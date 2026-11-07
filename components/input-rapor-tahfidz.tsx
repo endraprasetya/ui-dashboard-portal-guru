@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Printer, Save, Search, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Download, Printer, Save, Search, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchAllSiswa, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, type Surah } from '@/lib/surah'
@@ -405,7 +405,18 @@ export function InputRaporTahfidz({
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
+          <Link
+            href={asesmen ? `/raport/massal?asesmen=${encodeURIComponent(asesmen)}` : '/raport/massal'}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800"
+          >
+            <Download className="size-3.5" /> Kirim / Unduh Semua PDF Rapor
+          </Link>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Satu klik mengunduh file PDF terpisah untuk setiap siswa binaan (nama file mengikuti nama siswa).
+        </p>
         <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3">
           <p className="text-xs font-extrabold uppercase tracking-wide text-sky-900">{JUDUL_JADWAL_UJIAN_TAHFIDZ}</p>
           <p className="mt-1 text-sm leading-relaxed text-slate-700">{teksJadwalUjian || 'Memuat informasi jadwal…'}</p>

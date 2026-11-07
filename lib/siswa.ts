@@ -21,12 +21,37 @@ export function idGuru(user?: { target_id?: string; id_user?: string; username?:
   return String(user?.target_id || user?.id_user || user?.username || '').trim()
 }
 
+export function unitKanonik(nilai?: string | null) {
+  return String(nilai ?? '')
+    .trim()
+    .replace(/^unit\s+/i, '')
+    .toLowerCase()
+}
+
+export function unitSama(a?: string | null, b?: string | null) {
+  const ka = unitKanonik(a)
+  const kb = unitKanonik(b)
+  return Boolean(ka && kb && ka === kb)
+}
+
+/** Cocok unit login vs baris siswa (ketat; tanpa lintas unit). */
 export function unitCocok(unitUser?: string | null, unitBaris?: string | null) {
-  const pengguna = String(unitUser || '').trim().toLowerCase()
-  const baris = String(unitBaris || '').trim().toLowerCase()
-  if (!pengguna || pengguna === 'semua unit') return true
-  if (!baris) return false
-  return pengguna === baris || baris.includes(pengguna) || pengguna.includes(baris)
+  const pengguna = String(unitUser || '').trim()
+  if (!pengguna || /^semua\s*unit$/i.test(pengguna)) return true
+  if (!String(unitBaris || '').trim()) return false
+  return unitSama(pengguna, unitBaris)
+}
+
+export function unitLogin(user?: { unit?: string; sekolah?: string } | null) {
+  const bersih = String(user?.unit || user?.sekolah || '').trim()
+  if (!bersih || /^semua\s*unit$/i.test(bersih)) return ''
+  return bersih
+}
+
+function filterSiswaByUnit(siswaList: Siswa[], currentUser?: { unit?: string; sekolah?: string } | null) {
+  const unit = unitLogin(currentUser)
+  if (!unit) return siswaList
+  return siswaList.filter((siswa) => unitSama(siswa.unit, unit))
 }
 
 export function daftarPembimbing(value?: string | null) {
@@ -92,7 +117,8 @@ export async function fetchDaftarSiswa(): Promise<Siswa[]> {
 
 export async function fetchAllSiswa(currentUser?: any): Promise<Siswa[]> {
   const semua = await fetchDaftarSiswa()
-  return filterSiswaByTeacher(semua, currentUser)
+  const perUnit = filterSiswaByUnit(semua, currentUser)
+  return filterSiswaByTeacher(perUnit, currentUser)
 }
 
 export async function simpanSiswaBinaan(

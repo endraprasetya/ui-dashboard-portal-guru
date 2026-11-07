@@ -6,6 +6,15 @@ import {
   normalizeSiswaTidakHadir,
   todayInputValue,
 } from '@/lib/jurnal'
+import { muatAbsensiGuruBantuKepsek, type RekapAbsensiGuruBantuKepsek } from '@/lib/kepsek-guru-bantu'
+import {
+  hitungPemantauanRaporHq,
+  muatDataRaporHqKepsek,
+  ringkasPemantauanRaporHq,
+  type DataMentahRaporHq,
+  type RingkasRaporHq,
+} from '@/lib/kepsek-rapor-hq'
+import { hitungRingkasJurnal } from '@/lib/kepsek-rekap'
 import {
   labelStatusPengajuan,
   menungguJadwal,
@@ -16,6 +25,7 @@ import {
   teacherDisplayName,
   waktuDariStatus,
 } from '@/lib/qiroah'
+import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import { cariRekapan } from '@/lib/ujian-relasi'
 
 export const KEPALA_SEKOLAH = {
@@ -94,25 +104,79 @@ export type BarisJurnal = {
   mapel: string
   materi: string
   kegiatan: string
+  guru?: string
+}
+
+export type StatUjianBulan = {
+  label: string
+  bulan: string
+  totalPengajuan: number
+  sudahUjian: number
+  lulus: number
+  mengulang: number
+}
+
+export type BarisTertib = {
+  id_siswa: string
+  nama: string
+  kelas: string
+  label: string
+  pts: number
+  guru: string
+  waktu: string
+}
+
+export type SetoranHarian = {
+  tanggal: string
+  tahfidzId: string[]
+  qiroahId: string[]
+}
+
+export type BarisSetoranRingkas = { id_siswa: string; tanggal: string }
+
+export type RingkasJurnal = {
+  tanggal: string
+  terisi: number
+  belum: number
+  expected: number
 }
 
 export type LaporanKepsek = {
   unit: string
+  tanggalLaporan: string
   kehadiran: { hadir: number; sakit: number; izin: number; alpa: number; kelas: number }
   tidakHadir: AbsenSiswa[]
   setoranTahfidz: number
   setoranQiroah: number
+  setoranHariIni: SetoranHarian
+  setoranBulan: { tahfidz: BarisSetoranRingkas[]; qiroah: BarisSetoranRingkas[] }
   ujianAktif: number
+  ujianBulan: StatUjianBulan
   tertibHariIni: number
+  tertibBulan: BarisTertib[]
   trenMingguan: TitikTren[]
   trenBulanan: TitikTren[]
+  jurnalRingkas: RingkasJurnal
   predikat: { nama: string; jumlah: number }[]
   guru: BarisGuru[]
   ujian: BarisUjian[]
   lulus: RekapLulus[]
-  siswa: { id_siswa: string; nama_siswa: string; kelas: string; unit: string }[]
+  siswa: { id_siswa: string; nama_siswa: string; kelas: string; unit: string; id_pembimbing?: string | null }[]
+  raporHqMentah: DataMentahRaporHq
+  raporHqRingkas: RingkasRaporHq
+  guruBantu: RekapAbsensiGuruBantuKepsek
   jurnalHariIni: BarisJurnal[]
-  jurnalBulan: { tanggal?: string; kelas?: string; semester?: number | string | null; siswa_tidak_hadir?: unknown }[]
+  jurnalBulan: {
+    tanggal?: string
+    kelas?: string
+    jam?: number | string | null
+    mapel?: string | null
+    materi?: string | null
+    kegiatan?: string | null
+    semester?: number | string | null
+    siswa_tidak_hadir?: unknown
+    guru?: string | null
+  }[]
   kelas: string[]
   catatan: string[]
 }
@@ -138,6 +202,15 @@ async function halaman<T>(buat: (dari: number, sampai: number) => PromiseLike<{ 
     dari += ukuran
   }
   return semua
+}
+
+function tanggalJakarta(nilai: unknown) {
+  const teks = String(nilai || '').trim()
+  if (!teks) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(teks.slice(0, 10)) && teks.length <= 10) return teks.slice(0, 10)
+  const waktu = Date.parse(teks)
+  if (!Number.isFinite(waktu)) return ''
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(waktu))
 }
 
 function diHariIni(nilai: unknown, hari: string, mulai: number) {
@@ -231,10 +304,11 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       kegiatan?: string | null
       semester?: number | string | null
       siswa_tidak_hadir?: unknown
+      guru?: string | null
     }>((dari, sampai) =>
       supabase
         .from('jurnal_pembelajaran')
-        .select('tanggal,kelas,jam,mapel,materi,kegiatan,semester,siswa_tidak_hadir')
+        .select('tanggal,kelas,jam,mapel,materi,kegiatan,semester,siswa_tidak_hadir,guru')
         .gte('tanggal', start)
         .lte('tanggal', hari)
         .range(dari, sampai),
@@ -245,19 +319,21 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     }),
     supabase
       .from('setoran_qiroah')
-      .select('id_qiroah,tanggal,ustadz,unit')
+      .select('id_qiroah,tanggal,ustadz,unit,id_siswa')
       .eq('unit', UNIT_KEPALA_SEKOLAH)
-      .gte('tanggal', sejak.toISOString())
-      .limit(1000),
+      .gte('tanggal', start)
+      .limit(4000),
     supabase
       .from('setoran_tahfidz')
       .select('id_setoran,tanggal,id_siswa')
-      .gte('tanggal', sejak.toISOString())
-      .limit(1000),
+      .gte('tanggal', start)
+      .limit(4000),
     halaman<any>((dari, sampai) =>
       supabase
         .from('pengajuan')
-        .select('id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,diajukan_oleh,nama_penguji,status,tanggal_pelaksanaan')
+        .select(
+          'id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,diajukan_oleh,nama_penguji,status,tanggal_pelaksanaan,tanggal_diajukan',
+        )
         .eq('unit', UNIT_KEPALA_SEKOLAH)
         .order('tanggal_diajukan', { ascending: false })
         .range(dari, sampai),
@@ -268,10 +344,10 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     }),
     supabase
       .from('tertib_point')
-      .select('id_tertib_point,created_at,guru,unit,pts')
+      .select('id_tertib_point,created_at,guru,unit,pts,label,id_siswa')
       .eq('unit', UNIT_KEPALA_SEKOLAH)
-      .gte('created_at', sejak.toISOString())
-      .limit(500),
+      .gte('created_at', `${start}T00:00:00+07:00`)
+      .limit(2000),
     halaman<any>((dari, sampai) =>
       supabase
         .from('rekapan')
@@ -320,22 +396,82 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       mapel: String(row.mapel || '').trim() || 'Belum diisi',
       materi: String(row.materi || '').trim(),
       kegiatan: String(row.kegiatan || '').trim(),
+      guru: String(row.guru || '').trim() || undefined,
     }))
     .sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.jam - b.jam)
 
-  const setoranQiroah = (qiroah.data || []).filter(
-    (row) => unitKepalaSekolah(row.unit) && diHariIni(row.tanggal, hari, mulai.getTime()),
+  const jurnalRingkas = hitungRingkasJurnal(jurnalUnit, hari, kelasUnit.size)
+
+  const setoranQiroahSemua = (qiroah.error ? [] : qiroah.data || []).filter((row) => unitKepalaSekolah(row.unit))
+  const setoranQiroah = setoranQiroahSemua.filter((row) => diHariIni(row.tanggal, hari, mulai.getTime()))
+  const setoranTahfidzSemua = (tahfidzContoh.error ? [] : tahfidzContoh.data || []).filter((row) =>
+    siswaById.has(String(row.id_siswa)),
   )
-  const setoranTahfidz = (tahfidzContoh.error ? [] : tahfidzContoh.data || []).filter(
-    (row) => siswaById.has(String(row.id_siswa)) && diHariIni(row.tanggal, hari, mulai.getTime()),
-  )
+  const setoranTahfidz = setoranTahfidzSemua.filter((row) => diHariIni(row.tanggal, hari, mulai.getTime()))
+  const tahfidzIdHari = [...new Set(setoranTahfidz.map((row) => String(row.id_siswa)))]
+  const qiroahIdHari = [
+    ...new Set(
+      setoranQiroah.map((row) => String(row.id_siswa || '')).filter((id) => id && siswaById.has(id)),
+    ),
+  ]
+  const setoranBulan = {
+    tahfidz: setoranTahfidzSemua.map((row) => ({
+      id_siswa: String(row.id_siswa),
+      tanggal: tanggalJakarta(row.tanggal) || String(row.tanggal || '').slice(0, 10),
+    })),
+    qiroah: setoranQiroahSemua
+      .filter((row) => row.id_siswa && siswaById.has(String(row.id_siswa)))
+      .map((row) => ({
+        id_siswa: String(row.id_siswa),
+        tanggal: tanggalJakarta(row.tanggal) || String(row.tanggal || '').slice(0, 10),
+      })),
+  }
   if (tahfidzContoh.error) catatan.push('Setoran tahfidz belum dapat dimuat.')
   if (qiroah.error) catatan.push('Setoran qiroah belum dapat dimuat.')
   if (tertib.error) catatan.push('Tertib point belum dapat dimuat.')
 
-  const tertibHariIni = (tertib.data || []).filter(
-    (row) => unitKepalaSekolah(row.unit) && diHariIni(row.created_at, hari, mulai.getTime()),
-  ).length
+  const tertibBulan: BarisTertib[] = (tertib.data || [])
+    .filter((row) => unitKepalaSekolah(row.unit))
+    .map((row) => {
+      const siswa = row.id_siswa ? siswaById.get(String(row.id_siswa)) : undefined
+      return {
+        id_siswa: String(row.id_siswa || ''),
+        nama: siswa?.nama_siswa || 'Siswa',
+        kelas: siswa?.kelas || '-',
+        label: String(row.label || '').trim() || 'Catatan',
+        pts: Number(row.pts || 0),
+        guru: String(row.guru || '').trim() || '-',
+        waktu: tanggalJakarta(row.created_at),
+      } satisfies BarisTertib
+    })
+    .sort((a, b) => b.waktu.localeCompare(a.waktu) || a.kelas.localeCompare(b.kelas, 'id', { numeric: true }))
+
+  const tertibHariIni = tertibBulan.filter((row) => row.waktu === hari).length
+
+  const bulanKunci = hari.slice(0, 7)
+  const labelBulan = new Date(`${hari}T12:00:00`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+  const pengajuanBulan = (pengajuan || []).filter(
+    (row) =>
+      unitKepalaSekolah(row.unit) && String(row.tanggal_diajukan || row.tanggal_pelaksanaan || '').slice(0, 7) === bulanKunci,
+  )
+  const rekapanBulan = (rekapan || []).filter(
+    (row) => siswaById.has(String(row.id_siswa)) && String(row.tanggal_ujian || '').slice(0, 7) === bulanKunci,
+  )
+  const lulusBulan = rekapanBulan.filter((row) => String(row.keputusan || '').trim().toLowerCase() === 'lulus').length
+  const mengulangBulan = rekapanBulan.filter((row) => {
+    const keputusan = String(row.keputusan || '').trim().toLowerCase()
+    if (keputusan && keputusan !== 'lulus') return true
+    const predikat = String(row.predikat || '').trim().toLowerCase()
+    return predikat.includes('mengulang') || predikat === 'maqbul'
+  }).length
+  const ujianBulan: StatUjianBulan = {
+    label: labelBulan,
+    bulan: bulanKunci,
+    totalPengajuan: pengajuanBulan.length,
+    sudahUjian: rekapanBulan.length,
+    lulus: lulusBulan,
+    mengulang: mengulangBulan,
+  }
   const ujian = (pengajuan || [])
     .filter(
       (row) =>
@@ -463,8 +599,50 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
 
   const kelas = Array.from(jumlahKelas.keys()).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
 
+  const siswaLaporan = daftarSiswa.map(({ id_siswa, nama_siswa, kelas, unit, id_pembimbing }) => ({
+    id_siswa,
+    nama_siswa,
+    kelas,
+    unit,
+    id_pembimbing,
+  }))
+
+  const [raporHqHasil, guruBantu] = await Promise.all([
+    muatDataRaporHqKepsek(siswaLaporan).catch((error: Error) => {
+      catatan.push('Pemantauan Rapor HQ belum dapat dimuat.')
+      console.error(error.message)
+      return {
+        mentah: {
+          ...periodeAjaranSekarang(),
+          guruKelas: [],
+          headerNilai: [],
+        } satisfies DataMentahRaporHq,
+        catatan: [] as string[],
+      }
+    }),
+    muatAbsensiGuruBantuKepsek(hari).catch((error: Error) => {
+      catatan.push('Absensi guru bantu belum dapat dimuat.')
+      console.error(error.message)
+      return {
+        tanggal: hari,
+        total: 0,
+        sudahAbsen: 0,
+        hadir: 0,
+        terlambat: 0,
+        tidakHadir: 0,
+        baris: [],
+      } satisfies RekapAbsensiGuruBantuKepsek
+    }),
+  ])
+  catatan.push(...raporHqHasil.catatan)
+
+  const asesmenAwal = 'ASTS I' as const
+  const barisRaporHq = hitungPemantauanRaporHq(raporHqHasil.mentah, asesmenAwal)
+  const raporHqRingkas = ringkasPemantauanRaporHq(barisRaporHq, asesmenAwal)
+
   return {
     unit: UNIT_KEPALA_SEKOLAH,
+    tanggalLaporan: hari,
     kehadiran: {
       hadir: rekapHari.hadir,
       sakit: rekapHari.sakit,
@@ -475,15 +653,23 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     tidakHadir: rekapHari.tidakHadir,
     setoranTahfidz: setoranTahfidz.length,
     setoranQiroah: setoranQiroah.length,
+    setoranHariIni: { tanggal: hari, tahfidzId: tahfidzIdHari, qiroahId: qiroahIdHari },
+    setoranBulan,
     ujianAktif: ujian.length,
+    ujianBulan,
     tertibHariIni,
+    tertibBulan,
     trenMingguan,
     trenBulanan,
+    jurnalRingkas,
     predikat: Array.from(hitungPredikat.entries()).map(([nama, jumlah]) => ({ nama, jumlah })),
     guru: [...guruUnik.values()],
     ujian,
     lulus,
-    siswa: daftarSiswa.map(({ id_siswa, nama_siswa, kelas, unit }) => ({ id_siswa, nama_siswa, kelas, unit })),
+    siswa: siswaLaporan,
+    raporHqMentah: raporHqHasil.mentah,
+    raporHqRingkas,
+    guruBantu,
     jurnalHariIni,
     jurnalBulan: jurnalUnit,
     kelas,

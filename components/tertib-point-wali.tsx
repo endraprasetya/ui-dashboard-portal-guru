@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TertibSaldoKartu } from '@/components/tertib-saldo-kartu'
+import { TertibPeringkatKelas } from '@/components/tertib-peringkat-kelas'
+import { muatAnandaUntukWali } from '@/lib/portal-wali-siswa'
+import type { SantriWali } from '@/lib/portal-wali'
 import {
   hitungSaldoTertibBulanan,
   isPortalWali,
   SAMBUTAN_TERTIB_WALI,
+  tigaBesarKelas,
   type SaldoTertibBulanan,
 } from '@/lib/tertib-saldo'
 
-type Santri = { id: string; name: string; kelas: string }
 type Log = { sid: string; month: string; pts: number; label: string; guru: string; ts: number }
 
 function formatMonthName(bulan: string) {
@@ -19,81 +22,150 @@ function formatMonthName(bulan: string) {
   return new Date(y, m - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
 }
 
-function mapLog(row: any): Log {
+function mapLog(row: Record<string, unknown>): Log {
   return {
     sid: String(row.id_siswa || ''),
     month: String(row.bulan || ''),
     pts: Number(row.pts) || 0,
     label: String(row.label || ''),
     guru: String(row.guru || '-'),
-    ts: row.created_at ? Date.parse(row.created_at) : Date.now(),
+    ts: row.created_at ? Date.parse(String(row.created_at)) : Date.now(),
   }
 }
 
-export default function TertibPointWali({ currentUser }: { currentUser?: any }) {
+export default function TertibPointWali({
+  currentUser,
+  tanpaCekPeran = false,
+}: {
+  currentUser?: Record<string, unknown>
+  tanpaCekPeran?: boolean
+}) {
   const [bulan, setBulan] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
-  const [santri, setSantri] = useState<Santri[]>([])
+  const [ananda, setAnanda] = useState<SantriWali[]>([])
+  const [temanKelas, setTemanKelas] = useState<SantriWali[]>([])
   const [logs, setLogs] = useState<Log[]>([])
   const [idPilih, setIdPilih] = useState('')
   const [memuat, setMemuat] = useState(true)
 
-  const load = useCallback(async () => {
-    setMemuat(true)
-    const idTautan = String(
-      currentUser?.id_siswa || currentUser?.target_id || currentUser?.username || '',
-    ).trim()
+  const loadPoinKelas = useCallback(async (kelas: string, unit = '', senyap = false) => {
+    if (!kelas) {
+      setTemanKelas([])
+      setLogs([])
+      setMemuat(false)
+      return
+    }
+    if (!senyap) setMemuat(true)
 
-    const { data: siswaData } = await supabase
+    const unitBersih = unit.trim()
+    let querySiswa = supabase
       .from('siswa')
-      .select('id_siswa,nama_siswa,kelas')
+      .select('id_siswa,nama_siswa,kelas,unit')
+      .eq('kelas', kelas)
+      .not('kelas', 'ilike', '%Alumni%')
       .order('nama_siswa', { ascending: true })
 
-    const daftar: Santri[] = (siswaData || []).map((row) => ({
+    if (unitBersih) querySiswa = querySiswa.eq('unit', unitBersih)
+
+    const { data: siswaKelas } = await querySiswa
+
+    const teman: SantriWali[] = (siswaKelas || []).map((row) => ({
       id: String(row.id_siswa),
       name: String(row.nama_siswa || ''),
       kelas: String(row.kelas || ''),
+      unit: String(row.unit || '').trim() || undefined,
     }))
-    setSantri(daftar)
+    setTemanKelas(teman)
 
-    const defaultId =
-      daftar.find((s) => s.id === idTautan)?.id ||
-      (idTautan ? daftar.find((s) => s.name.toLowerCase().includes(idTautan.toLowerCase()))?.id : '') ||
-      daftar[0]?.id ||
-      ''
-    setIdPilih((prev) => prev || defaultId)
+    const ids = teman.map((s) => s.id)
+    if (ids.length === 0) {
+      setLogs([])
+      setMemuat(false)
+      return
+    }
 
-    const { data: logData } = await supabase
+    let queryLog = supabase
       .from('tertib_point')
-      .select('id_siswa,bulan,pts,label,guru,created_at')
+      .select('id_siswa,bulan,pts,label,guru,created_at,unit')
       .eq('bulan', bulan)
+      .in('id_siswa', ids)
       .order('created_at', { ascending: false })
 
-    setLogs((logData || []).map(mapLog))
+    if (unitBersih) queryLog = queryLog.eq('unit', unitBersih)
+
+    const { data: logData } = await queryLog
+
+    setLogs((logData || []).map((row) => mapLog(row as Record<string, unknown>)))
     setMemuat(false)
-  }, [bulan, currentUser])
+  }, [bulan])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    let batal = false
+    setMemuat(true)
+    muatAnandaUntukWali(currentUser).then((daftar) => {
+      if (batal) return
+      setAnanda(daftar)
+      setIdPilih((prev) => {
+        if (prev && daftar.some((s) => s.id === prev)) return prev
+        return daftar[0]?.id || ''
+      })
+      const pertama = daftar[0]
+      void loadPoinKelas(pertama?.kelas || '', pertama?.unit || '')
+    })
+    return () => {
+      batal = true
+    }
+  }, [currentUser, bulan, loadPoinKelas])
 
-  const aktif = santri.find((s) => s.id === idPilih)
+  const aktif = ananda.find((s) => s.id === idPilih) || ananda[0]
+
+  useEffect(() => {
+    if (aktif?.kelas) void loadPoinKelas(aktif.kelas, aktif.unit || '', true)
+  }, [aktif?.kelas, aktif?.unit, loadPoinKelas])
+
+  useEffect(() => {
+    if (!aktif?.kelas) return
+    const kanal = supabase
+      .channel(`tertib-wali-${bulan}-${aktif.kelas}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tertib_point' }, () => {
+        void loadPoinKelas(aktif.kelas, aktif.unit || '', true)
+      })
+      .subscribe()
+    const timer = window.setInterval(
+      () => void loadPoinKelas(aktif.kelas, aktif.unit || '', true),
+      20000,
+    )
+    return () => {
+      window.clearInterval(timer)
+      supabase.removeChannel(kanal)
+    }
+  }, [aktif?.kelas, aktif?.unit, bulan, loadPoinKelas])
+
   const saldo: SaldoTertibBulanan = useMemo(
-    () => (idPilih ? hitungSaldoTertibBulanan(logs, idPilih, bulan) : hitungSaldoTertibBulanan([], '', bulan)),
-    [logs, idPilih, bulan],
+    () => (aktif ? hitungSaldoTertibBulanan(logs, aktif.id, bulan) : hitungSaldoTertibBulanan([], '', bulan)),
+    [logs, aktif, bulan],
   )
 
   const riwayat = useMemo(
-    () => logs.filter((l) => l.sid === idPilih).sort((a, b) => b.ts - a.ts),
-    [logs, idPilih],
+    () => (aktif ? logs.filter((l) => l.sid === aktif.id).sort((a, b) => b.ts - a.ts) : []),
+    [logs, aktif],
   )
 
-  if (!isPortalWali(currentUser)) {
+  const peringkat = useMemo(
+    () => (aktif?.kelas ? tigaBesarKelas(temanKelas, logs, bulan, 3) : []),
+    [temanKelas, logs, bulan, aktif?.kelas],
+  )
+
+  if (!tanpaCekPeran && !isPortalWali(currentUser)) {
     return (
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Halaman ini khusus akun Portal Wali Murid.
+        Halaman ini khusus akun Portal Wali Murid. Buka{' '}
+        <a href="/portal-wali" className="font-bold text-emerald-800 underline">
+          /portal-wali
+        </a>
+        .
       </p>
     )
   }
@@ -116,15 +188,15 @@ export default function TertibPointWali({ currentUser }: { currentUser?: any }) 
         />
       </label>
 
-      {santri.length > 1 && (
+      {ananda.length > 1 && (
         <label className="block text-xs font-bold text-slate-600">
           Pilih ananda
           <select
-            value={idPilih}
+            value={aktif?.id || ''}
             onChange={(e) => setIdPilih(e.target.value)}
             className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
           >
-            {santri.map((s) => (
+            {ananda.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} · {s.kelas}
               </option>
@@ -140,7 +212,13 @@ export default function TertibPointWali({ currentUser }: { currentUser?: any }) 
           <p className="text-center text-sm font-semibold text-slate-800">
             {aktif.name} <span className="text-slate-500">· Kelas {aktif.kelas}</span>
           </p>
-          <TertibSaldoKartu saldo={saldo} namaBulan={formatMonthName(bulan)} />
+          <TertibSaldoKartu saldo={saldo} namaBulan={formatMonthName(bulan)} varian="wali" />
+          <TertibPeringkatKelas
+            kelas={aktif.kelas}
+            peringkat={peringkat}
+            idAnanda={aktif.id}
+            namaBulan={formatMonthName(bulan)}
+          />
 
           <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <h2 className="text-xs font-bold uppercase text-slate-500">Riwayat bulan ini</h2>
@@ -161,7 +239,10 @@ export default function TertibPointWali({ currentUser }: { currentUser?: any }) 
           </section>
         </>
       ) : (
-        <p className="text-center text-sm text-slate-500">Data santri tidak ditemukan.</p>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center text-sm text-amber-900">
+          Data ananda belum tertaut ke akun wali ini. Pastikan kolom <strong>id_ortu</strong> di data siswa sesuai
+          username / ID akun wali, lalu hubungi admin sekolah bila perlu.
+        </p>
       )}
     </div>
   )

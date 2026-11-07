@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { excludeAlumniSiswa, isKelasAlumni } from '@/lib/siswa'
+import { excludeAlumniSiswa, isKelasAlumni, unitLogin, unitSama } from '@/lib/siswa'
 
 export type JurnalLink = {
   tipe: string
@@ -224,17 +224,21 @@ export function rekapBarisJurnal(
 }
 
 export async function fetchKelasDanJumlahSiswa(currentUser?: any) {
-  const unit = teacherUnit(currentUser)
+  const unit = unitLogin(currentUser) || teacherUnit(currentUser)
   const counts = new Map<string, number>()
   const pageSize = 1000
   let from = 0
 
   while (true) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('siswa')
       .select('kelas,unit')
       .not('kelas', 'ilike', '%Alumni%')
       .range(from, from + pageSize - 1)
+
+    if (unit) query = query.eq('unit', unit)
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Gagal mengambil data siswa:', error.message)
@@ -243,7 +247,7 @@ export async function fetchKelasDanJumlahSiswa(currentUser?: any) {
 
     const rows = excludeAlumniSiswa(data || [])
     for (const row of rows) {
-      if (unit && String(row.unit || '').trim() !== unit) continue
+      if (unit && !unitSama(row.unit, unit)) continue
       const kelas = String(row.kelas || '').trim()
       if (!kelas || isKelasAlumni(kelas)) continue
       counts.set(kelas, (counts.get(kelas) || 0) + 1)
@@ -275,7 +279,7 @@ export async function fetchKelasDanJumlahSiswa(currentUser?: any) {
 
 export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise<SiswaKelas[]> {
   if (!kelas) return []
-  const unit = teacherUnit(currentUser)
+  const unit = unitLogin(currentUser) || teacherUnit(currentUser)
   const pageSize = 1000
   const all: SiswaKelas[] = []
   let from = 0
@@ -289,6 +293,8 @@ export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise
       .order('nama_siswa', { ascending: true })
       .range(from, from + pageSize - 1)
 
+    if (unit) query = query.eq('unit', unit)
+
     const { data, error } = await query
     if (error) {
       console.error('Gagal mengambil siswa kelas:', error.message)
@@ -298,7 +304,7 @@ export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise
     const rows = excludeAlumniSiswa((data || []) as SiswaKelas[])
     for (const row of rows) {
       if (isKelasAlumni(row.kelas)) continue
-      if (unit && String(row.unit || '').trim() !== unit) continue
+      if (unit && !unitSama(row.unit, unit)) continue
       all.push(row)
     }
 

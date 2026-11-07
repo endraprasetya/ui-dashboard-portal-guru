@@ -1,7 +1,26 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { BookCheck, CalendarCheck2, ClipboardCheck, FileText, LogOut, Printer, ShieldAlert, X } from 'lucide-react'
+import {
+  BookCheck,
+  CalendarCheck2,
+  ChevronRight,
+  ClipboardCheck,
+  FileText,
+  GraduationCap,
+  LogOut,
+  Printer,
+  ShieldAlert,
+  Users,
+} from 'lucide-react'
+import { ModalGuruBantu, ModalRaporHq } from '@/components/kepsek/modul-rapor-guru-bantu'
+import {
+  ModalJurnal,
+  ModalPresensiLengkap,
+  ModalSetoran,
+  ModalTertib,
+  ModalTidakHadir,
+} from '@/components/kepsek/detail-modals'
 import { AbsensiMatriks } from '@/components/absensi-matriks'
 import { CetakUjianQiroah, type HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
 import {
@@ -14,18 +33,19 @@ import {
 } from '@/lib/kepala-sekolah'
 import { normalKelas } from '@/lib/qiroah'
 import { todayInputValue } from '@/lib/jurnal'
+import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 
 type Panel = 'absensi' | 'qiroah' | 'skl' | null
+type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | null
+
+const BATAS_TABEL = 6
+
+const kelasKartu =
+  'cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'
 
 function batang(nilai: number | null, tertinggi: number) {
   if (nilai == null || tertinggi <= 0) return '0%'
   return `${Math.max(4, Math.round((nilai / tertinggi) * 100))}%`
-}
-
-function labelAbsen(kode: 'S' | 'I' | 'A') {
-  if (kode === 'S') return 'Sakit'
-  if (kode === 'I') return 'Izin'
-  return 'Alpa'
 }
 
 function StatusGuru({ nilai }: { nilai: string }) {
@@ -68,7 +88,10 @@ export function DashboardKepalaSekolah() {
   const [kelasCetak, setKelasCetak] = useState('')
   const [bulanCetak, setBulanCetak] = useState(todayInputValue().slice(0, 7))
   const [skl, setSkl] = useState<HasilUjianCetak | null>(null)
+  const [modalKpi, setModalKpi] = useState<ModalKpi>(null)
   const [rincianAbsen, setRincianAbsen] = useState(false)
+  const [guruLengkap, setGuruLengkap] = useState(false)
+  const [ujianLengkap, setUjianLengkap] = useState(false)
 
   useEffect(() => {
     try {
@@ -128,8 +151,12 @@ export function DashboardKepalaSekolah() {
   }
 
   const angka = laporan?.kehadiran
-  const puncakMinggu = Math.max(100, ...(laporan?.trenMingguan.map((item) => item.persen || 0) || [0]))
+  const tidakHadirTotal = (angka?.sakit || 0) + (angka?.izin || 0) + (angka?.alpa || 0)
   const puncakPredikat = Math.max(1, ...(laporan?.predikat.map((item) => item.jumlah) || [0]))
+  const guruTabel = guruLengkap ? laporan?.guru || [] : (laporan?.guru || []).slice(0, BATAS_TABEL)
+  const ujianTabel = ujianLengkap ? laporan?.ujian || [] : (laporan?.ujian || []).slice(0, BATAS_TABEL)
+  const labelAsesmenRapor =
+    PILIHAN_ASESMEN_RAPOR_HQ.find((item) => item.kode === laporan?.raporHqRingkas.asesmen)?.label || 'ASTS 1'
 
   return (
     <div className="min-h-screen bg-[#f4f7f5] text-slate-800">
@@ -163,56 +190,163 @@ export function DashboardKepalaSekolah() {
         {laporan && (
           <>
             <section className="no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-emerald-800"><CalendarCheck2 className="size-4" /><p className="text-xs font-extrabold uppercase">Kehadiran hari ini</p></div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{angka?.hadir ?? 0} <span className="text-sm font-bold text-slate-500">hadir</span></p>
-                <p className="mt-1 text-xs text-slate-500">Sakit {angka?.sakit ?? 0} · Izin {angka?.izin ?? 0} · Alpa {angka?.alpa ?? 0}</p>
-                <button type="button" onClick={() => setRincianAbsen(true)} className="mt-2 text-left text-xs font-bold text-emerald-800 underline decoration-emerald-300 underline-offset-2">
-                  {(angka?.sakit || 0) + (angka?.izin || 0) + (angka?.alpa || 0) > 0
-                    ? `Lihat ${(angka?.sakit || 0) + (angka?.izin || 0) + (angka?.alpa || 0)} siswa tidak hadir`
-                    : 'Lihat rincian ketidakhadiran'}
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('presensi')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('presensi')}
+              >
+                <div className="flex items-center justify-between gap-2 text-emerald-800">
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck2 className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Kehadiran hari ini</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
+                <p className="mt-3 text-2xl font-black text-slate-900">
+                  {angka?.hadir ?? 0} <span className="text-sm font-bold text-slate-500">hadir</span>
+                </p>
+                <p className="mt-1 text-sm font-bold text-slate-700">{tidakHadirTotal} siswa tidak hadir</p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setRincianAbsen(true)
+                  }}
+                  className="mt-2 text-left text-xs font-bold text-emerald-800 underline decoration-emerald-300 underline-offset-2"
+                >
+                  {tidakHadirTotal > 0 ? `Lihat ${tidakHadirTotal} siswa tidak hadir` : 'Lihat rincian ketidakhadiran'}
                 </button>
-                <p className="mt-1 text-[11px] text-slate-400">{angka?.kelas ?? 0} kelas Unit {UNIT_KEPALA_SEKOLAH} sudah memiliki jurnal hari ini.</p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk kartu untuk presensi lengkap & tren 7 hari.</p>
+              </article>
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('setoran')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('setoran')}
+              >
+                <div className="flex items-center justify-between gap-2 text-sky-800">
+                  <div className="flex items-center gap-2">
+                    <BookCheck className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Setoran hari ini</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
+                <p className="mt-3 text-sm font-bold text-slate-700">
+                  Tahfidz <span className="text-2xl font-black text-slate-900">{laporan.setoranTahfidz}</span>
+                </p>
+                <p className="text-sm font-bold text-slate-700">
+                  Qiroah <span className="text-2xl font-black text-slate-900">{laporan.setoranQiroah}</span>
+                </p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk daftar sudah / belum setor.</p>
               </article>
               <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sky-800"><BookCheck className="size-4" /><p className="text-xs font-extrabold uppercase">Setoran hari ini</p></div>
-                <p className="mt-3 text-sm font-bold text-slate-700">Tahfidz <span className="text-2xl font-black text-slate-900">{laporan.setoranTahfidz}</span></p>
-                <p className="text-sm font-bold text-slate-700">Qiroah <span className="text-2xl font-black text-slate-900">{laporan.setoranQiroah}</span></p>
+                <div className="flex items-center gap-2 text-amber-800">
+                  <ClipboardCheck className="size-4" />
+                  <p className="text-xs font-extrabold uppercase">Ujian jilid aktif</p>
+                </div>
+                <p className="mt-2 text-xs font-bold text-amber-900">{laporan.ujianBulan.label}</p>
+                <p className="mt-2 text-lg font-black text-slate-900">
+                  {laporan.ujianAktif} <span className="text-xs font-bold text-slate-500">pengajuan berjalan</span>
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                  <li>{laporan.ujianBulan.totalPengajuan} pengajuan bulan ini</li>
+                  <li>{laporan.ujianBulan.sudahUjian} sudah ujian</li>
+                  <li>
+                    {laporan.ujianBulan.lulus} lulus · {laporan.ujianBulan.mengulang} mengulang
+                  </li>
+                </ul>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-amber-800"><ClipboardCheck className="size-4" /><p className="text-xs font-extrabold uppercase">Ujian jilid aktif</p></div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{laporan.ujianAktif}</p>
-                <p className="mt-1 text-xs text-slate-500">Pengajuan yang menunggu jadwal atau sudah terjadwal.</p>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-red-700"><ShieldAlert className="size-4" /><p className="text-xs font-extrabold uppercase">Tertib point hari ini</p></div>
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('tertib')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('tertib')}
+              >
+                <div className="flex items-center justify-between gap-2 text-red-700">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Tertib point hari ini</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
                 <p className="mt-3 text-2xl font-black text-slate-900">{laporan.tertibHariIni}</p>
-                <p className="mt-1 text-xs text-slate-500">Catatan poin yang masuk sejak pagi ini.</p>
+                <p className="mt-1 text-xs text-slate-500">Catatan poin masuk hari ini.</p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk riwayat kebaikan & pelanggaran.</p>
               </article>
             </section>
 
-            <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-extrabold text-slate-900">Pantauan jurnal hari ini</h2>
-              <p className="mt-1 text-xs text-slate-500">Unit {UNIT_KEPALA_SEKOLAH}. Buka baris kelas untuk melihat jam, mata pelajaran, materi pokok, dan kegiatan pembelajaran. Yang tampil adalah jurnal kelas yang siswanya berada di unit ini.</p>
-              <div className="mt-3 divide-y divide-slate-100">
-                {laporan.jurnalHariIni.length === 0 ? (
-                  <p className="py-3 text-sm text-slate-400">Belum ada jurnal Unit {UNIT_KEPALA_SEKOLAH} hari ini.</p>
-                ) : laporan.jurnalHariIni.map((row, index) => (
-                  <details key={`${row.kunci}-${index}`} className="group py-2">
-                    <summary className="cursor-pointer list-none text-sm font-bold text-slate-800 marker:content-none [&::-webkit-details-marker]:hidden">
-                      <span className="mr-2 text-emerald-700 group-open:hidden">+</span>
-                      <span className="mr-2 hidden text-emerald-700 group-open:inline">−</span>
-                      Kelas {row.kelas} · Jam ke-{row.jam || '-'} · {row.mapel}
-                    </summary>
-                    <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-3 text-sm">
-                      <p><span className="font-bold text-slate-600">Mata pelajaran. </span>{row.mapel}</p>
-                      <p className="whitespace-pre-wrap"><span className="font-bold text-slate-600">Materi pokok. </span>{row.materi || 'Belum diisi'}</p>
-                      <p className="whitespace-pre-wrap"><span className="font-bold text-slate-600">Kegiatan pembelajaran. </span>{row.kegiatan || 'Belum diisi'}</p>
-                    </div>
-                  </details>
-                ))}
-              </div>
+            <section className="no-print grid gap-3 sm:grid-cols-2">
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('rapor_hq')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('rapor_hq')}
+              >
+                <div className="flex items-center justify-between gap-2 text-violet-900">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Rapor HQ</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
+                <p className="mt-2 text-xs font-bold text-violet-800">
+                  Asesmen {labelAsesmenRapor} · {laporan.raporHqMentah.semester} {laporan.raporHqMentah.tahunAjaran}
+                </p>
+                <p className="mt-2 text-sm text-slate-800">
+                  <strong className="text-emerald-800">{laporan.raporHqRingkas.sudah}</strong> sudah menyetorkan ·{' '}
+                  <strong className="text-amber-800">{laporan.raporHqRingkas.belum}</strong> belum ·{' '}
+                  {laporan.raporHqRingkas.total} kelas binaan
+                </p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk filter ASTS 1, ASAS, ASTS 2, ASAT.</p>
+              </article>
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('guru_bantu')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('guru_bantu')}
+              >
+                <div className="flex items-center justify-between gap-2 text-teal-900">
+                  <div className="flex items-center gap-2">
+                    <Users className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Guru bantu</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-slate-800">
+                  <strong>{laporan.guruBantu.sudahAbsen}</strong> dari <strong>{laporan.guruBantu.total}</strong> guru sudah absen:{' '}
+                  <span className="text-emerald-800">{laporan.guruBantu.hadir} Hadir</span>,{' '}
+                  <span className="text-amber-800">{laporan.guruBantu.terlambat} Terlambat</span>,{' '}
+                  <span>{laporan.guruBantu.tidakHadir} Tidak Hadir</span>
+                </p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk detail jam & foto selfie absensi.</p>
+              </article>
             </section>
+
+            <article
+              role="button"
+              tabIndex={0}
+              className={`${kelasKartu} no-print`}
+              onClick={() => setModalKpi('jurnal')}
+              onKeyDown={(e) => e.key === 'Enter' && setModalKpi('jurnal')}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-extrabold text-slate-900">Pantauan jurnal hari ini</h2>
+                <ChevronRight className="size-4 text-slate-400" />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Unit {UNIT_KEPALA_SEKOLAH}</p>
+              <p className="mt-3 text-sm text-slate-800">
+                <span className="font-bold">{laporan.jurnalRingkas.tanggal}</span> ·{' '}
+                <strong className="text-emerald-800">{laporan.jurnalRingkas.terisi}</strong> sesi terisi ·{' '}
+                <strong className="text-amber-800">{laporan.jurnalRingkas.belum}</strong> sesi belum
+              </p>
+              <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk jurnal lengkap (filter tanggal, kelas, guru).</p>
+            </article>
 
             {laporan.catatan.length > 0 && (
               <ul className="no-print space-y-1 text-xs text-amber-800">
@@ -220,49 +354,21 @@ export function DashboardKepalaSekolah() {
               </ul>
             )}
 
-            <section className="no-print grid gap-4 lg:grid-cols-2">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-sm font-extrabold text-slate-900">Tren kehadiran 7 hari</h2>
-                <div className="mt-4 space-y-2">
-                  {laporan.trenMingguan.map((item) => (
-                    <div key={item.label} className="grid grid-cols-[5.5rem_1fr_3rem] items-center gap-2 text-xs">
-                      <span className="text-slate-500">{item.label}</span>
-                      <span className="h-2 overflow-hidden rounded-full bg-slate-100">
-                        <span className="block h-full rounded-full bg-emerald-600" style={{ width: batang(item.persen, puncakMinggu) }} />
-                      </span>
-                      <span className="text-right font-bold">{item.persen == null ? '—' : `${item.persen}%`}</span>
+            <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-extrabold text-slate-900">Distribusi predikat qiroah</h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {laporan.predikat.map((item) => (
+                  <div key={item.nama}>
+                    <div className="mb-1 flex justify-between text-xs font-bold">
+                      <span>{item.nama}</span>
+                      <span>{item.jumlah}</span>
                     </div>
-                  ))}
-                </div>
-                <h3 className="mt-5 text-xs font-extrabold uppercase text-slate-500">Bulan berjalan</h3>
-                <div className="mt-2 space-y-2">
-                  {laporan.trenBulanan.map((item) => (
-                    <div key={item.label} className="grid grid-cols-[5.5rem_1fr_3rem] items-center gap-2 text-xs">
-                      <span className="text-slate-500">{item.label}</span>
-                      <span className="h-2 overflow-hidden rounded-full bg-slate-100">
-                        <span className="block h-full rounded-full bg-sky-700" style={{ width: batang(item.persen, 100) }} />
-                      </span>
-                      <span className="text-right font-bold">{item.persen == null ? '—' : `${item.persen}%`}</span>
-                    </div>
-                  ))}
-                </div>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-sm font-extrabold text-slate-900">Distribusi predikat qiroah</h2>
-                <div className="mt-4 space-y-3">
-                  {laporan.predikat.map((item) => (
-                    <div key={item.nama}>
-                      <div className="mb-1 flex justify-between text-xs font-bold">
-                        <span>{item.nama}</span>
-                        <span>{item.jumlah}</span>
-                      </div>
-                      <span className="block h-3 overflow-hidden rounded-full bg-slate-100">
-                        <span className="block h-full rounded-full bg-[#1b4332]" style={{ width: batang(item.jumlah, puncakPredikat) }} />
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </article>
+                    <span className="block h-3 overflow-hidden rounded-full bg-slate-100">
+                      <span className="block h-full rounded-full bg-[#1b4332]" style={{ width: batang(item.jumlah, puncakPredikat) }} />
+                    </span>
+                  </div>
+                ))}
+              </div>
             </section>
 
             <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -282,7 +388,7 @@ export function DashboardKepalaSekolah() {
                   <tbody>
                     {laporan.guru.length === 0 ? (
                       <tr><td colSpan={5} className="p-4 text-center text-slate-400">Daftar guru belum tersedia.</td></tr>
-                    ) : laporan.guru.map((row) => (
+                    ) : guruTabel.map((row) => (
                       <tr key={`${row.nama}-${row.unit}`}>
                         <td className="border-b p-2 font-bold">{row.nama}</td>
                         <td className="border-b p-2">{row.unit}</td>
@@ -294,6 +400,15 @@ export function DashboardKepalaSekolah() {
                   </tbody>
                 </table>
               </div>
+              {laporan.guru.length > BATAS_TABEL && (
+                <button
+                  type="button"
+                  onClick={() => setGuruLengkap((v) => !v)}
+                  className="mt-3 w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-emerald-900 hover:bg-slate-50"
+                >
+                  {guruLengkap ? 'Tampilkan lebih ringkas' : `Lihat selengkapnya (${laporan.guru.length} guru)`}
+                </button>
+              )}
             </section>
 
             <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -314,7 +429,7 @@ export function DashboardKepalaSekolah() {
                   <tbody>
                     {laporan.ujian.length === 0 ? (
                       <tr><td colSpan={7} className="p-4 text-center text-slate-400">Tidak ada pengajuan yang sedang berjalan.</td></tr>
-                    ) : laporan.ujian.map((row) => (
+                    ) : ujianTabel.map((row) => (
                       <tr key={row.id}>
                         <td className="border-b p-2 font-bold">{row.nama}</td>
                         <td className="border-b p-2">{row.kelas} · {row.unit}</td>
@@ -328,6 +443,15 @@ export function DashboardKepalaSekolah() {
                   </tbody>
                 </table>
               </div>
+              {laporan.ujian.length > BATAS_TABEL && (
+                <button
+                  type="button"
+                  onClick={() => setUjianLengkap((v) => !v)}
+                  className="mt-3 w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-emerald-900 hover:bg-slate-50"
+                >
+                  {ujianLengkap ? 'Tampilkan lebih ringkas' : `Lihat selengkapnya (${laporan.ujian.length} pengajuan)`}
+                </button>
+              )}
             </section>
 
             <section className="no-print rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
@@ -418,48 +542,14 @@ export function DashboardKepalaSekolah() {
           </>
         )}
       </main>
-      {rincianAbsen && laporan && (
-        <div className="no-print fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={() => setRincianAbsen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="judul-absen"
-            className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-4 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 id="judul-absen" className="text-sm font-extrabold text-slate-900">Siswa tidak hadir hari ini</h2>
-                <p className="mt-1 text-xs text-slate-500">Unit {UNIT_KEPALA_SEKOLAH}. S = Sakit, I = Izin, A = Alpa.</p>
-              </div>
-              <button type="button" onClick={() => setRincianAbsen(false)} className="rounded-lg p-1 text-slate-500" aria-label="Tutup rincian">
-                <X className="size-4" />
-              </button>
-            </div>
-            {laporan.tidakHadir.length === 0 ? (
-              <p className="py-6 text-sm text-slate-500">Tidak ada siswa Unit {UNIT_KEPALA_SEKOLAH} yang sakit, izin, atau alpa hari ini.</p>
-            ) : (
-              <table className="mt-3 w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="text-xs text-slate-500">
-                    <th className="border-b p-2">Nama</th>
-                    <th className="border-b p-2">Kelas</th>
-                    <th className="border-b p-2">Keterangan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {laporan.tidakHadir.map((row) => (
-                    <tr key={`${row.kelas}-${row.nama}-${row.keterangan}`}>
-                      <td className="border-b p-2 font-bold">{row.nama}</td>
-                      <td className="border-b p-2">{row.kelas}</td>
-                      <td className="border-b p-2">{row.keterangan} · {labelAbsen(row.keterangan)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+      {rincianAbsen && laporan && <ModalTidakHadir laporan={laporan} onTutup={() => setRincianAbsen(false)} />}
+      {laporan && modalKpi === 'presensi' && <ModalPresensiLengkap laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'setoran' && <ModalSetoran laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'tertib' && <ModalTertib laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'jurnal' && <ModalJurnal laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'rapor_hq' && <ModalRaporHq laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'guru_bantu' && (
+        <ModalGuruBantu rekap={laporan.guruBantu} unit={laporan.unit} onTutup={() => setModalKpi(null)} />
       )}
       {skl && (
         <CetakUjianQiroah jenis="skl" data={skl} onClose={() => setSkl(null)} kepsekTetap={KEPALA_SEKOLAH} />

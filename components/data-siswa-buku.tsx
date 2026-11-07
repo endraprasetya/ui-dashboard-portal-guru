@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Search, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { unitLogin } from '@/lib/siswa'
 
 const KELAS = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D', '3A', '3B', '3C', '3D', '4A', '4B', '4C', '4D', '5A', '5B', '5C', '5D', '6A', '6B', '6C', '6D']
 const UKURAN = 20
@@ -73,6 +74,7 @@ export function DataSiswaBuku() {
   const [kelas, setKelas] = useState('')
   const [halaman, setHalaman] = useState(1)
   const [detail, setDetail] = useState<BarisSiswa | null>(null)
+  const [unitAktif, setUnitAktif] = useState('')
 
   useEffect(() => {
     try {
@@ -82,6 +84,7 @@ export function DataSiswaBuku() {
         window.location.replace('/')
         return
       }
+      setUnitAktif(unitLogin(user))
       setKembali(adalahKepalaSekolah(user) ? '/dashboard/kepala-sekolah' : '/')
       setSiap(true)
     } catch {
@@ -101,31 +104,69 @@ export function DataSiswaBuku() {
   useEffect(() => {
     if (!siap) return
     let batal = false
-    supabase
-      .from('data_diri_siswa')
-      .select('*')
-      .limit(1000)
-      .then(({ data, error }) => {
-        if (batal) return
-        if (error) {
-          setGalat('Data siswa belum dapat dimuat.')
-          setMemuat(false)
+    ;(async () => {
+      let kunciUnit: Set<string> | null = null
+      if (unitAktif) {
+        const { data: siswaUnit, error: galatUnit } = await supabase
+          .from('siswa')
+          .select('nis,nama_siswa')
+          .eq('unit', unitAktif)
+          .limit(5000)
+        if (galatUnit) {
+          if (!batal) {
+            setGalat('Data siswa belum dapat dimuat.')
+            setMemuat(false)
+          }
           return
         }
-        const daftar = ((data || []) as Record<string, unknown>[]).map((row) => {
-          const bersih: BarisSiswa = {}
-          for (const [kunci, nilai] of Object.entries(row)) bersih[kunci] = teks(nilai)
-          if (!bersih.nama_lengkap) bersih.nama_lengkap = 'Siswa'
-          return bersih
-        })
-        daftar.sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.nama_lengkap.localeCompare(b.nama_lengkap, 'id'))
-        setBaris(daftar)
+        kunciUnit = new Set<string>()
+        for (const row of siswaUnit || []) {
+          const nis = teks((row as { nis?: unknown }).nis)
+          const nama = teks((row as { nama_siswa?: unknown }).nama_siswa).toLowerCase()
+          if (nis) kunciUnit.add(nis)
+          if (nama) kunciUnit.add(`nama:${nama}`)
+        }
+      }
+
+      const { data, error } = await supabase.from('data_diri_siswa').select('*').limit(1000)
+      if (batal) return
+      if (error) {
+        setGalat('Data siswa belum dapat dimuat.')
         setMemuat(false)
+        return
+      }
+      let daftar = ((data || []) as Record<string, unknown>[]).map((row) => {
+        const bersih: BarisSiswa = {}
+        for (const [kunci, nilai] of Object.entries(row)) bersih[kunci] = teks(nilai)
+        if (!bersih.nama_lengkap) bersih.nama_lengkap = 'Siswa'
+        return bersih
       })
+
+      if (kunciUnit) {
+        daftar = daftar.filter((row) => {
+          const induk = row.nomor_induk_sekolah
+          const nisn = row.nisn
+          const nama = row.nama_lengkap.toLowerCase()
+          return (
+            (induk && kunciUnit!.has(induk)) ||
+            (nisn && kunciUnit!.has(nisn)) ||
+            kunciUnit!.has(`nama:${nama}`)
+          )
+        })
+      }
+
+      daftar.sort(
+        (a, b) =>
+          a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) ||
+          a.nama_lengkap.localeCompare(b.nama_lengkap, 'id'),
+      )
+      setBaris(daftar)
+      setMemuat(false)
+    })()
     return () => {
       batal = true
     }
-  }, [siap])
+  }, [siap, unitAktif])
 
   const hasil = useMemo(() => {
     const kata = cari.trim().toLowerCase()

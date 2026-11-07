@@ -11,6 +11,7 @@ type Props = {
   error?: string | null;
   idPrefix?: string;
   sorotError?: boolean;
+  wajib?: boolean;
 };
 
 export function KeteranganTertibForm({
@@ -21,6 +22,7 @@ export function KeteranganTertibForm({
   error,
   idPrefix = "ktr",
   sorotError = false,
+  wajib = true,
 }: Props) {
   const toggle = (opsi: string) => {
     if (pilihan.includes(opsi)) onPilihanChange(pilihan.filter((o) => o !== opsi));
@@ -30,9 +32,11 @@ export function KeteranganTertibForm({
   return (
     <fieldset className="mb-4">
       <legend className="mb-2 block text-xs font-bold text-slate-700">
-        Keterangan / tindakan guru <span className="text-red-600">*</span>
+        Keterangan / tindakan guru {wajib ? <span className="text-red-600">*</span> : <span className="font-medium text-slate-400">(opsional)</span>}
       </legend>
-      <p className="mb-2 text-[11px] text-slate-500">Pilih satu atau lebih (wajib).</p>
+      <p className="mb-2 text-[11px] text-slate-500">
+        {wajib ? 'Pilih satu atau lebih (wajib untuk pelanggaran).' : 'Boleh dikosongkan untuk catatan kebaikan / prestasi.'}
+      </p>
       <div
         className={`space-y-2 rounded-xl border bg-slate-50/80 p-3 ${
           sorotError || error ? "border-red-400 ring-1 ring-red-200" : "border-slate-200"

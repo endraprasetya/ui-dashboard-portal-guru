@@ -11,8 +11,8 @@ import { QiroahPenguji } from '@/components/qiroah-penguji'
 import QiroahKoordinator from '@/components/qiroah-koordinator'
 import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/components/pusat-notifikasi'
 import TertibPoint from '@/components/tertib-point'
-import TertibPointWali from '@/components/tertib-point-wali'
-import { isPortalWali } from '@/lib/tertib-saldo'
+import { isPortalWali } from '@/lib/portal-wali'
+import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
@@ -22,7 +22,6 @@ import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
-import { educationCalendar } from '@/lib/teacher-data'
 import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
   keteranganJadwal,
@@ -73,7 +72,13 @@ export default function Home() {
         window.location.replace('/dashboard/kepala-sekolah')
         return
       }
-      if (user) setCurrentUser(user)
+      if (user) {
+        if (isPortalWali(user)) {
+          window.location.replace('/portal-wali')
+          return
+        }
+        setCurrentUser(user)
+      }
     } catch {
       /* sesi yang rusak diabaikan */
     }
@@ -188,6 +193,10 @@ export default function Home() {
     return <Login onLoginSuccess={(user) => {
       if (adalahKepalaSekolah(user)) {
         window.location.assign('/dashboard/kepala-sekolah')
+        return
+      }
+      if (isPortalWali(user)) {
+        window.location.assign('/portal-wali')
         return
       }
       setCurrentUser(user)
@@ -506,20 +515,7 @@ export default function Home() {
                 </div>
                 <CalendarDays className="size-5 text-emerald-600" />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {educationCalendar.map((item) => (
-                  <div key={item.title} className="flex gap-3 rounded-xl bg-emerald-50/70 p-3">
-                    <div className="flex min-h-12 min-w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-white px-1.5 text-emerald-700 shadow-sm">
-                      <strong className="text-[11px] leading-tight">{item.date.split(' ')[0]}</strong>
-                      <span className="text-[10px] font-semibold uppercase">{item.date.split(' ')[1]}</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">{item.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">{item.detail}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <DaftarPengumuman />
             </section>
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -582,11 +578,7 @@ export default function Home() {
             >
               <ArrowLeft className="size-4" /> Kembali ke Dashboard
             </button>
-            {isPortalWali(currentUser) ? (
-              <TertibPointWali currentUser={currentUser} />
-            ) : (
-              <TertibPoint currentUser={currentUser} />
-            )}
+            <TertibPoint currentUser={currentUser} />
           </div>
         )}
 
@@ -741,20 +733,7 @@ export default function Home() {
             description="Kalender pendidikan tahun pelajaran 2026/2027."
             onBack={() => setCurrentView('dashboard')}
           >
-            <div className="space-y-3">
-              {educationCalendar.map((item) => (
-                <div key={item.title} className="flex gap-3 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
-                  <div className="flex min-h-12 min-w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-white px-1.5 text-emerald-700 shadow-sm">
-                    <strong className="text-[11px] leading-tight">{item.date.split(' ')[0]}</strong>
-                    <span className="text-[10px] font-semibold uppercase">{item.date.split(' ')[1]}</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{item.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{item.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DaftarPengumuman ringkas />
           </PlaceholderModule>
         )}
 

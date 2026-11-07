@@ -11,6 +11,30 @@ function garis(value: string, panjang = 22) {
   return teks || '.'.repeat(panjang)
 }
 
+export const GAYA_CETAK_RAPOR_TAHFIDZ = `
+  @page { size: 210mm 330mm; margin: 10mm 12mm; }
+  .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #000; }
+  .lembar-rapor table { width: 100%; border-collapse: collapse; }
+  .lembar-rapor .identitas td { padding: 1px 4px; vertical-align: middle; }
+  .lembar-rapor .tabel-nilai th,
+  .lembar-rapor .tabel-nilai td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
+  .lembar-rapor .tabel-nilai thead th { background: #d9d9d9; font-weight: 700; text-align: center; }
+  .lembar-rapor .tabel-catatan th,
+  .lembar-rapor .tabel-catatan td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; }
+  .banner-biru { background: #1e40af !important; color: #fff !important; font-weight: 700; text-align: center; }
+  .kotak-merah { background: #ef4444 !important; color: #fff !important; font-weight: 700; text-align: center; }
+  .kotak-hijau { background: #22c55e !important; color: #000 !important; font-weight: 700; text-align: center; font-size: 18pt; }
+  .nama-arab { font-family: var(--font-amiri), "Times New Roman", serif; font-size: 13pt; }
+  .ttd-rapor td { border: none !important; text-align: center; vertical-align: top; width: 33.33%; }
+  .ttd-rapor .ruang { height: 22mm; }
+  @media print {
+    body { background: #fff !important; }
+    .lembar-rapor { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
+    .lembar-rapor:last-child { page-break-after: auto; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+`
+
 export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string; asesmen?: string }) {
   const [data, setData] = useState<DataCetakRaporTahfidz | null>(null)
   const [status, setStatus] = useState<'memuat' | 'siap' | 'kosong'>('memuat')
@@ -36,28 +60,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
 
   return (
     <div className="min-h-screen bg-slate-200 print:bg-white">
-      <style>{`
-        @page { size: 210mm 330mm; margin: 10mm 12mm; }
-        .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #000; }
-        .lembar-rapor table { width: 100%; border-collapse: collapse; }
-        .lembar-rapor .identitas td { padding: 1px 4px; vertical-align: middle; }
-        .lembar-rapor .tabel-nilai th,
-        .lembar-rapor .tabel-nilai td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
-        .lembar-rapor .tabel-nilai thead th { background: #d9d9d9; font-weight: 700; text-align: center; }
-        .lembar-rapor .tabel-catatan th,
-        .lembar-rapor .tabel-catatan td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; }
-        .banner-biru { background: #1e40af !important; color: #fff !important; font-weight: 700; text-align: center; }
-        .kotak-merah { background: #ef4444 !important; color: #fff !important; font-weight: 700; text-align: center; }
-        .kotak-hijau { background: #22c55e !important; color: #000 !important; font-weight: 700; text-align: center; font-size: 18pt; }
-        .nama-arab { font-family: var(--font-amiri), "Times New Roman", serif; font-size: 13pt; }
-        .ttd-rapor td { border: none !important; text-align: center; vertical-align: top; width: 33.33%; }
-        .ttd-rapor .ruang { height: 22mm; }
-        @media print {
-          body { background: #fff !important; }
-          .lembar-rapor { box-shadow: none !important; margin: 0 !important; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
+      <style>{GAYA_CETAK_RAPOR_TAHFIDZ}</style>
 
       <div className="print:hidden sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-300 bg-[#143d32] px-4 py-3 text-white">
         <div>
@@ -95,7 +98,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
   )
 }
 
-function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
+export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
   const { siswa } = data
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`

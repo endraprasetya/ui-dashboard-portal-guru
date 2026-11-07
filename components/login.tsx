@@ -4,7 +4,17 @@ import { useState, type FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Lock, User, LogIn, ShieldAlert, Eye, EyeOff } from 'lucide-react'
 
-export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void }) {
+export function Login({
+  onLoginSuccess,
+  judulPortal = 'Portal Guru',
+  subjudul = 'SD Islam Terpadu Al Madinah',
+  tombolMasuk = 'Masuk ke Portal Guru',
+}: {
+  onLoginSuccess: (user: any) => void
+  judulPortal?: string
+  subjudul?: string
+  tombolMasuk?: string
+}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -77,8 +87,8 @@ export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void 
           <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg">
             <Lock className="size-7" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900">Portal Guru</h1>
-          <p className="text-xs text-slate-500">SD Islam Terpadu Al Madinah</p>
+          <h1 className="text-2xl font-black text-slate-900">{judulPortal}</h1>
+          <p className="text-xs text-slate-500">{subjudul}</p>
         </div>
 
         {errorMsg && (
@@ -139,7 +149,7 @@ export function Login({ onLoginSuccess }: { onLoginSuccess: (user: any) => void 
               'Memverifikasi Akun...'
             ) : (
               <>
-                <LogIn className="size-4" /> Masuk ke Portal Guru
+                <LogIn className="size-4" /> {tombolMasuk}
               </>
             )}
           </button>
