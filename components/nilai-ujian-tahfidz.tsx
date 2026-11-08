@@ -15,6 +15,7 @@ import {
   type MateriNilaiUjian,
   type NilaiSurahUjian,
 } from '@/lib/rapor-tahfidz-nilai'
+import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
 
 export type TargetNilaiUjian = {
   idSiswa: string
@@ -35,9 +36,11 @@ function gabungBaris(materi: MateriNilaiUjian[], tersimpan: NilaiSurahUjian[]) {
 export function NilaiUjianTahfidz({
   target,
   onClose,
+  targetTahfidzAktif = true,
 }: {
   target: TargetNilaiUjian
   onClose: () => void
+  targetTahfidzAktif?: boolean
 }) {
   const [baris, setBaris] = useState<NilaiSurahUjian[]>(target.surahs.map(barisKosong))
   const [capaianKompetensi, setCapaianKompetensi] = useState('')
@@ -48,6 +51,7 @@ export function NilaiUjianTahfidz({
   const [menyimpan, setMenyimpan] = useState(false)
   const [pesan, setPesan] = useState('')
   const [galat, setGalat] = useState(false)
+  const [menghitungTarget, setMenghitungTarget] = useState(false)
 
   useEffect(() => {
     let batal = false
@@ -62,13 +66,43 @@ export function NilaiUjianTahfidz({
       setCapaianKompetensi(hasil.header?.capaianKompetensi || '')
       setCapaianTarget(hasil.header?.capaianTarget || '')
       setMotivasi(hasil.header?.motivasi || '')
-      setNilaiTarget(hasil.header?.nilaiTarget === '' || hasil.header?.nilaiTarget == null ? '' : Number(hasil.header.nilaiTarget))
+      const targetTersimpan = hasil.header?.nilaiTarget === '' || hasil.header?.nilaiTarget == null ? '' : Number(hasil.header.nilaiTarget)
+      setNilaiTarget(targetTersimpan)
       setMemuat(false)
+      if (
+        targetTahfidzAktif &&
+        targetTersimpan === '' &&
+        !hasil.header?.capaianTarget &&
+        target.surahs.length > 0
+      ) {
+        hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs).then((saran) => {
+          if (!saran || batal) return
+          setNilaiTarget(saran.nilaiTarget)
+          setCapaianTarget(saran.capaianTarget)
+          setMotivasi(saran.motivasi)
+        })
+      }
     })
     return () => {
       batal = true
     }
-  }, [target])
+  }, [target, targetTahfidzAktif])
+
+  const terapkanTargetManual = async () => {
+    setMenghitungTarget(true)
+    const saran = await hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs)
+    setMenghitungTarget(false)
+    if (!saran) {
+      setPesan('Capaian setoran belum cukup untuk menghitung target otomatis.')
+      setGalat(true)
+      return
+    }
+    setNilaiTarget(saran.nilaiTarget)
+    setCapaianTarget(saran.capaianTarget)
+    setMotivasi(saran.motivasi)
+    setGalat(false)
+    setPesan('Target tahfidz diperbarui dari capaian setoran.')
+  }
 
   const ringkasan = useMemo(() => {
     const nilai = baris.map(nilaiSurah)
@@ -93,7 +127,12 @@ export function NilaiUjianTahfidz({
       idSiswa: target.idSiswa,
       jenisAsesmen: target.asesmen,
       baris,
-      narasi: { capaianKompetensi, capaianTarget, motivasi, nilaiTarget },
+      narasi: {
+        capaianKompetensi,
+        capaianTarget: targetTahfidzAktif ? capaianTarget : '',
+        motivasi,
+        nilaiTarget: targetTahfidzAktif ? nilaiTarget : '',
+      },
     })
     setMenyimpan(false)
     if (hasil.error) {
@@ -243,21 +282,51 @@ export function NilaiUjianTahfidz({
 
           <section className="space-y-3 rounded-2xl border border-slate-200 p-4">
             <h3 className="text-sm font-extrabold text-slate-800">Catatan capaian rapor</h3>
-            <label className="block text-[11px] font-bold text-slate-600">
-              Nilai target
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={nilaiTarget}
-                onChange={(event) => setNilaiTarget(event.target.value === '' ? '' : Number(event.target.value))}
-                placeholder="0–100"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <span className="mt-1 block font-medium text-slate-500">
-                Dipakai rumus rapor: ((2 × nilai rata-rata) + nilai target) / 3
-              </span>
-            </label>
+            {targetTahfidzAktif ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2">
+                  <p className="text-[11px] font-bold text-emerald-900">Target tahfidz aktif</p>
+                  <button
+                    type="button"
+                    onClick={terapkanTargetManual}
+                    disabled={menghitungTarget}
+                    className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {menghitungTarget ? 'Menghitung…' : 'Hitung ulang target'}
+                  </button>
+                </div>
+                <label className="block text-[11px] font-bold text-slate-600">
+                  Nilai target
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={nilaiTarget}
+                    onChange={(event) => setNilaiTarget(event.target.value === '' ? '' : Number(event.target.value))}
+                    placeholder="0–100"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <span className="mt-1 block font-medium text-slate-500">
+                    Dipakai rumus rapor: ((2 × nilai rata-rata) + nilai target) / 3
+                  </span>
+                </label>
+                <label className="block text-[11px] font-bold text-slate-600">
+                  Capaian target
+                  <textarea
+                    value={capaianTarget}
+                    onChange={(event) => setCapaianTarget(event.target.value)}
+                    rows={3}
+                    placeholder="Deskripsi capaian terhadap target hafalan..."
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Target tahfidz nonaktif. Aktifkan sakelar &quot;Target Tahfidz&quot; di halaman Input Rapor untuk mengisi nilai target
+                dan narasi capaian.
+              </p>
+            )}
             <label className="block text-[11px] font-bold text-slate-600">
               Capaian kompetensi
               <textarea
@@ -265,16 +334,6 @@ export function NilaiUjianTahfidz({
                 onChange={(event) => setCapaianKompetensi(event.target.value)}
                 rows={2}
                 placeholder="Deskripsi capaian kompetensi siswa..."
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block text-[11px] font-bold text-slate-600">
-              Capaian target
-              <textarea
-                value={capaianTarget}
-                onChange={(event) => setCapaianTarget(event.target.value)}
-                rows={2}
-                placeholder="Deskripsi capaian terhadap target hafalan..."
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </label>

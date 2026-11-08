@@ -18,6 +18,8 @@ import {
   type PengajuanKoordinator,
 } from '@/lib/qiroah-koordinator'
 import { bulanSekarangJakarta, normKelas } from '@/lib/qiroah-koordinator-setoran'
+import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
+import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
 
 type TabKey = 'overview' | 'progres' | 'jadwal' | 'hasil'
 
@@ -349,6 +351,7 @@ export default function QiroahKoordinator({
                     <th className="px-3 py-2">Keputusan</th>
                     <th className="px-3 py-2">Penguji</th>
                     <th className="px-3 py-2 max-w-xs">Catatan penguji</th>
+                    <th className="px-3 py-2 text-center">Detail</th>
                     <th className="px-3 py-2">Tindak lanjut</th>
                   </tr>
                 </thead>
@@ -366,6 +369,9 @@ export default function QiroahKoordinator({
                       <td className="px-3 py-2 font-semibold">{row.keputusan || '—'}</td>
                       <td className="px-3 py-2 text-xs">{row.penguji || '—'}</td>
                       <td className="max-w-xs px-3 py-2 text-xs text-slate-600">{row.catatan || row.kelebihan_siswa || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <TombolLihatNilaiUjian data={rekapKeTampilanNilai(row)} />
+                      </td>
                       <td className="px-3 py-2">
                         <BadgeTindak label={row.tindak.label} tone={row.tindak.tone} />
                       </td>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { UjianQiroahWaliBeranda, UjianQiroahWaliMenu } from '@/components/ujian-qiroah-wali'
 import {
   ArrowRight,
   Award,
@@ -16,7 +17,7 @@ import { EkskulWali } from '@/components/ekskul-wali'
 import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { educationCalendar } from '@/lib/teacher-data'
 
-type ViewWali = 'dashboard' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul'
+type ViewWali = 'dashboard' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul' | 'qiroah'
 
 const NAV: { id: ViewWali; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -24,6 +25,7 @@ const NAV: { id: ViewWali; label: string }[] = [
   { id: 'pengumuman', label: 'Pengumuman' },
   { id: 'prestasi', label: 'Prestasi' },
   { id: 'ekskul', label: 'Ekskul' },
+  { id: 'qiroah', label: 'Qiroah' },
 ]
 
 export function PortalWali({
@@ -146,6 +148,8 @@ export function PortalWali({
               </button>
             </div>
 
+            <UjianQiroahWaliBeranda currentUser={currentUser} />
+
             <section className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
@@ -198,6 +202,13 @@ export function PortalWali({
           <div>
             <TombolKembali onClick={() => setView('dashboard')} />
             <EkskulWali />
+          </div>
+        )}
+
+        {view === 'qiroah' && (
+          <div>
+            <TombolKembali onClick={() => setView('dashboard')} />
+            <UjianQiroahWaliMenu currentUser={currentUser} />
           </div>
         )}
       </main>

@@ -228,7 +228,21 @@ export default function TertibPointWali({
               <ul className="mt-2 divide-y divide-slate-100 text-sm">
                 {riwayat.map((r, i) => (
                   <li key={i} className="flex justify-between gap-2 py-2">
-                    <span className="text-slate-700">{r.label}</span>
+                    <span className="min-w-0">
+                      <time className="block text-[11px] font-semibold tabular-nums text-slate-500">
+                        {Number.isFinite(r.ts) && r.ts > 0
+                          ? new Date(r.ts)
+                              .toLocaleDateString('id-ID', {
+                                timeZone: 'Asia/Jakarta',
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                              .replace(/\./g, '')
+                          : '—'}
+                      </time>
+                      <span className="text-slate-700">{r.label}</span>
+                    </span>
                     <span className={`shrink-0 font-bold ${r.pts > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {r.pts > 0 ? `+${r.pts}` : r.pts}
                     </span>

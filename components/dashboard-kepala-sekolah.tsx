@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   Users,
 } from 'lucide-react'
+import { ModalHasilUjianKepsek } from '@/components/kepsek/modal-hasil-ujian'
 import { ModalGuruBantu, ModalRaporHq } from '@/components/kepsek/modul-rapor-guru-bantu'
 import {
   ModalJurnal,
@@ -36,7 +37,7 @@ import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 
 type Panel = 'absensi' | 'qiroah' | 'skl' | null
-type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | null
+type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
 
 const BATAS_TABEL = 6
 
@@ -242,10 +243,19 @@ export function DashboardKepalaSekolah() {
                 </p>
                 <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk daftar sudah / belum setor.</p>
               </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-amber-800">
-                  <ClipboardCheck className="size-4" />
-                  <p className="text-xs font-extrabold uppercase">Ujian jilid aktif</p>
+              <article
+                role="button"
+                tabIndex={0}
+                className={kelasKartu}
+                onClick={() => setModalKpi('hasil_ujian')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('hasil_ujian')}
+              >
+                <div className="flex items-center justify-between gap-2 text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Ujian jilid aktif</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
                 </div>
                 <p className="mt-2 text-xs font-bold text-amber-900">{laporan.ujianBulan.label}</p>
                 <p className="mt-2 text-lg font-black text-slate-900">
@@ -253,11 +263,12 @@ export function DashboardKepalaSekolah() {
                 </p>
                 <ul className="mt-2 space-y-1 text-xs text-slate-600">
                   <li>{laporan.ujianBulan.totalPengajuan} pengajuan bulan ini</li>
-                  <li>{laporan.ujianBulan.sudahUjian} sudah ujian</li>
+                  <li>{laporan.ujianBulan.sudahUjian} sudah ujian · {laporan.hasilUjian.length} terekap di unit</li>
                   <li>
                     {laporan.ujianBulan.lulus} lulus · {laporan.ujianBulan.mengulang} mengulang
                   </li>
                 </ul>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk rekapitulasi lengkap &amp; filter hasil.</p>
               </article>
               <article
                 role="button"
@@ -550,6 +561,9 @@ export function DashboardKepalaSekolah() {
       {laporan && modalKpi === 'rapor_hq' && <ModalRaporHq laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'guru_bantu' && (
         <ModalGuruBantu rekap={laporan.guruBantu} unit={laporan.unit} onTutup={() => setModalKpi(null)} />
+      )}
+      {laporan && modalKpi === 'hasil_ujian' && (
+        <ModalHasilUjianKepsek baris={laporan.hasilUjian} unit={laporan.unit} onTutup={() => setModalKpi(null)} />
       )}
       {skl && (
         <CetakUjianQiroah jenis="skl" data={skl} onClose={() => setSkl(null)} kepsekTetap={KEPALA_SEKOLAH} />

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CalendarClock, ClipboardCheck, Printer, RefreshCw, ScrollText, X } from 'lucide-react'
 import { CetakUjianQiroah, lulusUjian, type HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
+import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
 import { supabase } from '@/lib/supabase'
 import {
   JILID_UJIAN_OPTIONS,
@@ -772,19 +773,20 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                 <th className="border p-2">Predikat</th>
                 <th className="border p-2">Tindak lanjut</th>
                 <th className="border p-2">Catatan penguji</th>
+                <th className="border p-2">Detail</th>
                 <th className="border p-2">Cetak</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="border p-4 text-slate-400">
+                  <td colSpan={9} className="border p-4 text-slate-400">
                     Memuat hasil penilaian...
                   </td>
                 </tr>
               ) : selesai.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="border p-4 text-slate-400">
+                  <td colSpan={9} className="border p-4 text-slate-400">
                     Belum ada hasil ujian yang tersimpan untuk penguji ini.
                   </td>
                 </tr>
@@ -810,6 +812,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                       </td>
                       <td className="max-w-[220px] border p-2 text-left text-[11px] leading-relaxed text-slate-600">
                         {catatanPenguji(rekap) || '—'}
+                      </td>
+                      <td className="border p-2">
+                        {rekap ? <TombolLihatNilaiUjian data={hasilDariRekapan(item, rekap)} /> : '—'}
                       </td>
                       <td className="border p-2">
                         <TombolCetak

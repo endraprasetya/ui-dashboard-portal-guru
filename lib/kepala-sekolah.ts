@@ -160,6 +160,7 @@ export type LaporanKepsek = {
   predikat: { nama: string; jumlah: number }[]
   guru: BarisGuru[]
   ujian: BarisUjian[]
+  hasilUjian: RekapLulus[]
   lulus: RekapLulus[]
   siswa: { id_siswa: string; nama_siswa: string; kelas: string; unit: string; id_pembimbing?: string | null }[]
   raporHqMentah: DataMentahRaporHq
@@ -493,6 +494,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     }))
 
   const hitungPredikat = new Map(PREDIKAT.map((nama) => [nama, 0]))
+  const hasilUjian: RekapLulus[] = []
   const lulus: RekapLulus[] = []
   for (const row of rekapan || []) {
     if (!siswaById.has(String(row.id_siswa))) continue
@@ -500,30 +502,33 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     const normal = teks === 'maqbul' ? 'mengulang' : teks
     const nama = PREDIKAT.find((item) => normal === item.toLowerCase() || normal.startsWith(`${item.toLowerCase()} `) || normal.startsWith(`${item.toLowerCase()}(`)) || 'Lainnya'
     hitungPredikat.set(nama, (hitungPredikat.get(nama) || 0) + 1)
+    const baris: RekapLulus = {
+      id_ujian: String(row.id_ujian || ''),
+      tanggal_ujian: String(row.tanggal_ujian || ''),
+      id_siswa: String(row.id_siswa || ''),
+      nama: row.nama || 'Siswa',
+      kelas: row.kelas || '-',
+      unit: UNIT_KEPALA_SEKOLAH,
+      guru_pengampu: row.guru_pengampu || '',
+      jilid_asal: row.jilid_asal || '',
+      jilid_tujuan: row.jilid_tujuan || '',
+      penguji: row.penguji || '',
+      kelancaran: Number(row.kelancaran || 0),
+      makhraj: Number(row.makhraj || 0),
+      harakat: Number(row.harakat || 0),
+      tajwid: Number(row.tajwid || 0),
+      adab: Number(row.adab || 0),
+      nilai_akhir: Number(row.nilai_akhir || 0),
+      predikat: row.predikat || '-',
+      keputusan: row.keputusan || '-',
+      kelebihan_siswa: row.kelebihan_siswa || '',
+    }
+    hasilUjian.push(baris)
     if (String(row.keputusan || '').toLowerCase() === 'lulus' && lulus.length < 40) {
-      lulus.push({
-        id_ujian: String(row.id_ujian || ''),
-        tanggal_ujian: String(row.tanggal_ujian || ''),
-        id_siswa: String(row.id_siswa || ''),
-        nama: row.nama || 'Siswa',
-        kelas: row.kelas || '-',
-        unit: UNIT_KEPALA_SEKOLAH,
-        guru_pengampu: row.guru_pengampu || '',
-        jilid_asal: row.jilid_asal || '',
-        jilid_tujuan: row.jilid_tujuan || '',
-        penguji: row.penguji || '',
-        kelancaran: Number(row.kelancaran || 0),
-        makhraj: Number(row.makhraj || 0),
-        harakat: Number(row.harakat || 0),
-        tajwid: Number(row.tajwid || 0),
-        adab: Number(row.adab || 0),
-        nilai_akhir: Number(row.nilai_akhir || 0),
-        predikat: row.predikat || '-',
-        keputusan: row.keputusan || 'Lulus',
-        kelebihan_siswa: row.kelebihan_siswa || '',
-      })
+      lulus.push(baris)
     }
   }
+  hasilUjian.sort((a, b) => String(b.tanggal_ujian).localeCompare(String(a.tanggal_ujian)))
 
   const kelasBinaan = (row: { target_id?: string; username?: string }) => {
     const id = String(row.target_id || row.username || '').trim().toUpperCase()
@@ -665,6 +670,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     predikat: Array.from(hitungPredikat.entries()).map(([nama, jumlah]) => ({ nama, jumlah })),
     guru: [...guruUnik.values()],
     ujian,
+    hasilUjian,
     lulus,
     siswa: siswaLaporan,
     raporHqMentah: raporHqHasil.mentah,

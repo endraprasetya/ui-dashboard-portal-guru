@@ -9,6 +9,8 @@ import { fetchAllSurah, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
 import { formatDateString } from '@/lib/qiroah'
+import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
+import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
 import {
   ASESMEN_TAHFIDZ,
   CONTOH_KETERANGAN_UJIAN,
@@ -49,6 +51,8 @@ export function InputRaporTahfidz({
   const [riwayatTahfidz, setRiwayatTahfidz] = useState<RiwayatSetoranTahfidz[]>([])
   const [memuatRiwayat, setMemuatRiwayat] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const [targetTahfidzAktif, setTargetTahfidzAktif] = useState(true)
+  const [ringkasTarget, setRingkasTarget] = useState('')
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
 
@@ -104,6 +108,24 @@ export function InputRaporTahfidz({
       batal = true
     }
   }, [idSiswa])
+
+  useEffect(() => {
+    if (!targetTahfidzAktif || !idSiswa || !asesmen) {
+      setRingkasTarget('')
+      return
+    }
+    let batal = false
+    const materiRingkas = daftar
+      .filter((row) => row.id_siswa === idSiswa && row.asesmen === asesmen)
+      .map((row) => ({ nama: row.surah, ayat: row.ayat }))
+    const kelas = siswa.find((s) => s.id_siswa === idSiswa)?.kelas || ''
+    hitungSaranTargetTahfidz(idSiswa, kelas, asesmen, materiRingkas).then((saran) => {
+      if (!batal) setRingkasTarget(saran?.ringkas || '')
+    })
+    return () => {
+      batal = true
+    }
+  }, [targetTahfidzAktif, idSiswa, asesmen, daftar, siswa])
 
   useEffect(() => {
     if (!idSiswa || !asesmen) return
@@ -239,7 +261,14 @@ export function InputRaporTahfidz({
         <BookOpen className="size-5" />
       </div>
 
+      <ToggleTargetTahfidz aktif={targetTahfidzAktif} onUbah={setTargetTahfidzAktif} />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {targetTahfidzAktif && (
+          <div className="mb-4">
+            <PanelStandarTargetTahfidz ringkas={ringkasTarget} />
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-xs font-bold text-slate-600">
             Pilihan siswa
@@ -479,7 +508,13 @@ export function InputRaporTahfidz({
         )}
       </section>
 
-      {nilaiTarget && <NilaiUjianTahfidz target={nilaiTarget} onClose={() => setNilaiTarget(null)} />}
+      {nilaiTarget && (
+        <NilaiUjianTahfidz
+          target={nilaiTarget}
+          onClose={() => setNilaiTarget(null)}
+          targetTahfidzAktif={targetTahfidzAktif}
+        />
+      )}
     </div>
   )
 }

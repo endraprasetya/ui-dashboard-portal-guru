@@ -24,6 +24,9 @@ import {
 } from '@/lib/qiroah'
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
 import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/surah'
+import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
+import { muatRekapanUntukSiswa } from '@/lib/rekapan-qiroah'
+import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
 import {
   cariRekapan,
   catatanPenguji,
@@ -368,17 +371,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     }
     const milik = (data || []).filter((row) => untukPengampu(row, currentUser))
     const ids = Array.from(new Set(milik.map((row) => String(row.id_siswa || '')).filter(Boolean)))
-    const rekap =
-      ids.length === 0
-        ? []
-        : (
-            await supabase
-              .from('rekapan')
-              .select(
-                'id_ujian,id_siswa,jilid_asal,jilid_tujuan,keputusan,predikat,nilai_akhir,tanggal_ujian,penguji,keterangan',
-              )
-              .in('id_siswa', ids)
-          ).data || []
+    const rekap = ids.length === 0 ? [] : await muatRekapanUntukSiswa(ids)
     setRekapAntrean(rekap as RekapanRingkas[])
     setAntrean(milik)
     setMemuatAntrean(false)
@@ -391,6 +384,19 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     setShowAntrean(true)
     muatAntrean()
   }
+
+  useEffect(() => {
+    if (!showAntrean) return
+    const channel = supabase
+      .channel(`rekapan-pengampu-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rekapan' }, () => {
+        void muatAntrean()
+      })
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [showAntrean])
 
   const simpanEditPengajuan = async () => {
     if (!editPengajuanId || !editJilid) {
@@ -881,6 +887,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                       <th className="border p-2.5">Jilid</th>
                       <th className="border p-2.5">Status</th>
                       <th className="border p-2.5">Hasil / Predikat</th>
+                      <th className="border p-2.5 text-center">Nilai</th>
                       <th className="border p-2.5">Catatan penguji</th>
                       <th className="border p-2.5 text-center">Tindak lanjut</th>
                     </tr>
@@ -937,6 +944,13 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                               </>
                             ) : (
                               '-'
+                            )}
+                          </td>
+                          <td className="border p-2.5 text-center">
+                            {rekap ? (
+                              <TombolLihatNilaiUjian data={rekapKeTampilanNilai(rekap, row)} />
+                            ) : (
+                              '—'
                             )}
                           </td>
                           <td className="max-w-[200px] border p-2.5 text-[11px] leading-relaxed text-slate-600">
