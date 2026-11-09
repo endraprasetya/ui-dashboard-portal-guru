@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CheckCircle2, Eye, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
 import { BidangSuara, useDikte } from '@/components/input-suara'
 import {
@@ -10,12 +10,15 @@ import {
   TIPE_LINK,
   defaultSemester,
   emptyJurnalJam,
+  deteksiJamAbsenKustom,
   fetchJurnalHari,
   fetchKelasDanJumlahSiswa,
   fetchSiswaKelas,
   hitungKehadiran,
+  jamAktifDariJadwal,
   jamHariIni,
   rowsToEntries,
+  salinAbsenJamPertama,
   saringAbsenKelas,
   simpanJurnalHari,
   teacherName,
@@ -46,6 +49,8 @@ export function JurnalPembelajaran({
   const [entries, setEntries] = useState<Record<number, JurnalJam>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [absenKustomJam, setAbsenKustomJam] = useState<Set<number>>(() => new Set())
+  const absenKustomJamRef = useRef<Set<number>>(new Set())
   const [status, setStatus] = useState('')
   const [statusError, setStatusError] = useState(false)
   const [toastSukses, setToastSukses] = useState('')
@@ -69,7 +74,26 @@ export function JurnalPembelajaran({
 
   const entryRekap = (entry: JurnalJam) => hitungKehadiran(jumlahKelas, absenKelas(entry.siswaTidakHadir))
 
-  const updateEntry = (jam: number, patch: Partial<JurnalJam>, propagateAbsensi = false) => {
+  const tandaiJamAbsenKustom = (jam: number) => {
+    if (jam <= 1) return
+    const next = new Set(absenKustomJamRef.current)
+    next.add(jam)
+    absenKustomJamRef.current = next
+    setAbsenKustomJam(next)
+  }
+
+  const hapusJamAbsenKustom = (jam: number) => {
+    const next = new Set(absenKustomJamRef.current)
+    next.delete(jam)
+    absenKustomJamRef.current = next
+    setAbsenKustomJam(next)
+  }
+
+  const updateEntry = (
+    jam: number,
+    patch: Partial<JurnalJam>,
+    opsi?: { terapkanSalinJamPertama?: boolean },
+  ) => {
     setEntries((current) => {
       const next = { ...getEntry(jam, current), ...patch }
       next.siswaTidakHadir = absenKelas(next.siswaTidakHadir || [])
@@ -81,24 +105,12 @@ export function JurnalPembelajaran({
       )
       if (!hanyaAbsensi) next.guru = guru
 
-      if (propagateAbsensi && jam === 1 && jadwal) {
-        const jamAktif = jadwal.map((item) => item.j).filter((j): j is number => typeof j === 'number')
-        const updated: Record<number, JurnalJam> = { ...current, [jam]: next }
-        for (const j of jamAktif) {
-          if (j !== 1) {
-            const existing = getEntry(j, updated)
-            updated[j] = {
-              ...existing,
-              siswaTidakHadir: next.siswaTidakHadir,
-              hadir: next.hadir,
-              absen: next.absen,
-            }
-          }
-        }
-        return updated
+      let updated: Record<number, JurnalJam> = { ...current, [jam]: next }
+      if (opsi?.terapkanSalinJamPertama && jam === 1 && jadwal) {
+        const jamAktif = jamAktifDariJadwal(jadwal)
+        updated = salinAbsenJamPertama(updated, jamAktif, jumlahKelas, absenKustomJamRef.current)
       }
-
-      return { ...current, [jam]: next }
+      return updated
     })
   }
 
@@ -132,37 +144,82 @@ export function JurnalPembelajaran({
     }
   }, [kelas, currentUser])
 
-  const muatJurnal = useCallback(async () => {
-    if (!kelas || !tanggal || rosterKelas !== kelas) return
-    dikte.hentikan()
-    setLoading(true)
-    setToastSukses('')
-    setStatus('')
-    setStatusError(false)
-
-    const { rows, error } = await fetchJurnalHari(kelas, tanggal)
-    const total = siswaKelas.length || jumlahSiswa[kelas] || 0
-
-    if (error) {
-      setStatus('Gagal memuat jurnal dari Supabase. ' + error.message)
-      setStatusError(true)
-      setEntries({})
-    } else if (rows.length > 0) {
-      setEntries(rowsToEntries(rows, total, siswaKelas))
-      const smt = rows.find((row) => row.semester != null)?.semester
-      if (smt) setSemester(String(smt))
-      setStatus('Jurnal hari ini dimuat dari Supabase.')
-    } else {
-      setEntries({})
-      setStatus('Semua siswa dihitung hadir. Isi jurnal lalu tekan tombol Simpan jurnal.')
-    }
-
-    setLoading(false)
-  }, [kelas, tanggal, jumlahSiswa, siswaKelas, rosterKelas, dikte.hentikan])
+  const kunciRoster = useMemo(
+    () => siswaKelas.map((item) => item.id_siswa).join('|'),
+    [siswaKelas],
+  )
+  const jumlahKelasStabil = siswaKelas.length || (kelas ? jumlahSiswa[kelas] || 0 : 0)
 
   useEffect(() => {
-    muatJurnal()
-  }, [muatJurnal])
+    if (!kelas || !tanggal || rosterKelas !== kelas) return
+
+    let batal = false
+    dikte.hentikan()
+
+    async function muatJurnal() {
+      setLoading(true)
+      setToastSukses('')
+      setStatus('')
+      setStatusError(false)
+
+      const { rows, error } = await fetchJurnalHari(kelas, tanggal)
+      if (batal) return
+
+      const total = jumlahKelasStabil
+      const tanggalHari = tanggal ? new Date(`${tanggal}T00:00:00`) : null
+
+      if (error) {
+        setStatus('Gagal memuat jurnal dari Supabase. ' + error.message)
+        setStatusError(true)
+        setEntries({})
+      } else if (rows.length > 0) {
+        const loaded = rowsToEntries(rows, total, siswaKelas)
+        const jamAktif = tanggalHari ? jamAktifDariJadwal(jamHariIni(tanggalHari)) : []
+        const kustom = deteksiJamAbsenKustom(loaded, jamAktif)
+        absenKustomJamRef.current = kustom
+        setAbsenKustomJam(kustom)
+        setEntries(loaded)
+        const smt = rows.find((row) => row.semester != null)?.semester
+        if (smt) setSemester(String(smt))
+        setStatus('Jurnal hari ini dimuat dari Supabase.')
+      } else {
+        absenKustomJamRef.current = new Set()
+        setAbsenKustomJam(new Set())
+        setEntries({})
+        setStatus('Semua siswa dihitung hadir. Isi jurnal lalu tekan tombol Simpan jurnal.')
+      }
+
+      setLoading(false)
+    }
+
+    void muatJurnal()
+    return () => {
+      batal = true
+    }
+  }, [kelas, tanggal, rosterKelas, kunciRoster, jumlahKelasStabil, dikte.hentikan, siswaKelas])
+
+  const selesaiPilihAbsen = () => {
+    const jam = pilihAbsenJam
+    setPilihAbsenJam(null)
+    if (jam === 1 && jadwal) {
+      const jamAktif = jamAktifDariJadwal(jadwal)
+      setEntries((current) => salinAbsenJamPertama(current, jamAktif, jumlahKelas, absenKustomJamRef.current))
+      setStatus(
+        `Absensi Jam ke-1 disalin ke jam berikutnya di layar. Tekan Simpan jurnal untuk menulis ke Supabase.`,
+      )
+      setStatusError(false)
+    } else if (jam != null && jam > 1) {
+      setStatus(`Absensi Jam ke-${jam} diubah. Tekan Simpan jurnal untuk menulis ke Supabase.`)
+      setStatusError(false)
+    }
+  }
+
+  const samakanAbsenJamPertama = (jam: number) => {
+    if (!jadwal) return
+    hapusJamAbsenKustom(jam)
+    const jamAktif = jamAktifDariJadwal(jadwal)
+    setEntries((current) => salinAbsenJamPertama(current, jamAktif, jumlahKelas, absenKustomJamRef.current))
+  }
 
   const handleSimpan = async () => {
     if (!kelas || !tanggal || !jadwal) return
@@ -170,9 +227,12 @@ export function JurnalPembelajaran({
     setStatus('')
     setStatusError(false)
 
-    const jamAktif = jadwal.map((item) => item.j).filter((jam): jam is number => typeof jam === 'number')
+    const jamAktif = jamAktifDariJadwal(jadwal)
+    const merged = salinAbsenJamPertama(entries, jamAktif, jumlahKelas, absenKustomJamRef.current)
+    setEntries(merged)
+
     const payload: Record<number, JurnalJam> = {}
-    for (const jam of jamAktif) payload[jam] = getEntry(jam)
+    for (const jam of jamAktif) payload[jam] = getEntry(jam, merged)
 
     const { error } = await simpanJurnalHari({
       kelas,
@@ -206,7 +266,12 @@ export function JurnalPembelajaran({
     const nextList: SiswaTidakHadir[] = keterangan
       ? [...tanpaSiswa, { nama: siswa.nama_siswa, keterangan, id_siswa: siswa.id_siswa }]
       : tanpaSiswa
-    updateEntry(jam, { siswaTidakHadir: nextList, absen: String(nextList.length) }, jam === 1)
+    if (jam !== 1) tandaiJamAbsenKustom(jam)
+    updateEntry(
+      jam,
+      { siswaTidakHadir: nextList, absen: String(nextList.length) },
+      { terapkanSalinJamPertama: jam === 1 },
+    )
   }
 
   const openTtd = (jam: number) => {
@@ -457,8 +522,9 @@ export function JurnalPembelajaran({
           </p>
           {!loading && jadwal && (
             <p className="no-print text-xs font-semibold text-amber-900 bg-amber-50 rounded-lg border border-amber-100 px-3 py-2">
-              Perubahan di form belum masuk database sampai Anda menekan <b>Simpan jurnal</b>. Absensi Jam ke-1 tetap
-              disalin ke jam lain di layar (bukan otomatis ke Supabase).
+              Tidak ada penyimpanan otomatis. Semua materi, tugas, dan absensi hanya masuk Supabase setelah{' '}
+              <b>Simpan jurnal</b>. Absensi Jam ke-1 disalin ke jam lain di layar (kecuali jam yang Anda ubah khusus);
+              edit per jam untuk siswa pulang/izin di tengah pelajaran.
             </p>
           )}
           {!loading && status && (
@@ -641,6 +707,12 @@ export function JurnalPembelajaran({
                           </div>
                         </td>
                         <td className="w-40 border border-slate-200 p-1.5">
+                          <div className="flex flex-col items-center gap-0.5">
+                            {absenKustomJam.has(jam) ? (
+                              <span className="no-print rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-800">
+                                Absen khusus jam ini
+                              </span>
+                            ) : null}
                           <div className="flex items-center justify-center gap-1">
                             <span className="min-w-6 text-center text-sm font-black text-slate-800">{rekap.tidakHadir}</span>
                             <button
@@ -660,6 +732,7 @@ export function JurnalPembelajaran({
                             >
                               Pilih
                             </button>
+                          </div>
                           </div>
                         </td>
                         <td className="w-28 border border-slate-200 p-1.5 text-center">
@@ -740,7 +813,18 @@ export function JurnalPembelajaran({
                 <p className="text-sm font-bold text-slate-800">Pilih siswa tidak hadir · Jam ke-{pilihAbsenJam}</p>
                 <p className="text-xs text-slate-500">
                   Siswa yang tidak dipilih tetap dihitung hadir.
-                  {pilihAbsenJam === 1 && ' <b>Perubahan di Jam ke-1 otomatis diterapkan ke semua jam.</b>'}
+                  {pilihAbsenJam === 1 ? (
+                    <>
+                      {' '}
+                      Setelah <b>Selesai</b>, absensi disalin ke jam berikutnya di layar; simpan dengan{' '}
+                      <b>Simpan jurnal</b>.
+                    </>
+                  ) : (
+                    <>
+                      {' '}
+                      Ubah di jam ini saja (mis. siswa pulang/izin di tengah jam) — jam lain tidak berubah.
+                    </>
+                  )}
                 </p>
               </div>
               <button type="button" onClick={() => setPilihAbsenJam(null)} className="text-slate-400 hover:text-slate-700">
@@ -775,17 +859,28 @@ export function JurnalPembelajaran({
                 })
               )}
             </div>
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-500">
                 Tidak hadir: <b>{absenDipilih.length}</b> · Hadir: <b>{Math.max(0, jumlahKelas - absenDipilih.length)}</b>
               </p>
-              <button
-                type="button"
-                onClick={() => setPilihAbsenJam(null)}
-                className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white"
-              >
-                <UserX className="size-3.5" /> Selesai
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {pilihAbsenJam != null && pilihAbsenJam > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => samakanAbsenJamPertama(pilihAbsenJam)}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Samakan dengan Jam ke-1
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={selesaiPilihAbsen}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white"
+                >
+                  <UserX className="size-3.5" /> Selesai
+                </button>
+              </div>
             </div>
           </div>
         </div>

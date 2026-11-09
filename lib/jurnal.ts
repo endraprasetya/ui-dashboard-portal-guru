@@ -209,6 +209,78 @@ export function hitungKehadiran(totalSiswa: number, absen: SiswaTidakHadir[], ab
   return { hadir: Math.max(0, totalSiswa - tidakHadir), tidakHadir }
 }
 
+export function jamAktifDariJadwal(jadwal: JadwalItem[] | null): number[] {
+  if (!jadwal) return []
+  return jadwal.map((item) => item.j).filter((j): j is number => typeof j === 'number')
+}
+
+function kunciEntriAbsenSiswa(item: SiswaTidakHadir) {
+  const id = String(item.id_siswa || '').trim()
+  if (id) return `id:${id}`
+  return `nama:${item.nama.trim().toLowerCase()}`
+}
+
+export function daftarAbsenSetara(a: SiswaTidakHadir[], b: SiswaTidakHadir[]): boolean {
+  const keMap = (list: SiswaTidakHadir[]) => {
+    const map = new Map<string, string>()
+    for (const item of list) map.set(kunciEntriAbsenSiswa(item), item.keterangan)
+    return map
+  }
+  const ma = keMap(a)
+  const mb = keMap(b)
+  if (ma.size !== mb.size) return false
+  for (const [kunci, ket] of ma) {
+    if (mb.get(kunci) !== ket) return false
+  }
+  return true
+}
+
+/** Jam yang punya daftar absen berbeda dari Jam ke-1 (atau jam pertama hari itu). */
+export function deteksiJamAbsenKustom(entries: Record<number, JurnalJam>, jamAktif: number[]): Set<number> {
+  const kustom = new Set<number>()
+  const jamSumber = jamAktif.includes(1) ? 1 : jamAktif[0]
+  if (jamSumber == null) return kustom
+  const referensi = entries[jamSumber]?.siswaTidakHadir || []
+  for (const jam of jamAktif) {
+    if (jam === jamSumber) continue
+    const daftar = entries[jam]?.siswaTidakHadir || []
+    if (!daftarAbsenSetara(referensi, daftar)) kustom.add(jam)
+  }
+  return kustom
+}
+
+/**
+ * Salin absensi dari Jam ke-1 (atau jam pertama) ke jam lain pada hari yang sama.
+ * Jam yang ada di `jamDikecualikan` tidak ditimpa (edit khusus per jam).
+ */
+export function salinAbsenJamPertama(
+  entries: Record<number, JurnalJam>,
+  jamAktif: number[],
+  totalSiswa: number,
+  jamDikecualikan: ReadonlySet<number> = new Set(),
+): Record<number, JurnalJam> {
+  const jamSumber = jamAktif.includes(1) ? 1 : jamAktif[0]
+  if (jamSumber == null) return entries
+  const sumber = entries[jamSumber]
+  if (!sumber) return entries
+
+  const daftarSalin = (sumber.siswaTidakHadir || []).map((item) => ({ ...item }))
+  const rekap = hitungKehadiran(totalSiswa, daftarSalin)
+  const next: Record<number, JurnalJam> = { ...entries }
+
+  for (const jam of jamAktif) {
+    if (jam === jamSumber || jamDikecualikan.has(jam)) continue
+    const existing = next[jam] || emptyJurnalJam(String(totalSiswa))
+    next[jam] = {
+      ...existing,
+      siswaTidakHadir: daftarSalin.map((item) => ({ ...item })),
+      hadir: String(rekap.hadir),
+      absen: String(rekap.tidakHadir),
+    }
+  }
+  return next
+}
+
 export function rekapBarisJurnal(
   row: { hadir?: unknown; tidak_hadir?: unknown; siswa_tidak_hadir?: unknown },
   totalSiswa = 0,

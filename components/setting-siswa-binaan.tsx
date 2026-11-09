@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Save, Settings } from 'lucide-react'
 import {
   adalahBinaan,
+  fetchDaftarKelasBinaan,
   fetchDaftarSiswa,
   idGuru,
   simpanSiswaBinaan,
   susunPembimbing,
   unitCocok,
+  unitLogin,
   type Siswa,
 } from '@/lib/siswa'
-import { teacherUnit } from '@/lib/jurnal'
 
 export function SettingSiswaBinaan({
   onBack,
@@ -23,9 +24,10 @@ export function SettingSiswaBinaan({
   warna: 'tahfidz' | 'qiroah'
 }) {
   const guruId = idGuru(currentUser)
-  const unit = teacherUnit(currentUser)
+  const unit = unitLogin(currentUser)
   const header = warna === 'tahfidz' ? 'bg-[#2563eb]' : 'bg-[#0284c7]'
   const [semua, setSemua] = useState<Siswa[]>([])
+  const [namaKelas, setNamaKelas] = useState<string[]>([])
   const [kelas, setKelas] = useState('')
   const [terpilih, setTerpilih] = useState<string[]>([])
   const [cari, setCari] = useState('')
@@ -43,15 +45,16 @@ export function SettingSiswaBinaan({
   useEffect(() => {
     let batal = false
     setMemuat(true)
-    fetchDaftarSiswa().then((data) => {
+    Promise.all([fetchDaftarSiswa(), fetchDaftarKelasBinaan(currentUser)]).then(([data, daftarKelas]) => {
       if (batal) return
       setSemua(data)
+      setNamaKelas(daftarKelas)
       setMemuat(false)
     })
     return () => {
       batal = true
     }
-  }, [])
+  }, [currentUser])
 
   const siswaUnit = useMemo(
     () => semua.filter((item) => unitCocok(unit, item.unit) && !isKosong(item.kelas)),
@@ -59,10 +62,10 @@ export function SettingSiswaBinaan({
   )
 
   const daftarKelas = useMemo(() => {
-    return Array.from(new Set(siswaUnit.map((item) => item.kelas.trim()))).sort((a, b) =>
-      a.localeCompare(b, 'id', { numeric: true }),
-    )
-  }, [siswaUnit])
+    const dariSiswa = Array.from(new Set(siswaUnit.map((item) => item.kelas.trim()).filter(Boolean)))
+    const sumber = namaKelas.length > 0 ? namaKelas : dariSiswa
+    return Array.from(new Set(sumber)).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
+  }, [siswaUnit, namaKelas])
 
   const siswaKelas = useMemo(() => {
     return siswaUnit
@@ -82,7 +85,7 @@ export function SettingSiswaBinaan({
     setStatus('')
     setGalat(false)
     const ids = siswaUnit
-      .filter((item) => item.kelas.trim() === nilai && adalahBinaan(item.id_pembimbing, guruId))
+      .filter((item) => item.kelas.trim() === nilai && adalahBinaan(item.id_pembimbing, currentUser))
       .map((item) => item.id_siswa)
     setTerpilih(ids)
   }
@@ -99,7 +102,7 @@ export function SettingSiswaBinaan({
     }
     if (!kelas) return
     const perubahan = siswaKelas
-      .filter((item) => adalahBinaan(item.id_pembimbing, guruId) !== terpilih.includes(item.id_siswa))
+      .filter((item) => adalahBinaan(item.id_pembimbing, currentUser) !== terpilih.includes(item.id_siswa))
       .map((item) => ({
         id_siswa: item.id_siswa,
         id_pembimbing: susunPembimbing(item.id_pembimbing, guruId, terpilih.includes(item.id_siswa)),
