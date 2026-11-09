@@ -46,11 +46,9 @@ export function JurnalPembelajaran({
   const [entries, setEntries] = useState<Record<number, JurnalJam>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [autoSaving, setAutoSaving] = useState(false)
   const [status, setStatus] = useState('')
   const [statusError, setStatusError] = useState(false)
-  const dirtyJam = useRef<Set<number>>(new Set())
-  const skipAutoSave = useRef(true)
+  const [toastSukses, setToastSukses] = useState('')
 
   const [ttdJam, setTtdJam] = useState<number | null>(null)
   const [pilihAbsenJam, setPilihAbsenJam] = useState<number | null>(null)
@@ -71,12 +69,6 @@ export function JurnalPembelajaran({
 
   const entryRekap = (entry: JurnalJam) => hitungKehadiran(jumlahKelas, absenKelas(entry.siswaTidakHadir))
 
-  const tandaiDirty = (jam: number, lainnya: number[] = []) => {
-    dirtyJam.current.add(jam)
-    for (const item of lainnya) dirtyJam.current.add(item)
-    skipAutoSave.current = false
-  }
-
   const updateEntry = (jam: number, patch: Partial<JurnalJam>, propagateAbsensi = false) => {
     setEntries((current) => {
       const next = { ...getEntry(jam, current), ...patch }
@@ -91,7 +83,6 @@ export function JurnalPembelajaran({
 
       if (propagateAbsensi && jam === 1 && jadwal) {
         const jamAktif = jadwal.map((item) => item.j).filter((j): j is number => typeof j === 'number')
-        tandaiDirty(jam, jamAktif)
         const updated: Record<number, JurnalJam> = { ...current, [jam]: next }
         for (const j of jamAktif) {
           if (j !== 1) {
@@ -107,7 +98,6 @@ export function JurnalPembelajaran({
         return updated
       }
 
-      tandaiDirty(jam)
       return { ...current, [jam]: next }
     })
   }
@@ -145,9 +135,8 @@ export function JurnalPembelajaran({
   const muatJurnal = useCallback(async () => {
     if (!kelas || !tanggal || rosterKelas !== kelas) return
     dikte.hentikan()
-    skipAutoSave.current = true
-    dirtyJam.current.clear()
     setLoading(true)
+    setToastSukses('')
     setStatus('')
     setStatusError(false)
 
@@ -165,7 +154,7 @@ export function JurnalPembelajaran({
       setStatus('Jurnal hari ini dimuat dari Supabase.')
     } else {
       setEntries({})
-      setStatus('Semua siswa dihitung hadir. Tandai yang tidak hadir jika ada, lalu simpan.')
+      setStatus('Semua siswa dihitung hadir. Isi jurnal lalu tekan tombol Simpan jurnal.')
     }
 
     setLoading(false)
@@ -174,42 +163,6 @@ export function JurnalPembelajaran({
   useEffect(() => {
     muatJurnal()
   }, [muatJurnal])
-
-  useEffect(() => {
-    if (!kelas || !tanggal || !jadwal || loading || rosterKelas !== kelas || skipAutoSave.current) return
-
-    const timer = setTimeout(async () => {
-      const jamDirty = Array.from(dirtyJam.current)
-      if (jamDirty.length === 0) return
-      setAutoSaving(true)
-      const payload: Record<number, JurnalJam> = {}
-      for (const jam of jamDirty) payload[jam] = getEntry(jam)
-
-      const { error } = await simpanJurnalHari({
-        kelas,
-        tanggal,
-        semester: Number(semester),
-        totalSiswa: jumlahKelas,
-        entries: payload,
-        guru,
-        roster: siswaKelas,
-        jamDisimpan: jamDirty,
-      })
-
-      setAutoSaving(false)
-      if (error) {
-        setStatus('Auto-save gagal: ' + error.message)
-        setStatusError(true)
-      } else {
-        dirtyJam.current.clear()
-        setStatus('Auto-save: Data tersimpan otomatis')
-        setStatusError(false)
-        setTimeout(() => setStatus(''), 3000)
-      }
-    }, 2000)
-
-    return () => clearTimeout(timer)
-  }, [entries, kelas, tanggal, semester, jadwal, jumlahKelas, loading, guru, rosterKelas, siswaKelas])
 
   const handleSimpan = async () => {
     if (!kelas || !tanggal || !jadwal) return
@@ -235,12 +188,14 @@ export function JurnalPembelajaran({
     if (error) {
       setStatus('Gagal menyimpan jurnal: ' + error.message)
       setStatusError(true)
+      setToastSukses('')
       return
     }
-    dirtyJam.current.clear()
-    skipAutoSave.current = true
-    setStatus('Jurnal dan presensi tersimpan ke Supabase.')
+    const pesan = `Jurnal kelas ${kelas} · ${tanggalLabel} berhasil disimpan.`
+    setStatus(pesan)
     setStatusError(false)
+    setToastSukses(pesan)
+    window.setTimeout(() => setToastSukses(''), 4500)
   }
 
   const setAbsenSiswa = (jam: number, siswa: SiswaKelas, keterangan: string | null) => {
@@ -469,13 +424,6 @@ export function JurnalPembelajaran({
             <Save className="size-4" />
             {saving ? 'Menyimpan...' : 'Simpan jurnal'}
           </button>
-          {autoSaving && (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-bold text-blue-700">
-              <span className="animate-spin size-3 border-2 border-blue-700 border-t-transparent rounded-full" />
-              Auto-saving...
-            </span>
-          )}
-
           <button
             type="button"
             onClick={() => window.print()}
@@ -497,8 +445,8 @@ export function JurnalPembelajaran({
         </div>
 
         <div className="jurnal-print-body space-y-3 px-5 py-4">
-          <p className={`no-print text-xs ${statusError ? 'font-bold text-red-600' : 'text-slate-500'}`}>
-            {loading ? 'Memuat jurnal...' : status}
+          <p className="no-print text-xs text-slate-500">
+            {loading ? 'Memuat jurnal...' : null}
             {!loading && jumlahKelas > 0 && (
               <>
                 {' '}
@@ -508,8 +456,18 @@ export function JurnalPembelajaran({
             )}
           </p>
           {!loading && jadwal && (
-            <p className="text-xs font-semibold text-blue-700 bg-blue-50 rounded-lg px-3 py-2">
-              💡 <b>Auto-fill & Auto-save:</b> Absensi di Jam ke-1 otomatis terisi ke semua jam. Data tersimpan otomatis setiap perubahan.
+            <p className="no-print text-xs font-semibold text-amber-900 bg-amber-50 rounded-lg border border-amber-100 px-3 py-2">
+              Perubahan di form belum masuk database sampai Anda menekan <b>Simpan jurnal</b>. Absensi Jam ke-1 tetap
+              disalin ke jam lain di layar (bukan otomatis ke Supabase).
+            </p>
+          )}
+          {!loading && status && (
+            <p
+              className={`no-print rounded-lg px-3 py-2 text-xs font-semibold ${
+                statusError ? 'bg-red-50 text-red-700' : 'bg-slate-50 text-slate-600'
+              }`}
+            >
+              {status}
             </p>
           )}
           {dikte.galat && <p className="no-print text-xs font-bold text-red-600">{dikte.galat}</p>}
@@ -832,6 +790,17 @@ export function JurnalPembelajaran({
           </div>
         </div>
       )}
+
+      {toastSukses ? (
+        <div
+          className="no-print pointer-events-none fixed bottom-6 right-4 z-[60] flex max-w-sm items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-100" />
+          <span>{toastSukses}</span>
+        </div>
+      ) : null}
 
       {ttdJam != null && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
