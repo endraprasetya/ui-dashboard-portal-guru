@@ -4,13 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Save, Settings } from 'lucide-react'
 import {
   adalahBinaan,
-  fetchDaftarKelasBinaan,
-  fetchDaftarSiswa,
+  cariSiswaUntukBinaan,
+  fetchSiswaBinaan,
   idGuru,
+  kunciUserGuru,
   simpanSiswaBinaan,
   susunPembimbing,
-  unitCocok,
-  unitLogin,
   type Siswa,
 } from '@/lib/siswa'
 
@@ -24,10 +23,9 @@ export function SettingSiswaBinaan({
   warna: 'tahfidz' | 'qiroah'
 }) {
   const guruId = idGuru(currentUser)
-  const unit = unitLogin(currentUser)
   const header = warna === 'tahfidz' ? 'bg-[#2563eb]' : 'bg-[#0284c7]'
-  const [semua, setSemua] = useState<Siswa[]>([])
-  const [namaKelas, setNamaKelas] = useState<string[]>([])
+  const [binaan, setBinaan] = useState<Siswa[]>([])
+  const [carian, setCarian] = useState<Siswa[]>([])
   const [kelas, setKelas] = useState('')
   const [terpilih, setTerpilih] = useState<string[]>([])
   const [cari, setCari] = useState('')
@@ -44,39 +42,56 @@ export function SettingSiswaBinaan({
 
   useEffect(() => {
     let batal = false
+    if (!currentUser) {
+      setBinaan([])
+      setMemuat(false)
+      return
+    }
     setMemuat(true)
-    Promise.all([fetchDaftarSiswa(), fetchDaftarKelasBinaan(currentUser)]).then(([data, daftarKelas]) => {
+    fetchSiswaBinaan(currentUser).then((data) => {
       if (batal) return
-      setSemua(data)
-      setNamaKelas(daftarKelas)
+      setBinaan(data)
       setMemuat(false)
     })
     return () => {
       batal = true
     }
-  }, [currentUser])
+  }, [kunciUserGuru(currentUser)])
 
-  const siswaUnit = useMemo(
-    () => semua.filter((item) => unitCocok(unit, item.unit) && !isKosong(item.kelas)),
-    [semua, unit],
-  )
+  useEffect(() => {
+    if (kata.length < 2 || !currentUser) {
+      setCarian([])
+      return
+    }
+    let batal = false
+    cariSiswaUntukBinaan(kata, currentUser).then((data) => {
+      if (!batal) setCarian(data)
+    })
+    return () => {
+      batal = true
+    }
+  }, [kata, kunciUserGuru(currentUser)])
 
   const daftarKelas = useMemo(() => {
-    const dariSiswa = Array.from(new Set(siswaUnit.map((item) => item.kelas.trim()).filter(Boolean)))
-    const sumber = namaKelas.length > 0 ? namaKelas : dariSiswa
-    return Array.from(new Set(sumber)).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
-  }, [siswaUnit, namaKelas])
-
-  const siswaKelas = useMemo(() => {
-    return siswaUnit
-      .filter((item) => item.kelas.trim() === kelas)
-      .sort((a, b) => a.nama_siswa.localeCompare(b.nama_siswa, 'id'))
-  }, [siswaUnit, kelas])
+    return Array.from(new Set(binaan.map((item) => item.kelas.trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, 'id', { numeric: true }),
+    )
+  }, [binaan])
 
   const tampil = useMemo(() => {
-    if (!kata) return siswaKelas
-    return siswaKelas.filter((item) => item.nama_siswa.toLowerCase().includes(kata))
-  }, [siswaKelas, kata])
+    const binaanKelas = binaan
+      .filter((item) => !kelas || item.kelas.trim() === kelas)
+      .sort((a, b) => a.nama_siswa.localeCompare(b.nama_siswa, 'id'))
+    if (kata.length < 2) return binaanKelas
+    const ids = new Set(carian.map((item) => item.id_siswa))
+    const tambahan = binaanKelas.filter((item) => !ids.has(item.id_siswa) && item.nama_siswa.toLowerCase().includes(kata))
+    return [...carian.filter((item) => !kelas || item.kelas.trim() === kelas), ...tambahan]
+  }, [binaan, carian, kelas, kata])
+
+  useEffect(() => {
+    const sumber = kelas ? binaan.filter((item) => item.kelas.trim() === kelas) : binaan
+    setTerpilih(sumber.map((item) => item.id_siswa))
+  }, [binaan, kelas])
 
   const pilihKelas = (nilai: string) => {
     setKelas(nilai)
@@ -84,10 +99,6 @@ export function SettingSiswaBinaan({
     setKata('')
     setStatus('')
     setGalat(false)
-    const ids = siswaUnit
-      .filter((item) => item.kelas.trim() === nilai && adalahBinaan(item.id_pembimbing, currentUser))
-      .map((item) => item.id_siswa)
-    setTerpilih(ids)
   }
 
   const ubahPilihan = (id: string, aktif: boolean) => {
@@ -100,8 +111,7 @@ export function SettingSiswaBinaan({
       setGalat(true)
       return
     }
-    if (!kelas) return
-    const perubahan = siswaKelas
+    const perubahan = tampil
       .filter((item) => adalahBinaan(item.id_pembimbing, currentUser) !== terpilih.includes(item.id_siswa))
       .map((item) => ({
         id_siswa: item.id_siswa,
@@ -115,15 +125,16 @@ export function SettingSiswaBinaan({
     setMenyimpan(true)
     setStatus('')
     const gagal = await simpanSiswaBinaan(perubahan)
-    const segar = await fetchDaftarSiswa()
-    setSemua(segar)
+    const segar = await fetchSiswaBinaan(currentUser)
+    setBinaan(segar)
+    setCarian([])
     setMenyimpan(false)
     if (gagal.length > 0) {
       setStatus(`${gagal.length} siswa gagal disimpan. Periksa kembali, lalu simpan ulang.`)
       setGalat(true)
       return
     }
-    setStatus(`${perubahan.length} siswa binaan kelas ${kelas} tersimpan. Daftar ini langsung dipakai di setoran dan laporan.`)
+    setStatus(`${perubahan.length} siswa binaan tersimpan. Daftar ini langsung dipakai di setoran dan laporan.`)
     setGalat(false)
   }
 
@@ -143,16 +154,16 @@ export function SettingSiswaBinaan({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm text-slate-600">
-          Pilih kelas, lalu centang siswa yang menjadi binaan akun ini. Pilihan tersimpan di data siswa dan dimuat kembali saat setoran maupun laporan dibuka.
+          Daftar ini hanya menampilkan siswa binaan akun Anda. Ketik minimal dua huruf nama untuk mencari dan menambah binaan baru — seluruh siswa kelas 1–6 tidak ditampilkan secara global.
         </p>
         <label className="mt-4 block text-xs font-bold text-slate-600">
-          Pilih kelas
+          Filter kelas binaan
           <select
             value={kelas}
             onChange={(event) => pilihKelas(event.target.value)}
             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold"
           >
-            <option value="">{memuat ? 'Memuat kelas...' : 'Pilih kelas'}</option>
+            <option value="">{memuat ? 'Memuat kelas...' : 'Semua kelas binaan'}</option>
             {daftarKelas.map((item) => (
               <option key={item} value={item}>
                 Kelas {item}
@@ -161,23 +172,22 @@ export function SettingSiswaBinaan({
           </select>
         </label>
 
-        {kelas && (
-          <>
+        <>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <input
                 value={cari}
                 onChange={(event) => setCari(event.target.value)}
-                placeholder="Cari nama siswa di kelas ini"
+                placeholder="Cari nama untuk menambah binaan"
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm sm:max-w-xs"
               />
               <p className="text-xs font-semibold text-slate-500">
-                {terpilih.length} dari {siswaKelas.length} siswa dipilih
+                {terpilih.length} siswa binaan dipilih
               </p>
             </div>
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                onClick={() => setTerpilih(siswaKelas.map((item) => item.id_siswa))}
+                onClick={() => setTerpilih(tampil.map((item) => item.id_siswa))}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700"
               >
                 Pilih semua
@@ -193,7 +203,11 @@ export function SettingSiswaBinaan({
             <div className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
               {tampil.length === 0 ? (
                 <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-sm text-slate-400">
-                  Tidak ada siswa yang cocok.
+                  {memuat
+                    ? 'Memuat siswa binaan...'
+                    : kata.length < 2
+                      ? 'Tidak ada siswa binaan.'
+                      : 'Tidak ada siswa yang cocok.'}
                 </p>
               ) : (
                 tampil.map((item) => {
@@ -228,8 +242,7 @@ export function SettingSiswaBinaan({
             >
               <Save className="size-4" /> {menyimpan ? 'Menyimpan...' : 'Simpan siswa binaan'}
             </button>
-          </>
-        )}
+        </>
         {status && (
           <p className={`mt-3 text-sm font-semibold ${galat ? 'text-red-700' : 'text-emerald-700'}`} role="status">
             {status}
@@ -240,6 +253,3 @@ export function SettingSiswaBinaan({
   )
 }
 
-function isKosong(kelas?: string) {
-  return !String(kelas || '').trim()
-}

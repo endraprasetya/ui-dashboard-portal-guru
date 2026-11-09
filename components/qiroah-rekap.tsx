@@ -8,7 +8,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, Printer, Search, Target, Users } fro
 
 import { supabase } from '@/lib/supabase'
 
-import { ambilBarisSiswa, fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
+import { ambilBarisSiswa, fetchSiswaBinaan, isKelasAlumni, kunciUserGuru } from '@/lib/siswa'
 
 import {
 
@@ -60,9 +60,13 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
   useEffect(() => {
 
-    fetchAllSiswa(currentUser).then(setStudents)
+    if (!currentUser) {
+      setStudents([])
+      return
+    }
+    fetchSiswaBinaan(currentUser).then(setStudents)
 
-  }, [currentUser])
+  }, [kunciUserGuru(currentUser)])
 
 
 
@@ -470,7 +474,7 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
             >
 
-              <option value="">-- Pilih Kelas --</option>
+              <option value="">{uniqueClasses.length === 0 ? 'Tidak ada siswa binaan' : '-- Pilih Kelas --'}</option>
 
               {uniqueClasses.map((k) => (
 
@@ -554,7 +558,9 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
                 ) : (
 
-                  <div className="p-3 text-center text-xs text-slate-400">Santri tidak ditemukan</div>
+                  <div className="p-3 text-center text-xs text-slate-400">
+                    {students.length === 0 ? 'Tidak ada siswa binaan.' : 'Santri tidak ditemukan'}
+                  </div>
 
                 )}
 

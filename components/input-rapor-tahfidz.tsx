@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Download, Printer, Save, Search, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
-import { fetchAllSiswa, type Siswa } from '@/lib/siswa'
+import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
@@ -58,7 +58,14 @@ export function InputRaporTahfidz({
 
   useEffect(() => {
     let batal = false
-    Promise.all([fetchAllSiswa(currentUser), fetchAllSurah()]).then(([daftarSiswa, daftarSurah]) => {
+    if (!currentUser) {
+      setSiswa([])
+      setMemuat(false)
+      return () => {
+        batal = true
+      }
+    }
+    Promise.all([fetchSiswaBinaan(currentUser), fetchAllSurah()]).then(([daftarSiswa, daftarSurah]) => {
       if (batal) return
       setSiswa(daftarSiswa)
       setSurahs(daftarSurah)
@@ -67,7 +74,7 @@ export function InputRaporTahfidz({
     return () => {
       batal = true
     }
-  }, [currentUser])
+  }, [kunciUserGuru(currentUser)])
 
   useEffect(() => {
     let batal = false
@@ -277,7 +284,7 @@ export function InputRaporTahfidz({
               onChange={(event) => setIdSiswa(event.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold"
             >
-              <option value="">Pilih siswa binaan</option>
+              <option value="">{memuat ? 'Memuat siswa binaan…' : siswa.length === 0 ? 'Tidak ada siswa binaan' : 'Pilih siswa binaan'}</option>
               {siswa.map((item) => (
                 <option key={item.id_siswa} value={item.id_siswa}>
                   {item.nama_siswa} · {item.kelas}
@@ -285,7 +292,7 @@ export function InputRaporTahfidz({
               ))}
             </select>
             <span className="mt-1 block font-medium text-slate-400">
-              {memuat ? 'Memuat siswa binaan…' : `${siswa.length} siswa binaan`}
+              {memuat ? 'Memuat siswa binaan…' : siswa.length === 0 ? 'Tidak ada siswa binaan.' : `${siswa.length} siswa binaan`}
             </span>
           </label>
 

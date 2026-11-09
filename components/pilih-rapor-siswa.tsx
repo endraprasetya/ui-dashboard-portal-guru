@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Search } from 'lucide-react'
-import { fetchAllSiswa, fetchDaftarSiswa, type Siswa } from '@/lib/siswa'
+import { fetchDaftarSiswa, fetchSiswaBinaan, type Siswa } from '@/lib/siswa'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { isAdminRole } from '@/lib/guru-bantu/utils'
 
@@ -23,7 +23,7 @@ export function PilihRaporSiswa({
     let batal = false
     const muat = adalahKepalaSekolah(currentUser) || isAdminRole(String(currentUser?.role || ''))
       ? fetchDaftarSiswa()
-      : fetchAllSiswa(currentUser)
+      : fetchSiswaBinaan(currentUser)
     muat.then((data) => {
       if (batal) return
       setSiswa(data)

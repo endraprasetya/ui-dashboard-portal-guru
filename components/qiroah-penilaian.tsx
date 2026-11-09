@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { fetchAllSiswa } from '@/lib/siswa'
+import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
 import { formatDateString } from '@/lib/qiroah'
 
 export function QiroahPenilaian({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -21,8 +21,12 @@ export function QiroahPenilaian({ onBack, currentUser }: { onBack: () => void; c
   const searchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchAllSiswa(currentUser).then(setStudents)
-  }, [currentUser])
+    if (!currentUser) {
+      setStudents([])
+      return
+    }
+    fetchSiswaBinaan(currentUser).then(setStudents)
+  }, [kunciUserGuru(currentUser)])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -133,17 +137,21 @@ export function QiroahPenilaian({ onBack, currentUser }: { onBack: () => void; c
           </div>
           {isStudentSearchOpen && (
             <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-              {filteredStudents.map((student) => (
-                <button
-                  key={student.id_siswa}
-                  type="button"
-                  onClick={() => handleSelectStudent(student)}
-                  className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm hover:bg-sky-50"
-                >
-                  <span className="font-bold">{student.nama_siswa}</span>
-                  <span className="text-[11px] text-slate-500">Kelas {student.kelas}</span>
-                </button>
-              ))}
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((student) => (
+                  <button
+                    key={student.id_siswa}
+                    type="button"
+                    onClick={() => handleSelectStudent(student)}
+                    className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm hover:bg-sky-50"
+                  >
+                    <span className="font-bold">{student.nama_siswa}</span>
+                    <span className="text-[11px] text-slate-500">Kelas {student.kelas}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="p-3 text-center text-xs text-slate-400">Tidak ada siswa binaan.</div>
+              )}
             </div>
           )}
         </div>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ClipboardList, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
 import { supabase } from '@/lib/supabase'
-import { fetchAllSiswa } from '@/lib/siswa'
+import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
 import {
   JILID_OPTIONS,
   JILID_UJIAN_OPTIONS,
@@ -96,8 +96,12 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   }, [])
 
   useEffect(() => {
-    fetchAllSiswa(currentUser).then(setStudents)
-  }, [currentUser])
+    if (!currentUser) {
+      setStudents([])
+      return
+    }
+    fetchSiswaBinaan(currentUser).then(setStudents)
+  }, [kunciUserGuru(currentUser)])
 
   const muatSiswaSudahSetor = useCallback(async () => {
     const hari = kunciHariJakarta()
@@ -510,8 +514,13 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
         <div className="relative mb-3" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Nama Siswa Binaan</label>
           <p className="mb-1 text-[11px] text-slate-500">
-            Semua siswa binaan ditampilkan. Ketik nama untuk memfilter.
+            Hanya siswa binaan Anda. Ketik nama untuk memfilter.
           </p>
+          {students.length === 0 && (
+            <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+              Tidak ada siswa binaan.
+            </p>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-3 size-4 text-sky-500" />
             <input

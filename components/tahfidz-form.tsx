@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { fetchAllSiswa } from '@/lib/siswa'
+import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
 import { fetchAllSurah, peringatanAyatMelebihi, validasiAyatSurat, type Surah } from '@/lib/surah'
 import {
   formatLabelAyat,
@@ -202,7 +202,11 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   // Ambil daftar siswa dan daftar surah dari Supabase saat pertama buka
   useEffect(() => {
     async function fetchData() {
-      const dataSiswa = await fetchAllSiswa(currentUser)
+      if (!currentUser) {
+        setStudents([])
+        return
+      }
+      const dataSiswa = await fetchSiswaBinaan(currentUser)
       setStudents(dataSiswa)
 
       // 2. Ambil data surah dari tabel Supabase dengan caching (urutan terbalik: An-Naas di atas)
@@ -210,7 +214,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       setSurahs(dataSurah)
     }
     fetchData()
-  }, [currentUser])
+  }, [kunciUserGuru(currentUser)])
 
   const resetInputFields = useCallback(() => {
     setEditIdSetoran('')
@@ -603,8 +607,13 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
         <div className="mb-3 relative" ref={studentSearchRef}>
           <label className="mb-1 block text-sm font-bold text-slate-700">Pilih Siswa</label>
           <p className="mb-1 text-[11px] text-slate-500">
-            Semua siswa binaan ditampilkan. Ketik nama untuk memfilter.
+            Hanya siswa binaan Anda. Ketik nama untuk memfilter.
           </p>
+          {students.length === 0 && (
+            <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+              Tidak ada siswa binaan.
+            </p>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-3 size-4 text-blue-500" />
             <input

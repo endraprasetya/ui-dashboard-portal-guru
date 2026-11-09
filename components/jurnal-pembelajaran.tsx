@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Eye, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, CheckCircle2, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
 import { BidangSuara, useDikte } from '@/components/input-suara'
 import {
   DAFTAR_MAPEL,
@@ -28,6 +28,152 @@ import {
   type SiswaKelas,
   type SiswaTidakHadir,
 } from '@/lib/jurnal'
+
+const TombolSimpanJurnal = memo(function TombolSimpanJurnal({
+  disabled,
+  saving,
+  onSimpan,
+}: {
+  disabled: boolean
+  saving: boolean
+  onSimpan: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSimpan}
+      disabled={disabled}
+      className="no-print inline-flex min-w-[10.25rem] shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:pointer-events-none disabled:opacity-60"
+      style={{ contain: 'layout paint' }}
+    >
+      <Save className="size-4 shrink-0" />
+      <span className="truncate">{saving ? 'Menyimpan...' : 'Simpan jurnal'}</span>
+    </button>
+  )
+})
+
+function InputLokal({
+  value,
+  onCommit,
+  className,
+  ...rest
+}: {
+  value: string
+  onCommit: (nilai: string) => void
+  className?: string
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'onBlur'>) {
+  const [lokal, setLokal] = useState(value)
+  const valueRef = useRef(value)
+  if (value !== valueRef.current) {
+    valueRef.current = value
+    if (value !== lokal) setLokal(value)
+  }
+  return (
+    <input
+      {...rest}
+      value={lokal}
+      className={className}
+      onChange={(event) => setLokal(event.target.value)}
+      onBlur={() => {
+        if (lokal !== valueRef.current) onCommit(lokal)
+      }}
+    />
+  )
+}
+
+const JurnalMetaBar = memo(function JurnalMetaBar({
+  kelas,
+  kelasList,
+  tanggal,
+  semester,
+  guru,
+  unit,
+  hariIndex,
+  tanggalLabel,
+  saving,
+  bisaSimpan,
+  onKelas,
+  onTanggal,
+  onSemester,
+  onSimpan,
+}: {
+  kelas: string
+  kelasList: string[]
+  tanggal: string
+  semester: string
+  guru: string
+  unit: string
+  hariIndex: number
+  tanggalLabel: string
+  saving: boolean
+  bisaSimpan: boolean
+  onKelas: (nilai: string) => void
+  onTanggal: (nilai: string) => void
+  onSemester: (nilai: string) => void
+  onSimpan: () => void
+}) {
+  return (
+    <div className="jurnal-print-meta flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
+      <label className="no-print text-xs font-bold text-slate-600">
+        Kelas
+        <select
+          value={kelas}
+          onChange={(e) => onKelas(e.target.value)}
+          className="mt-1 block min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
+        >
+          {kelasList.length === 0 && <option value="">Memuat kelas...</option>}
+          {kelasList.map((nama) => (
+            <option key={nama} value={nama}>
+              {nama}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="no-print text-xs font-bold text-slate-600">
+        Tanggal
+        <input
+          type="date"
+          value={tanggal}
+          onChange={(e) => onTanggal(e.target.value)}
+          className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
+        />
+      </label>
+
+      <label className="no-print text-xs font-bold text-slate-600">
+        Semester
+        <select
+          value={semester}
+          onChange={(e) => onSemester(e.target.value)}
+          className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
+        >
+          <option value="1">1 (Satu)</option>
+          <option value="2">2 (Dua)</option>
+        </select>
+      </label>
+
+      <TombolSimpanJurnal disabled={!bisaSimpan || saving} saving={saving} onSimpan={onSimpan} />
+      <button
+        type="button"
+        onClick={() => window.print()}
+        className="no-print inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
+      >
+        <Printer className="size-4" /> Cetak
+      </button>
+
+      <div className="ml-auto text-right">
+        <p className="text-base font-black text-slate-900">
+          {hariIndex >= 0 ? NAMA_HARI[hariIndex] : '-'}, {tanggalLabel}
+        </p>
+        <p className="text-xs text-slate-500">
+          Kelas {kelas || '-'} / Semester {semester}
+          {unit ? ` · Unit ${unit}` : ''}
+        </p>
+        <p className="text-xs font-semibold text-emerald-700">Guru: {guru}</p>
+      </div>
+    </div>
+  )
+})
 
 export function JurnalPembelajaran({
   onBack,
@@ -57,10 +203,30 @@ export function JurnalPembelajaran({
 
   const [ttdJam, setTtdJam] = useState<number | null>(null)
   const [pilihAbsenJam, setPilihAbsenJam] = useState<number | null>(null)
-  const [lihatAbsenJam, setLihatAbsenJam] = useState<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawingRef = useRef(false)
   const dikte = useDikte()
+  const currentUserRef = useRef(currentUser)
+  currentUserRef.current = currentUser
+  const siswaKelasRef = useRef(siswaKelas)
+  siswaKelasRef.current = siswaKelas
+  const jumlahSiswaRef = useRef(jumlahSiswa)
+  jumlahSiswaRef.current = jumlahSiswa
+  const hentikanDikteRef = useRef(dikte.hentikan)
+  hentikanDikteRef.current = dikte.hentikan
+
+  const userKunci = useMemo(
+    () =>
+      [
+        currentUser?.target_id,
+        currentUser?.id_user,
+        currentUser?.username,
+        currentUser?.unit,
+      ]
+        .map((item) => String(item || '').trim())
+        .join('|'),
+    [currentUser?.target_id, currentUser?.id_user, currentUser?.username, currentUser?.unit],
+  )
 
   const selectedDate = tanggal ? new Date(`${tanggal}T00:00:00`) : null
   const hariIndex = selectedDate ? selectedDate.getDay() : -1
@@ -118,14 +284,19 @@ export function JurnalPembelajaran({
   updateEntryRef.current = updateEntry
 
   useEffect(() => {
+    let batal = false
     async function loadKelas() {
-      const result = await fetchKelasDanJumlahSiswa(currentUser)
+      const result = await fetchKelasDanJumlahSiswa(currentUserRef.current)
+      if (batal) return
       setKelasList(result.classes)
       setJumlahSiswa(result.counts)
       setKelas((prev) => prev || result.classes[0] || '')
     }
-    loadKelas()
-  }, [currentUser])
+    void loadKelas()
+    return () => {
+      batal = true
+    }
+  }, [userKunci])
 
   useEffect(() => {
     if (!kelas) {
@@ -134,7 +305,7 @@ export function JurnalPembelajaran({
       return
     }
     let batal = false
-    fetchSiswaKelas(kelas, currentUser).then((rows) => {
+    fetchSiswaKelas(kelas, currentUserRef.current).then((rows) => {
       if (batal) return
       setSiswaKelas(rows)
       setRosterKelas(kelas)
@@ -142,19 +313,22 @@ export function JurnalPembelajaran({
     return () => {
       batal = true
     }
-  }, [kelas, currentUser])
+  }, [kelas, userKunci])
 
   const kunciRoster = useMemo(
     () => siswaKelas.map((item) => item.id_siswa).join('|'),
     [siswaKelas],
   )
-  const jumlahKelasStabil = siswaKelas.length || (kelas ? jumlahSiswa[kelas] || 0 : 0)
+
+  const rosterSiap = Boolean(kelas && tanggal && rosterKelas === kelas)
+  const kunciMuatJurnal = rosterSiap ? `${kelas}\u0001${tanggal}\u0001${kunciRoster}` : ''
 
   useEffect(() => {
-    if (!kelas || !tanggal || rosterKelas !== kelas) return
+    if (!kunciMuatJurnal) return
 
+    const [kelasMuat, tanggalMuat] = kunciMuatJurnal.split('\u0001')
     let batal = false
-    dikte.hentikan()
+    hentikanDikteRef.current()
 
     async function muatJurnal() {
       setLoading(true)
@@ -162,18 +336,19 @@ export function JurnalPembelajaran({
       setStatus('')
       setStatusError(false)
 
-      const { rows, error } = await fetchJurnalHari(kelas, tanggal)
+      const roster = siswaKelasRef.current
+      const total = roster.length || jumlahSiswaRef.current[kelasMuat] || 0
+      const { rows, error } = await fetchJurnalHari(kelasMuat, tanggalMuat)
       if (batal) return
 
-      const total = jumlahKelasStabil
-      const tanggalHari = tanggal ? new Date(`${tanggal}T00:00:00`) : null
+      const tanggalHari = tanggalMuat ? new Date(`${tanggalMuat}T00:00:00`) : null
 
       if (error) {
         setStatus('Gagal memuat jurnal dari Supabase. ' + error.message)
         setStatusError(true)
         setEntries({})
       } else if (rows.length > 0) {
-        const loaded = rowsToEntries(rows, total, siswaKelas)
+        const loaded = rowsToEntries(rows, total, roster)
         const jamAktif = tanggalHari ? jamAktifDariJadwal(jamHariIni(tanggalHari)) : []
         const kustom = deteksiJamAbsenKustom(loaded, jamAktif)
         absenKustomJamRef.current = kustom
@@ -196,20 +371,16 @@ export function JurnalPembelajaran({
     return () => {
       batal = true
     }
-  }, [kelas, tanggal, rosterKelas, kunciRoster, jumlahKelasStabil, dikte.hentikan, siswaKelas])
+  }, [kunciMuatJurnal])
 
-  const selesaiPilihAbsen = () => {
+  const tutupDaftarAbsen = () => {
     const jam = pilihAbsenJam
     setPilihAbsenJam(null)
-    if (jam === 1 && jadwal) {
-      const jamAktif = jamAktifDariJadwal(jadwal)
-      setEntries((current) => salinAbsenJamPertama(current, jamAktif, jumlahKelas, absenKustomJamRef.current))
-      setStatus(
-        `Absensi Jam ke-1 disalin ke jam berikutnya di layar. Tekan Simpan jurnal untuk menulis ke Supabase.`,
-      )
+    if (jam === 1) {
+      setStatus('Absensi Jam ke-1 sudah disalin ke jam berikutnya di layar. Tekan Simpan jurnal untuk menulis ke Supabase.')
       setStatusError(false)
     } else if (jam != null && jam > 1) {
-      setStatus(`Absensi Jam ke-${jam} diubah. Tekan Simpan jurnal untuk menulis ke Supabase.`)
+      setStatus(`Absensi Jam ke-${jam} diubah di layar. Tekan Simpan jurnal untuk menulis ke Supabase.`)
       setStatusError(false)
     }
   }
@@ -221,8 +392,12 @@ export function JurnalPembelajaran({
     setEntries((current) => salinAbsenJamPertama(current, jamAktif, jumlahKelas, absenKustomJamRef.current))
   }
 
-  const handleSimpan = async () => {
+  const simpanJurnalRef = useRef<() => Promise<void>>(async () => {})
+  simpanJurnalRef.current = async () => {
     if (!kelas || !tanggal || !jadwal) return
+    const aktif = document.activeElement
+    if (aktif instanceof HTMLElement) aktif.blur()
+    await new Promise((selesai) => window.setTimeout(selesai, 0))
     setSaving(true)
     setStatus('')
     setStatusError(false)
@@ -257,6 +432,10 @@ export function JurnalPembelajaran({
     setToastSukses(pesan)
     window.setTimeout(() => setToastSukses(''), 4500)
   }
+
+  const onSimpanJurnal = useCallback(() => {
+    void simpanJurnalRef.current()
+  }, [])
 
   const setAbsenSiswa = (jam: number, siswa: SiswaKelas, keterangan: string | null) => {
     const entry = getEntry(jam)
@@ -336,7 +515,6 @@ export function JurnalPembelajaran({
     ? selectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '-'
 
-  const absenDilihat = lihatAbsenJam != null ? absenKelas(getEntry(lihatAbsenJam).siswaTidakHadir) : []
   const absenDipilih = pilihAbsenJam != null ? absenKelas(getEntry(pilihAbsenJam).siswaTidakHadir) : []
 
   return (
@@ -441,73 +619,22 @@ export function JurnalPembelajaran({
           <p className="text-xs text-emerald-100">Catatan KBM harian dan presensi per jam pelajaran</p>
         </div>
 
-        <div className="jurnal-print-meta flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
-          <label className="no-print text-xs font-bold text-slate-600">
-            Kelas
-            <select
-              value={kelas}
-              onChange={(e) => setKelas(e.target.value)}
-              className="mt-1 block min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-            >
-              {kelasList.length === 0 && <option value="">Memuat kelas...</option>}
-              {kelasList.map((nama) => (
-                <option key={nama} value={nama}>
-                  {nama}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="no-print text-xs font-bold text-slate-600">
-            Tanggal
-            <input
-              type="date"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-              className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-            />
-          </label>
-
-          <label className="no-print text-xs font-bold text-slate-600">
-            Semester
-            <select
-              value={semester}
-              onChange={(e) => setSemester(e.target.value)}
-              className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-            >
-              <option value="1">1 (Satu)</option>
-              <option value="2">2 (Dua)</option>
-            </select>
-          </label>
-
-          <button
-            type="button"
-            onClick={handleSimpan}
-            disabled={!jadwal || saving || loading}
-            className="no-print inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
-          >
-            <Save className="size-4" />
-            {saving ? 'Menyimpan...' : 'Simpan jurnal'}
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="no-print inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
-          >
-            <Printer className="size-4" /> Cetak
-          </button>
-
-          <div className="ml-auto text-right">
-            <p className="text-base font-black text-slate-900">
-              {hariIndex >= 0 ? NAMA_HARI[hariIndex] : '-'}, {tanggalLabel}
-            </p>
-            <p className="text-xs text-slate-500">
-              Kelas {kelas || '-'} / Semester {semester}
-              {unit ? ` · Unit ${unit}` : ''}
-            </p>
-            <p className="text-xs font-semibold text-emerald-700">Guru: {guru}</p>
-          </div>
-        </div>
+        <JurnalMetaBar
+          kelas={kelas}
+          kelasList={kelasList}
+          tanggal={tanggal}
+          semester={semester}
+          guru={guru}
+          unit={unit}
+          hariIndex={hariIndex}
+          tanggalLabel={tanggalLabel}
+          saving={saving}
+          bisaSimpan={Boolean(jadwal)}
+          onKelas={setKelas}
+          onTanggal={setTanggal}
+          onSemester={setSemester}
+          onSimpan={onSimpanJurnal}
+        />
 
         <div className="jurnal-print-body space-y-3 px-5 py-4">
           <p className="no-print text-xs text-slate-500">
@@ -522,9 +649,9 @@ export function JurnalPembelajaran({
           </p>
           {!loading && jadwal && (
             <p className="no-print text-xs font-semibold text-amber-900 bg-amber-50 rounded-lg border border-amber-100 px-3 py-2">
-              Tidak ada penyimpanan otomatis. Semua materi, tugas, dan absensi hanya masuk Supabase setelah{' '}
-              <b>Simpan jurnal</b>. Absensi Jam ke-1 disalin ke jam lain di layar (kecuali jam yang Anda ubah khusus);
-              edit per jam untuk siswa pulang/izin di tengah pelajaran.
+              Tidak ada penyimpanan otomatis ke Supabase. Absensi Jam ke-1 yang Anda ubah langsung disalin ke jam
+              berikutnya di layar (kecuali jam dengan absen khusus). Ubah per jam untuk izin/pulang di tengah pelajaran
+              lewat <b>Atur absen</b>. Semua data baru tersimpan hanya setelah Anda menekan <b>Simpan jurnal</b>.
             </p>
           )}
           {!loading && status && (
@@ -581,11 +708,11 @@ export function JurnalPembelajaran({
                         <td className="border border-slate-200 p-2 text-center font-black text-slate-800">{jam}</td>
                         <td className="whitespace-nowrap border border-slate-200 p-2 text-slate-500">{item.w}</td>
                         <td className="border border-slate-200 p-1.5">
-                          <input
+                          <InputLokal
                             type="text"
                             list="daftar-mapel"
                             value={entry.mapel}
-                            onChange={(e) => updateEntry(jam, { mapel: e.target.value })}
+                            onCommit={(nilai) => updateEntry(jam, { mapel: nilai })}
                             className="w-full rounded border border-slate-200 px-2 py-1.5"
                           />
                         </td>
@@ -713,26 +840,13 @@ export function JurnalPembelajaran({
                                 Absen khusus jam ini
                               </span>
                             ) : null}
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="min-w-6 text-center text-sm font-black text-slate-800">{rekap.tidakHadir}</span>
-                            <button
-                              type="button"
-                              disabled={entry.siswaTidakHadir.length === 0}
-                              onClick={() => setLihatAbsenJam(jam)}
-                              className="no-print rounded bg-slate-800 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-40"
-                            >
-                              <span className="inline-flex items-center gap-1">
-                                <Eye className="size-3" /> Tampilkan
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPilihAbsenJam(jam)}
-                              className="no-print rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800"
-                            >
-                              Pilih
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPilihAbsenJam(jam)}
+                            className="no-print w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 hover:bg-amber-100"
+                          >
+                            Atur absen ({rekap.tidakHadir})
+                          </button>
                           </div>
                         </td>
                         <td className="w-28 border border-slate-200 p-1.5 text-center">
@@ -765,65 +879,21 @@ export function JurnalPembelajaran({
         </div>
       </div>
 
-      {lihatAbsenJam != null && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-800">Siswa tidak hadir · Jam ke-{lihatAbsenJam}</p>
-              <button type="button" onClick={() => setLihatAbsenJam(null)} className="text-slate-400 hover:text-slate-700">
-                <X className="size-4" />
-              </button>
-            </div>
-            {absenDilihat.length === 0 ? (
-              <p className="text-sm text-slate-500">Tidak ada data siswa tidak hadir pada jam ini.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100 text-sm">
-                {absenDilihat.map((item, index) => (
-                  <li key={`${item.nama}-${index}`} className="flex items-center justify-between py-2">
-                    <span className="font-semibold text-slate-800">{item.nama}</span>
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                      {item.keterangan}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  const jam = lihatAbsenJam
-                  setLihatAbsenJam(null)
-                  setPilihAbsenJam(jam)
-                }}
-                className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white"
-              >
-                Ubah daftar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {pilihAbsenJam != null && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
           <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold text-slate-800">Pilih siswa tidak hadir · Jam ke-{pilihAbsenJam}</p>
+                <p className="text-sm font-bold text-slate-800">Atur kehadiran · Jam ke-{pilihAbsenJam}</p>
                 <p className="text-xs text-slate-500">
-                  Siswa yang tidak dipilih tetap dihitung hadir.
+                  Pilih status per siswa; perubahan langsung berlaku di layar (tanpa simpan otomatis ke Supabase).
                   {pilihAbsenJam === 1 ? (
                     <>
                       {' '}
-                      Setelah <b>Selesai</b>, absensi disalin ke jam berikutnya di layar; simpan dengan{' '}
-                      <b>Simpan jurnal</b>.
+                      Jam ke-1 otomatis disalin ke jam berikutnya, kecuali jam yang sudah Anda ubah khusus.
                     </>
                   ) : (
-                    <>
-                      {' '}
-                      Ubah di jam ini saja (mis. siswa pulang/izin di tengah jam) — jam lain tidak berubah.
-                    </>
+                    <> Perubahan hanya untuk jam ini (mis. izin/pulang di tengah pelajaran).</>
                   )}
                 </p>
               </div>
@@ -875,10 +945,10 @@ export function JurnalPembelajaran({
                 ) : null}
                 <button
                   type="button"
-                  onClick={selesaiPilihAbsen}
+                  onClick={tutupDaftarAbsen}
                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white"
                 >
-                  <UserX className="size-3.5" /> Selesai
+                  <UserX className="size-3.5" /> Tutup
                 </button>
               </div>
             </div>

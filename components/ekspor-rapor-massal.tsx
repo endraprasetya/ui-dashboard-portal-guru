@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, Loader2, Printer } from 'lucide-react'
-import { fetchAllSiswa, type Siswa } from '@/lib/siswa'
+import { fetchSiswaBinaan, type Siswa } from '@/lib/siswa'
 import { ASESMEN_TAHFIDZ } from '@/lib/materi-ujian-tahfidz'
 import { fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
 import { GAYA_CETAK_RAPOR_TAHFIDZ, LembarRaporTahfidz } from '@/components/cetak-rapor-tahfidz'
@@ -55,7 +55,7 @@ export function EksporRaporMassal({ asesmenAwal }: { asesmenAwal?: string }) {
   useEffect(() => {
     if (!user) return
     let batal = false
-    fetchAllSiswa(user).then((data) => {
+    fetchSiswaBinaan(user).then((data) => {
       if (!batal) setSiswa(data)
     })
     return () => {

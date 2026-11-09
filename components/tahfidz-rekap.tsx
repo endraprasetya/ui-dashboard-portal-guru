@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ambilBarisSiswa, fetchAllSiswa, isKelasAlumni } from '@/lib/siswa'
+import { ambilBarisSiswa, fetchSiswaBinaan, isKelasAlumni, kunciUserGuru } from '@/lib/siswa'
 import { formatTugasRecord, formatZiyadahRecord } from '@/lib/tahfidz'
 import { ArrowLeft, Printer, Search, Target, Users, ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -24,8 +24,12 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
   const searchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchAllSiswa(currentUser).then(setStudents)
-  }, [currentUser])
+    if (!currentUser) {
+      setStudents([])
+      return
+    }
+    fetchSiswaBinaan(currentUser).then(setStudents)
+  }, [kunciUserGuru(currentUser)])
 
   // Memoize filtered students to avoid recalculating on every render
   const filteredStudents = useMemo(() => {
@@ -314,7 +318,7 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
               }}
               className="w-full rounded-lg border border-slate-300 p-2 text-xs bg-slate-50 focus:bg-white font-medium"
             >
-              <option value="">-- Pilih Kelas --</option>
+              <option value="">{uniqueClasses.length === 0 ? 'Tidak ada siswa binaan' : '-- Pilih Kelas --'}</option>
               {uniqueClasses.map((k) => (
                 <option key={k} value={k}>Kelas {k}</option>
               ))}
@@ -360,7 +364,9 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
                   ))
                 ) : (
                   <div className="p-3 text-center text-xs text-slate-400">
-                    Santri dengan kata "{searchQuery}" tidak ditemukan
+                    {students.length === 0
+                      ? 'Tidak ada siswa binaan.'
+                      : `Santri dengan kata "${searchQuery}" tidak ditemukan`}
                   </div>
                 )}
               </div>

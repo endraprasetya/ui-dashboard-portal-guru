@@ -25,6 +25,8 @@ export type UserGuru = {
   nama?: string
   nip?: string
   NIP?: string
+  unit?: string
+  sekolah?: string
 }
 
 export function idGuru(user?: UserGuru | null) {
@@ -47,13 +49,14 @@ function namaGuruSama(a?: string, b?: string) {
   const nb = normalisasiNamaGuru(b)
   if (!na || !nb) return false
   if (na === nb) return true
-  const pendek = na.length < nb.length ? na : nb
-  const panjang = na.length < nb.length ? nb : na
-  if (pendek.length < 4) return false
-  if (panjang.includes(pendek)) return true
-  const kataA = na.split(/\s+/).filter((k) => k.length > 2)
-  const kataB = nb.split(/\s+/).filter((k) => k.length > 2)
+  const kataA = na.split(/\s+/).filter((k) => k.length > 1)
+  const kataB = nb.split(/\s+/).filter((k) => k.length > 1)
   if (kataA.length >= 2 && kataB.length >= 2 && kataA[0] === kataB[0] && kataA[1] === kataB[1]) return true
+  if (na.includes(' ') && nb.includes(' ')) {
+    const pendek = na.length < nb.length ? na : nb
+    const panjang = na.length < nb.length ? nb : na
+    if (pendek.length >= 10 && panjang.includes(pendek)) return true
+  }
   return false
 }
 
@@ -198,61 +201,157 @@ export async function fetchDaftarSiswa(): Promise<Siswa[]> {
   return excludeAlumniSiswa(all)
 }
 
-/** Daftar nama kelas untuk layar setting binaan (tabel `kelas` + siswa unit guru). */
-export async function fetchDaftarKelasBinaan(currentUser?: { unit?: string; sekolah?: string } | null): Promise<string[]> {
-  const unit = unitLogin(currentUser)
-  const counts = new Map<string, number>()
-  const pageSize = 1000
-  let from = 0
-
-  while (true) {
-    let query = supabase
-      .from('siswa')
-      .select('kelas,unit')
-      .not('kelas', 'ilike', '%Alumni%')
-      .range(from, from + pageSize - 1)
-
-    const { data, error } = await query
-    if (error) {
-      console.error('Gagal mengambil kelas siswa:', error.message)
-      break
-    }
-
-    const rows = excludeAlumniSiswa(data || [])
-    for (const row of rows) {
-      if (unit && !unitSama(row.unit, unit)) continue
-      const namaKelas = String(row.kelas || '').trim()
-      if (!namaKelas || isKelasAlumni(namaKelas)) continue
-      counts.set(namaKelas, (counts.get(namaKelas) || 0) + 1)
-    }
-
-    if (rows.length < pageSize) break
-    from += pageSize
+function tokenKueriPembimbing(user: UserGuru): string[] {
+  const out = new Set<string>()
+  const bidang = [
+    user.target_id,
+    user.id_user,
+    user.username,
+    user.nip,
+    user.NIP,
+    user.nama_lengkap,
+    user.nama,
+  ]
+  for (const raw of bidang) {
+    const teks = String(raw ?? '').trim()
+    if (teks.length >= 2) out.add(teks)
+    const tanpaGelar = teks
+      .replace(/,?\s*s\.?\s*d?s\.?\s*i?\.?/gi, ' ')
+      .replace(/,?\s*s\.?\s*p[dg]\.?\s*i?\.?/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (tanpaGelar.length >= 4) out.add(tanpaGelar)
   }
-
-  const { data: kelasRows, error: kelasError } = await supabase
-    .from('kelas')
-    .select('nama')
-    .order('nama', { ascending: true })
-
-  if (kelasError) {
-    console.error('Gagal mengambil daftar kelas:', kelasError.message)
-  }
-
-  const dariTabel = (kelasRows || [])
-    .map((row) => String(row.nama || '').trim())
-    .filter((nama) => nama && !isKelasAlumni(nama))
-
-  const gabungan =
-    dariTabel.length > 0 ? dariTabel : Array.from(counts.keys()).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
-
-  return gabungan
+  return Array.from(out)
 }
 
-export async function fetchAllSiswa(currentUser?: any): Promise<Siswa[]> {
-  const semua = await fetchDaftarSiswa()
-  const perUnit = filterSiswaByUnit(semua, currentUser)
-  return filterSiswaByTeacher(perUnit, currentUser)
+function klausaOrPembimbing(user: UserGuru): string {
+  const bagian: string[] = []
+  const sudah = new Set<string>()
+  for (const item of tokenKueriPembimbing(user)) {
+    const aman = item
+      .replace(/["\\]/g, '')
+      .replace(/[%_(),]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (aman.length < 2) continue
+    const kunci = aman.toLowerCase()
+    if (sudah.has(kunci)) continue
+    sudah.add(kunci)
+    bagian.push(`id_pembimbing.ilike."%${aman}%"`)
+  }
+  return bagian.join(',')
+}
+
+const KOLOM_SISWA = 'id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis'
+
+async function halamanSiswaDenganOr(orKlausa: string): Promise<Siswa[]> {
+  const pageSize = 1000
+  const all: Siswa[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('siswa')
+      .select(KOLOM_SISWA)
+      .not('kelas', 'ilike', '%Alumni%')
+      .not('id_pembimbing', 'is', null)
+      .neq('id_pembimbing', '')
+      .or(orKlausa)
+      .order('nama_siswa', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) {
+      const ulang = await supabase
+        .from('siswa')
+        .select(KOLOM_SISWA)
+        .not('kelas', 'ilike', '%Alumni%')
+        .or(orKlausa.replace(/"/g, ''))
+        .order('nama_siswa', { ascending: true })
+        .range(from, from + pageSize - 1)
+      if (ulang.error) {
+        console.error('Gagal mengambil siswa binaan:', error.message)
+        break
+      }
+      const rowsUlang = excludeAlumniSiswa((ulang.data || []) as Siswa[])
+      all.push(...rowsUlang)
+      if ((ulang.data || []).length < pageSize) break
+      from += pageSize
+      continue
+    }
+    const rows = excludeAlumniSiswa((data || []) as Siswa[])
+    all.push(...rows)
+    if ((data || []).length < pageSize) break
+    from += pageSize
+  }
+  return all
+}
+
+/** Kelas yang punya siswa binaan guru login — tidak menarik seluruh kelas 1–6. */
+export async function fetchDaftarKelasBinaan(currentUser?: UserGuru | null): Promise<string[]> {
+  const binaan = await fetchSiswaBinaan(currentUser)
+  return Array.from(new Set(binaan.map((item) => item.kelas.trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, 'id', { numeric: true }),
+  )
+}
+
+/** Kunci stabil untuk efek React (hindari loop karena objek `currentUser` baru tiap render). */
+export function kunciUserGuru(user?: UserGuru | null) {
+  return [
+    user?.target_id,
+    user?.id_user,
+    user?.username,
+    user?.nip,
+    user?.NIP,
+    user?.nama_lengkap,
+    user?.nama,
+    user?.unit,
+  ]
+    .map((item) => String(item || '').trim())
+    .join('|')
+}
+
+export function saringSiswaBinaan(siswaList: Siswa[], currentUser?: UserGuru | null): Siswa[] {
+  if (!currentUser) return []
+  return filterSiswaByTeacher(filterSiswaByUnit(siswaList, currentUser), currentUser)
+}
+
+/**
+ * Hanya siswa binaan guru yang login.
+ * Filter di Supabase lewat `id_pembimbing` (ID/nama/NIP guru) — tidak menarik seluruh kelas 1–6.
+ */
+export async function fetchSiswaBinaan(currentUser?: UserGuru | null): Promise<Siswa[]> {
+  if (!currentUser) return []
+  const punyaIdentitas = Boolean(
+    idGuru(currentUser) ||
+      String(currentUser.nama_lengkap || currentUser.nama || currentUser.username || '').trim(),
+  )
+  if (!punyaIdentitas) return []
+  const orKlausa = klausaOrPembimbing(currentUser)
+  if (!orKlausa) return []
+  const kandidat = await halamanSiswaDenganOr(orKlausa)
+  return saringSiswaBinaan(kandidat, currentUser)
+}
+
+/** Pencarian terbatas (maks. 25) untuk menambah binaan di setting — bukan dump kelas 1–6. */
+export async function cariSiswaUntukBinaan(kata: string, currentUser?: UserGuru | null): Promise<Siswa[]> {
+  const query = kata.trim().replace(/[%_]/g, '')
+  if (query.length < 2 || !currentUser) return []
+  const { data, error } = await supabase
+    .from('siswa')
+    .select(KOLOM_SISWA)
+    .ilike('nama_siswa', `%${query}%`)
+    .not('kelas', 'ilike', '%Alumni%')
+    .order('nama_siswa', { ascending: true })
+    .limit(25)
+  if (error) {
+    console.error('Gagal mencari siswa:', error.message)
+    return []
+  }
+  return excludeAlumniSiswa(filterSiswaByUnit((data || []) as Siswa[], currentUser))
+}
+
+/** @deprecated Gunakan `fetchSiswaBinaan` — perilaku sama (hanya binaan). */
+export async function fetchAllSiswa(currentUser?: UserGuru | null): Promise<Siswa[]> {
+  return fetchSiswaBinaan(currentUser)
 }
 
 export async function simpanSiswaBinaan(
@@ -309,7 +408,7 @@ export async function ambilBarisSiswa<T>(
  * Dipisah sebagai fungsi terpisah untuk optimasi
  */
 function filterSiswaByTeacher(siswaList: Siswa[], currentUser?: UserGuru | null): Siswa[] {
-  if (!currentUser) return siswaList
+  if (!currentUser) return []
   const punyaIdentitas = Boolean(
     idGuru(currentUser) ||
       String(currentUser.nama_lengkap || currentUser.nama || '').trim() ||

@@ -190,6 +190,24 @@ export function BidangSuara({
   satuBaris?: boolean
   className?: string
 }) {
+  const [lokal, setLokal] = useState(value)
+  const valueRef = useRef(value)
+  const lokalRef = useRef(lokal)
+  lokalRef.current = lokal
+
+  if (value !== valueRef.current) {
+    valueRef.current = value
+    if (value !== lokal) {
+      setLokal(value)
+      lokalRef.current = value
+    }
+  }
+
+  const commit = () => {
+    const teks = lokalRef.current
+    if (teks !== valueRef.current) onChange(teks)
+  }
+
   const kelas = `${className || (satuBaris ? 'w-full rounded-xl border border-slate-300 p-3 text-sm' : 'min-h-14 w-full resize-y rounded border px-2 py-1.5')} pr-10 ${
     mendengarkan ? 'border-red-400 bg-red-50' : className ? '' : 'border-slate-200'
   }`
@@ -200,17 +218,19 @@ export function BidangSuara({
         {satuBaris ? (
           <input
             type="text"
-            value={value}
+            value={lokal}
             placeholder={placeholder}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => setLokal(event.target.value)}
+            onBlur={commit}
             className={kelas}
           />
         ) : (
           <textarea
-            value={value}
+            value={lokal}
             rows={rows}
             placeholder={placeholder}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => setLokal(event.target.value)}
+            onBlur={commit}
             className={kelas}
           />
         )}
