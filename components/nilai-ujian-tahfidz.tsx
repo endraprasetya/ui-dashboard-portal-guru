@@ -6,10 +6,25 @@ import {
   barisKosong,
   fetchNilaiUjianTahfidz,
   formatAngkaRapor,
-  nilaiDariKesalahan,
+  clampNilaiAdab,
+  clampNilaiKelancaran,
+  clampNilaiTajwid,
+  MAKS_NILAI_ADAB,
+  MAKS_NILAI_KELANCAN,
+  MAKS_NILAI_AKHIR,
+  MAKS_NILAI_TAJWID,
+  MIN_NILAI_KELANCAN,
+  MIN_NILAI_TAJWID,
+  PEMBAGI_NILAI_AKHIR,
+  nilaiKelancaranDariKesalahan,
   nilaiRaporTahfidz,
   nilaiSurah,
   nilaiTajwidOtomatis,
+  ringkasanBobotKelancaran,
+  ringkasanBobotTajwid,
+  uraianKelancaran,
+  uraianTajwid,
+  uraianNilaiSurah,
   predikatNilai,
   simpanNilaiUjianTahfidz,
   type MateriNilaiUjian,
@@ -162,8 +177,9 @@ export function NilaiUjianTahfidz({
 
         <div className="space-y-4 p-5">
           <p className="text-xs text-slate-500">
-            Kelancaran dan tajwid dihitung otomatis dari jumlah kesalahan (100 − kesalahan × 5), lalu bisa disesuaikan
-            manual. Isi nilai Adab 0–100.
+            NA = (Kelancaran + Tajwid + Adab) ÷ {PEMBAGI_NILAI_AKHIR}. Kelancaran {MIN_NILAI_KELANCAN}–{MAKS_NILAI_KELANCAN}
+            (contoh At-Tiin −13, An-Naba −4). Tajwid {MIN_NILAI_TAJWID}–{MAKS_NILAI_TAJWID} = 100 − (Mad+Dengung+Makhraj) ×
+            bobot surat. Adab 0–10 diisi manual.
           </p>
 
           {memuat && <p className="text-sm text-slate-500">Memuat nilai tersimpan…</p>}
@@ -177,12 +193,18 @@ export function NilaiUjianTahfidz({
                     {row.namaSurat}
                     {row.rentangAyat ? ` · Ayat ${row.rentangAyat}` : ''}
                   </h3>
-                  <span className="text-xs font-bold text-sky-800">Nilai surat: {nilai ?? '—'}</span>
+                  <span className="text-right text-xs font-bold text-sky-800">
+                    <span className="block">NA: {nilai ?? '—'}</span>
+                    {nilai != null ? <span className="block font-medium text-sky-700">{uraianNilaiSurah(row)}</span> : null}
+                  </span>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   <fieldset className="rounded-xl bg-emerald-50/70 p-3">
                     <legend className="px-1 text-xs font-black uppercase tracking-wide text-emerald-800">Kelancaran</legend>
+                    <p className="mt-1 text-[10px] font-medium leading-snug text-emerald-950/80">
+                      {ringkasanBobotKelancaran(row.namaSurat)}
+                    </p>
                     <label className="mt-1 block text-[11px] font-bold text-slate-600">
                       Jumlah kesalahan
                       <input
@@ -191,20 +213,31 @@ export function NilaiUjianTahfidz({
                         value={row.kesalahanKelancaran}
                         onChange={(event) => {
                           const salah = event.target.value === '' ? '' : Number(event.target.value)
-                          ubah(index, { kesalahanKelancaran: salah, nilaiKelancaran: nilaiDariKesalahan(salah) })
+                          ubah(index, {
+                            kesalahanKelancaran: salah,
+                            nilaiKelancaran: nilaiKelancaranDariKesalahan(row.namaSurat, salah),
+                          })
                         }}
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                       />
                     </label>
+                    {uraianKelancaran(row.namaSurat, row.kesalahanKelancaran, row.nilaiKelancaran) ? (
+                      <p className="mt-1 text-[10px] font-semibold text-emerald-800">
+                        {uraianKelancaran(row.namaSurat, row.kesalahanKelancaran, row.nilaiKelancaran)}
+                      </p>
+                    ) : null}
                     <label className="mt-2 block text-[11px] font-bold text-slate-600">
                       Nilai kelancaran
                       <input
                         type="number"
-                        min={0}
-                        max={100}
+                        min={MIN_NILAI_KELANCAN}
+                        max={MAKS_NILAI_KELANCAN}
                         value={row.nilaiKelancaran}
                         onChange={(event) =>
-                          ubah(index, { nilaiKelancaran: event.target.value === '' ? '' : Number(event.target.value) })
+                          ubah(index, {
+                            nilaiKelancaran:
+                              event.target.value === '' ? '' : clampNilaiKelancaran(Number(event.target.value)),
+                          })
                         }
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                       />
@@ -213,6 +246,9 @@ export function NilaiUjianTahfidz({
 
                   <fieldset className="rounded-xl bg-amber-50/70 p-3">
                     <legend className="px-1 text-xs font-black uppercase tracking-wide text-amber-900">Tajwid</legend>
+                    <p className="mt-1 text-[10px] font-medium leading-snug text-amber-950/80">
+                      {ringkasanBobotTajwid(row.namaSurat)}
+                    </p>
                     <div className="mt-1 grid grid-cols-3 gap-2">
                       {(
                         [
@@ -233,6 +269,7 @@ export function NilaiUjianTahfidz({
                               ubah(index, {
                                 [field]: salah,
                                 nilaiTajwid: nilaiTajwidOtomatis(
+                                  row.namaSurat,
                                   berikutnya.kesalahanMad,
                                   berikutnya.kesalahanDengung,
                                   berikutnya.kesalahanMakhraj,
@@ -248,15 +285,34 @@ export function NilaiUjianTahfidz({
                       Nilai tajwid
                       <input
                         type="number"
-                        min={0}
-                        max={100}
+                        min={MIN_NILAI_TAJWID}
+                        max={MAKS_NILAI_TAJWID}
                         value={row.nilaiTajwid}
                         onChange={(event) =>
-                          ubah(index, { nilaiTajwid: event.target.value === '' ? '' : Number(event.target.value) })
+                          ubah(index, {
+                            nilaiTajwid: event.target.value === '' ? '' : clampNilaiTajwid(Number(event.target.value)),
+                          })
                         }
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                       />
                     </label>
+                    {uraianTajwid(
+                      row.namaSurat,
+                      row.kesalahanMad,
+                      row.kesalahanDengung,
+                      row.kesalahanMakhraj,
+                      row.nilaiTajwid,
+                    ) ? (
+                      <p className="mt-1 text-[10px] font-semibold text-amber-900">
+                        {uraianTajwid(
+                          row.namaSurat,
+                          row.kesalahanMad,
+                          row.kesalahanDengung,
+                          row.kesalahanMakhraj,
+                          row.nilaiTajwid,
+                        )}
+                      </p>
+                    ) : null}
                   </fieldset>
 
                   <fieldset className="rounded-xl bg-sky-50/70 p-3">
@@ -266,10 +322,12 @@ export function NilaiUjianTahfidz({
                       <input
                         type="number"
                         min={0}
-                        max={100}
+                        max={MAKS_NILAI_ADAB}
                         value={row.nilaiAdab}
                         onChange={(event) =>
-                          ubah(index, { nilaiAdab: event.target.value === '' ? '' : Number(event.target.value) })
+                          ubah(index, {
+                            nilaiAdab: event.target.value === '' ? '' : clampNilaiAdab(Number(event.target.value)),
+                          })
                         }
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                       />

@@ -411,7 +411,7 @@ export function InputRaporTahfidz({
         )}
 
         <label className="mt-4 block text-xs font-bold text-slate-600">
-          Keterangan
+          Indikator Penilaian
           <textarea
             value={keterangan}
             onChange={(event) => setKeterangan(event.target.value)}
@@ -460,7 +460,7 @@ export function InputRaporTahfidz({
                   <th className="px-3 py-2">Siswa</th>
                   <th className="px-3 py-2">Asesmen</th>
                   <th className="px-3 py-2">Materi ujian</th>
-                  <th className="px-3 py-2">Keterangan</th>
+                  <th className="px-3 py-2">Indikator Penilaian</th>
                   <th className="px-3 py-2">Guru</th>
                   <th className="px-3 py-2" />
                 </tr>

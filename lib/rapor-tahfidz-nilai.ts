@@ -1,8 +1,34 @@
 import { supabase } from '@/lib/supabase'
+import {
+  MAKS_NILAI_ADAB,
+  MAKS_NILAI_AKHIR,
+  MAKS_NILAI_KELANCAN,
+  MAKS_NILAI_TAJWID,
+  MIN_NILAI_KELANCAN,
+  MIN_NILAI_TAJWID,
+  PEMBAGI_NILAI_AKHIR,
+  nilaiAkhirSuratHQ,
+  nilaiKelancaranDariKesalahanSurah,
+  nilaiTajwidDariKesalahan,
+} from '@/lib/rubrik-tajwid-rapor-hq'
+
+export {
+  MAKS_NILAI_ADAB,
+  MAKS_NILAI_AKHIR,
+  MAKS_NILAI_KELANCAN,
+  MAKS_NILAI_TAJWID,
+  MIN_NILAI_KELANCAN,
+  MIN_NILAI_TAJWID,
+  PEMBAGI_NILAI_AKHIR,
+  ringkasanBobotKelancaran,
+  ringkasanBobotTajwid,
+  uraianKelancaran,
+  uraianTajwid,
+} from '@/lib/rubrik-tajwid-rapor-hq'
 
 export const TABEL_HEADER_RAPOR = 'rapor_tahfidz_header'
 export const TABEL_DETAIL_RAPOR = 'rapor_tahfidz_detail'
-const POTONGAN_KESALAHAN = 5
+export const MAKS_NILAI_SURAT = MAKS_NILAI_AKHIR
 
 export type MateriNilaiUjian = {
   nama: string
@@ -56,16 +82,29 @@ export function periodeAjaranSekarang(tanggal = new Date()) {
   }
 }
 
-export function nilaiDariKesalahan(jumlah: number | '') {
-  if (jumlah === '') return ''
-  return Math.max(0, Math.min(100, 100 - Number(jumlah) * POTONGAN_KESALAHAN))
+export function nilaiKelancaranDariKesalahan(namaSurat: string, jumlah: number | '') {
+  return nilaiKelancaranDariKesalahanSurah(namaSurat, jumlah)
 }
 
-export function nilaiTajwidOtomatis(mad: number | '', dengung: number | '', makhraj: number | '') {
-  const bagian = [nilaiDariKesalahan(mad), nilaiDariKesalahan(dengung), nilaiDariKesalahan(makhraj)]
-  if (bagian.some((item) => item === '')) return ''
-  const rata = (bagian as number[]).reduce((a, b) => a + b, 0) / 3
-  return Math.round(rata * 100) / 100
+export function clampNilaiKelancaran(nilai: number) {
+  return Math.max(MIN_NILAI_KELANCAN, Math.min(MAKS_NILAI_KELANCAN, nilai))
+}
+
+export function clampNilaiAdab(nilai: number) {
+  return Math.max(0, Math.min(MAKS_NILAI_ADAB, nilai))
+}
+
+export function clampNilaiTajwid(nilai: number) {
+  return Math.max(MIN_NILAI_TAJWID, Math.min(MAKS_NILAI_TAJWID, nilai))
+}
+
+export function nilaiTajwidOtomatis(
+  namaSurat: string,
+  mad: number | '',
+  dengung: number | '',
+  makhraj: number | '',
+) {
+  return nilaiTajwidDariKesalahan(namaSurat, mad, dengung, makhraj)
 }
 
 export function nilaiSurah(row: NilaiSurahUjian) {
@@ -73,7 +112,16 @@ export function nilaiSurah(row: NilaiSurahUjian) {
   const b = Number(row.nilaiTajwid)
   const c = Number(row.nilaiAdab)
   if (![a, b, c].every((n) => Number.isFinite(n))) return null
-  return Math.round(((a + b + c) / 3) * 100) / 100
+  if (a < 0 || a > MAKS_NILAI_KELANCAN || b < 0 || b > MAKS_NILAI_TAJWID || c < 0 || c > MAKS_NILAI_ADAB) {
+    return null
+  }
+  return nilaiAkhirSuratHQ(a, b, c)
+}
+
+export function uraianNilaiSurah(row: NilaiSurahUjian) {
+  const na = nilaiSurah(row)
+  if (na == null) return ''
+  return `(${row.nilaiKelancaran} + ${row.nilaiTajwid} + ${row.nilaiAdab}) ÷ ${PEMBAGI_NILAI_AKHIR} = ${na}`
 }
 
 export function predikatNilai(nilai: number) {
@@ -256,8 +304,19 @@ export async function simpanNilaiUjianTahfidz(payload: {
   narasi?: NarasiRaporTahfidz
 }) {
   for (const row of payload.baris) {
-    if (nilaiSurah(row) == null) {
-      return { error: `Lengkapi nilai Kelancaran, Tajwid, dan Adab untuk ${row.namaSurat}.` }
+    const nilai = nilaiSurah(row)
+    if (nilai == null) {
+      return {
+        error: `Lengkapi nilai Kelancaran (${MIN_NILAI_KELANCAN}–${MAKS_NILAI_KELANCAN}), Tajwid (${MIN_NILAI_TAJWID}–${MAKS_NILAI_TAJWID}), dan Adab (0–${MAKS_NILAI_ADAB}) untuk ${row.namaSurat}.`,
+      }
+    }
+    const k = Number(row.nilaiKelancaran)
+    const tjw = Number(row.nilaiTajwid)
+    const adb = Number(row.nilaiAdab)
+    if (k > MAKS_NILAI_KELANCAN || tjw > MAKS_NILAI_TAJWID || adb > MAKS_NILAI_ADAB) {
+      return {
+        error: `Nilai Kelancaran maks. ${MAKS_NILAI_KELANCAN}, Tajwid maks. ${MAKS_NILAI_TAJWID}, Adab maks. ${MAKS_NILAI_ADAB} untuk ${row.namaSurat}.`,
+      }
     }
   }
 

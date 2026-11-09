@@ -865,7 +865,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                           </p>
                         </div>
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                          {pengujiUntukKelas(item.kelas, item.unit) || item.nama_penguji || 'Penguji belum dipetakan'}
+                          {pengujiEfektif(item) || 'Penguji belum dipetakan'}
                         </span>
                       </div>
                       <div className="flex flex-wrap items-end gap-2">
