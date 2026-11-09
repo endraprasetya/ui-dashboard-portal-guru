@@ -18,6 +18,7 @@ import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
+import { PortalGuruNav } from '@/components/portal-guru-nav'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
@@ -49,6 +50,7 @@ import {
   Settings,
   Users,
   LayoutDashboard,
+  GraduationCap,
 } from 'lucide-react'
 
 export default function Home() {
@@ -63,6 +65,12 @@ export default function Home() {
   const [sesiSiap, setSesiSiap] = useState(false)
   const [aktivitasGuru, setAktivitasGuru] = useState<BarisAktivitasGuru[]>([])
   const [aktivitasSiap, setAktivitasSiap] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const view = params.get('view')
+    if (view) setCurrentView(view)
+  }, [])
 
   useEffect(() => {
     try {
@@ -256,43 +264,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Navigasi Menu Atas */}
-        <div className="mx-auto flex max-w-6xl gap-6 px-4 overflow-x-auto text-xs font-semibold border-t border-slate-100 pt-2">
-          {(
-            [
-            { id: 'dashboard', label: 'Dashboard', active: currentView === 'dashboard' },
-            { id: 'tahfidz_menu', label: "Tahfidzul Qur'an", active: isTahfidz },
-            { id: 'qiroah_menu', label: "Qiroatul Qur'an", active: isQiroah },
-            { id: 'jurnal', label: 'Jurnal Pembelajaran', active: currentView === 'jurnal' },
-            { id: 'absensi_menu', label: 'Absensi', active: isAbsensi },
-            { id: 'data_siswa', label: 'Data Siswa', href: '/data-siswa' },
-            { id: 'tertib_point', label: 'Tertib Point', active: currentView === 'tertib_point' },
-            { id: 'pengumuman', label: 'Pengumuman', active: currentView === 'pengumuman' },
-            ] as { id: string; label: string; active?: boolean; href?: string }[]
-          ).map((item) => (
-            item.href ? (
-              <a
-                key={item.id}
-                href={item.href}
-                className="whitespace-nowrap pb-2.5 text-slate-500 transition hover:text-slate-800"
-              >
-                {item.label}
-              </a>
-            ) : (
-              <button
-                key={item.id}
-                onClick={() => setCurrentView(item.id)}
-                className={`whitespace-nowrap pb-2.5 transition ${
-                  item.active
-                    ? 'border-b-2 border-emerald-600 font-extrabold text-emerald-700'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                {item.label}
-              </button>
-            )
-          ))}
-        </div>
+        <PortalGuruNav currentView={currentView} />
       </header>
 
       <main className={`mx-auto p-4 sm:p-6 space-y-6 ${currentView === 'absensi' ? 'max-w-[96rem]' : currentView === 'jurnal' ? 'max-w-7xl' : 'max-w-6xl'}`}>
@@ -307,7 +279,7 @@ export default function Home() {
             </div>
 
             {/* Grid Card Menu Utama (Termasuk Card Merah Cerah Tertib Point) */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               <button
                 onClick={() => setCurrentView('tahfidz_menu')}
                 className="group relative overflow-hidden rounded-2xl bg-[#059669] p-5 text-left text-white shadow transition hover:shadow-lg hover:-translate-y-0.5"
@@ -372,6 +344,21 @@ export default function Home() {
                 </div>
                 <h3 className="text-sm font-extrabold">Tertib Point</h3>
                 <p className="mt-1 text-[11px] opacity-80">Catat kontribusi dan pelanggaran disiplin santri</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.location.assign('/rapor-kurmer')}
+                className="rounded-2xl bg-[#4f46e5] p-5 text-left text-white shadow transition hover:shadow-lg hover:-translate-y-0.5"
+              >
+                <div className="flex items-center justify-between pb-6">
+                  <div className="rounded-xl bg-white/20 p-2.5">
+                    <GraduationCap className="size-5" />
+                  </div>
+                  <ArrowRight className="size-4 opacity-75" />
+                </div>
+                <h3 className="text-sm font-extrabold">Rapor Kurmer</h3>
+                <p className="mt-1 text-[11px] opacity-80">Input TP, ledger nilai, dan cetak rapor Kurikulum Merdeka</p>
               </button>
             </div>
 
