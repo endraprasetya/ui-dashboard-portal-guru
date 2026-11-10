@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { educationCalendar } from '@/lib/teacher-data'
 import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { barisUntukPenguji, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
-import { cariRekapan, kunciJilid, ringkasHasil, selaraskanStatusPengajuan, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
+import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib'
 
@@ -296,7 +296,6 @@ export async function muatNotifikasi(currentUser?: any) {
       selesaiUnik.add(kunci)
       qiroah.push(baris.item)
     })
-  void selaraskanStatusPengajuan(pengajuan.data || [], daftarRekap)
 
   if (!tahfidz.error) {
     const peta = await namaSiswa((tahfidz.data || []).map((row) => String(row.id_siswa || '')))

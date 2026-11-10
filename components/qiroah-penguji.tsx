@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CalendarClock, ClipboardCheck, Printer, RefreshCw, ScrollText, X } from 'lucide-react'
 import { CetakUjianQiroah, lulusUjian, type HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
 import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
+import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import {
   JILID_UJIAN_OPTIONS,
@@ -27,7 +28,6 @@ import {
   cariRekapan,
   catatanPenguji,
   kunciJilid,
-  selaraskanStatusPengajuan,
   ujianSudahSelesai,
   unikPerJilid,
 } from '@/lib/ujian-relasi'
@@ -173,62 +173,67 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
   const [idUjianTersimpan, setIdUjianTersimpan] = useState('')
   const [pesanSimpan, setPesanSimpan] = useState('')
 
+  const muatBerjalan = useRef(false)
   const loadAntrean = useCallback(async (senyap = false) => {
+    if (senyap && muatBerjalan.current) return
+    muatBerjalan.current = true
     if (!senyap) setLoading(true)
-    const { data, error } = await supabase
-      .from('pengajuan')
-      .select('*')
-      .order('tanggal_diajukan', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('pengajuan')
+        .select('*')
+        .order('tanggal_diajukan', { ascending: false })
 
-    if (error) {
-      if (!senyap) {
-        alert('Gagal memuat antrean: ' + error.message)
-        setAntrean([])
-        setMenunggu([])
-        setSelesai([])
-        setRekapans([])
+      if (error) {
+        if (!senyap) {
+          alert('Gagal memuat antrean: ' + error.message)
+          setAntrean([])
+          setMenunggu([])
+          setSelesai([])
+          setRekapans([])
+        }
+        return
       }
-      setLoading(false)
-      return
-    }
 
-    const milik = ((data || []) as UjianItem[]).filter((row) => barisUntukPenguji(row, currentUser))
-    const { data: rekapData, error: rekapError } = await supabase
-      .from('rekapan')
-      .select(
-        'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,keterangan,kelebihan_siswa,predikat,keputusan,nilai_akhir',
+      const milik = ((data || []) as UjianItem[]).filter((row) => barisUntukPenguji(row, currentUser))
+      const { data: rekapData, error: rekapError } = await supabase
+        .from('rekapan')
+        .select(
+          'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,keterangan,kelebihan_siswa,predikat,keputusan,nilai_akhir',
+        )
+      const daftarRekap = rekapError ? [] : ((rekapData || []) as RekapanUjian[])
+
+      const sudahDiuji = (row: UjianItem) => ujianSudahSelesai(row.status, cariRekapan(row, daftarRekap))
+      const selesaiRows = unikPerJilid(milik.filter(sudahDiuji))
+      const tertutup = new Set(selesaiRows.map((row) => `${row.id_siswa}|${kunciJilid(row.jilid_diujikan)}`))
+      const yatim = unikPerJilid(
+        daftarRekap
+          .filter((rekap) => {
+            const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
+            return Boolean(rekap.id_siswa) && !tertutup.has(kunci) && barisUntukPenguji({ kelas: rekap.kelas, nama_penguji: rekap.penguji }, currentUser)
+          })
+          .map((rekap) => ({
+            id_pengajuan: String(rekap.id_ujian || `${rekap.id_siswa}-${kunciJilid(rekap.jilid_asal)}`),
+            tanggal_diajukan: String(rekap.tanggal_ujian || ''),
+            tanggal_pelaksanaan: String(rekap.tanggal_ujian || '').slice(0, 10),
+            unit: '',
+            id_siswa: String(rekap.id_siswa),
+            nama_siswa: rekap.nama || 'Siswa',
+            kelas: rekap.kelas || '-',
+            jilid_diujikan: rekap.jilid_asal || '-',
+            nama_penguji: rekap.penguji || '',
+            status: 'Selesai',
+          })),
       )
-    const daftarRekap = rekapError ? [] : ((rekapData || []) as RekapanUjian[])
-
-    const sudahDiuji = (row: UjianItem) => ujianSudahSelesai(row.status, cariRekapan(row, daftarRekap))
-    const selesaiRows = unikPerJilid(milik.filter(sudahDiuji))
-    const tertutup = new Set(selesaiRows.map((row) => `${row.id_siswa}|${kunciJilid(row.jilid_diujikan)}`))
-    const yatim = unikPerJilid(
-      daftarRekap
-        .filter((rekap) => {
-          const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
-          return Boolean(rekap.id_siswa) && !tertutup.has(kunci) && barisUntukPenguji({ kelas: rekap.kelas, nama_penguji: rekap.penguji }, currentUser)
-        })
-        .map((rekap) => ({
-          id_pengajuan: String(rekap.id_ujian || `${rekap.id_siswa}-${kunciJilid(rekap.jilid_asal)}`),
-          tanggal_diajukan: String(rekap.tanggal_ujian || ''),
-          tanggal_pelaksanaan: String(rekap.tanggal_ujian || '').slice(0, 10),
-          unit: '',
-          id_siswa: String(rekap.id_siswa),
-          nama_siswa: rekap.nama || 'Siswa',
-          kelas: rekap.kelas || '-',
-          jilid_diujikan: rekap.jilid_asal || '-',
-          nama_penguji: rekap.penguji || '',
-          status: 'Selesai',
-        })),
-    )
-    const aktif = milik.filter((row) => !sudahDiuji(row))
-    setRekapans(daftarRekap)
-    setSelesai([...selesaiRows, ...yatim])
-    setMenunggu(aktif.filter((row) => menungguJadwal(row.status)))
-    setAntrean(aktif.filter((row) => sudahTerjadwal(row.status)))
-    setLoading(false)
-    void selaraskanStatusPengajuan(milik, daftarRekap)
+      const aktif = milik.filter((row) => !sudahDiuji(row))
+      setRekapans(daftarRekap)
+      setSelesai([...selesaiRows, ...yatim])
+      setMenunggu(aktif.filter((row) => menungguJadwal(row.status)))
+      setAntrean(aktif.filter((row) => sudahTerjadwal(row.status)))
+    } finally {
+      muatBerjalan.current = false
+      setLoading(false)
+    }
   }, [currentUser])
 
   useEffect(() => {
@@ -236,17 +241,15 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
   }, [loadAntrean])
 
   useEffect(() => {
+    const segar = buatKendaliSegar(() => {
+      void loadAntrean(true)
+    })
     const kanal = supabase
       .channel(`antrean-pengajuan-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => {
-        loadAntrean(true)
+        segar.dariRealtime()
       })
-      .subscribe()
-    const timer = window.setInterval(() => loadAntrean(true), 15000)
-    return () => {
-      window.clearInterval(timer)
-      supabase.removeChannel(kanal)
-    }
+    return segar.pasang(kanal)
   }, [loadAntrean])
 
   useEffect(() => {

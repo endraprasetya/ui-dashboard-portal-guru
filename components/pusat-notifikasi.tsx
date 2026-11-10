@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, BookCheck, ArrowRight } from 'lucide-react'
+import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import {
   LABEL_KATEGORI,
@@ -43,17 +44,15 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
   }, [muat])
 
   useEffect(() => {
+    const segar = buatKendaliSegar(() => {
+      void muat(true)
+    })
     const kanal = supabase
       .channel(`notifikasi-pengajuan-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => {
-        muat(true)
+        segar.dariRealtime()
       })
-      .subscribe()
-    const timer = window.setInterval(() => muat(true), 15000)
-    return () => {
-      window.clearInterval(timer)
-      supabase.removeChannel(kanal)
-    }
+    return segar.pasang(kanal)
   }, [muat])
 
   const sudah = useCallback((id: string) => dibaca.includes(id), [dibaca])

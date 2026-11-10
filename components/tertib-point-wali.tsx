@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import { TertibSaldoKartu } from '@/components/tertib-saldo-kartu'
 import { TertibPeringkatKelas } from '@/components/tertib-peringkat-kelas'
@@ -127,20 +128,17 @@ export default function TertibPointWali({
 
   useEffect(() => {
     if (!aktif?.kelas) return
+    const kelas = aktif.kelas
+    const unit = aktif.unit || ''
+    const segar = buatKendaliSegar(() => {
+      void loadPoinKelas(kelas, unit, true)
+    })
     const kanal = supabase
-      .channel(`tertib-wali-${bulan}-${aktif.kelas}`)
+      .channel(`tertib-wali-${bulan}-${kelas}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tertib_point' }, () => {
-        void loadPoinKelas(aktif.kelas, aktif.unit || '', true)
+        segar.dariRealtime()
       })
-      .subscribe()
-    const timer = window.setInterval(
-      () => void loadPoinKelas(aktif.kelas, aktif.unit || '', true),
-      20000,
-    )
-    return () => {
-      window.clearInterval(timer)
-      supabase.removeChannel(kanal)
-    }
+    return segar.pasang(kanal)
   }, [aktif?.kelas, aktif?.unit, bulan, loadPoinKelas])
 
   const saldo: SaldoTertibBulanan = useMemo(

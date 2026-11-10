@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   BarChart3,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Users,
 } from 'lucide-react'
+import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import { formatDateString, formatCapaianQiroah, hasKoordinatorQQRole, labelPredikatUjian } from '@/lib/qiroah'
 import {
@@ -68,9 +69,12 @@ export default function QiroahKoordinator({
   const [bulanPilih, setBulanPilih] = useState(() => bulanSekarangJakarta())
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof muatDataKoordinatorQQ>> | null>(null)
 
+  const muatBerjalan = useRef(false)
   const muat = useCallback(
     async (senyap = false, bulan = bulanPilih) => {
       if (!boleh) return
+      if (senyap && muatBerjalan.current) return
+      muatBerjalan.current = true
       if (!senyap) setLoading(true)
       setError('')
       try {
@@ -79,6 +83,7 @@ export default function QiroahKoordinator({
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Gagal memuat data.')
       } finally {
+        muatBerjalan.current = false
         if (!senyap) setLoading(false)
       }
     },
@@ -91,17 +96,15 @@ export default function QiroahKoordinator({
 
   useEffect(() => {
     if (!boleh) return
+    const segar = buatKendaliSegar(() => {
+      void muat(true)
+    })
     const kanal = supabase
       .channel(`koordinator-qq-${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => void muat(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rekapan' }, () => void muat(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'setoran_qiroah' }, () => void muat(true))
-      .subscribe()
-    const timer = window.setInterval(() => void muat(true), 30_000)
-    return () => {
-      window.clearInterval(timer)
-      supabase.removeChannel(kanal)
-    }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => segar.dariRealtime())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rekapan' }, () => segar.dariRealtime())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'setoran_qiroah' }, () => segar.dariRealtime())
+    return segar.pasang(kanal)
   }, [boleh, muat])
 
   const kelasOpsi = useMemo(() => {

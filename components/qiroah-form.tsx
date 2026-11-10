@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ClipboardList, Edit3, Save, Search, Send, Trash2, XCircle } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
+import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
 import {
@@ -30,7 +31,6 @@ import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
 import {
   cariRekapan,
   catatanPenguji,
-  selaraskanStatusPengajuan,
   type RekapanRingkas,
 } from '@/lib/ujian-relasi'
 import { lulusUjian } from '@/components/cetak-ujian-qiroah'
@@ -388,7 +388,6 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     setRekapAntrean(rekap as RekapanRingkas[])
     setAntrean(milik)
     setMemuatAntrean(false)
-    void selaraskanStatusPengajuan(milik, rekap as RekapanRingkas[])
   }
 
   const bukaAntrean = () => {
@@ -400,15 +399,15 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
   useEffect(() => {
     if (!showAntrean) return
+    const segar = buatKendaliSegar(() => {
+      void muatAntrean()
+    })
     const channel = supabase
       .channel(`rekapan-pengampu-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rekapan' }, () => {
-        void muatAntrean()
+        segar.dariRealtime()
       })
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(channel)
-    }
+    return segar.pasang(channel)
   }, [showAntrean])
 
   const simpanEditPengajuan = async () => {
