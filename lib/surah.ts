@@ -69,6 +69,42 @@ export function cariSurah(surahs: Surah[], namaInput: string): Surah | undefined
   return surahs.find((s) => normNamaSurah(s.nama_surat).includes(q) || q.includes(normNamaSurah(s.nama_surat)))
 }
 
+export function pesanPeringatanBatasAyat(namaSurah: string, jumlahAyat: number) {
+  return `Peringatan: Surah ${namaSurah} hanya memiliki total ${jumlahAyat} ayat. Masukan Anda melebihi batas.`
+}
+
+export type InfoBatasAyat = {
+  namaSurah: string
+  jumlahAyat: number
+  ayatInput: number
+  konteks?: string
+}
+
+/** Cek satu nomor ayat terhadap jumlah ayat surah yang dipilih. */
+export function infoAyatMelebihi(
+  surahs: Surah[],
+  namaSurah: string,
+  ayat: string,
+  konteks?: string,
+): InfoBatasAyat | null {
+  const surah = String(namaSurah || '').trim()
+  const angka = String(ayat || '').trim()
+  if (!surah || !angka) return null
+  const baris = cariSurah(surahs, surah)
+  if (!baris) return null
+  const n = Number(angka)
+  if (!Number.isFinite(n) || n < 1) return null
+  if (n > baris.jumlah_ayat) {
+    return {
+      namaSurah: baris.nama_surat,
+      jumlahAyat: baris.jumlah_ayat,
+      ayatInput: n,
+      konteks,
+    }
+  }
+  return null
+}
+
 export function validasiAyatSurat(
   surahs: Surah[],
   namaSurah: string,
@@ -95,10 +131,10 @@ export function validasiAyatSurat(
     return `${konteks}: ayat selesai tidak valid.`
   }
   if (nMulai > maks) {
-    return `${konteks}: Surat ${baris.nama_surat} hanya memiliki ${maks} ayat. Ayat mulai ${nMulai} melebihi batas.`
+    return pesanPeringatanBatasAyat(baris.nama_surat, maks)
   }
   if (nSelesai > maks) {
-    return `${konteks}: Surat ${baris.nama_surat} hanya memiliki ${maks} ayat. Ayat selesai ${nSelesai} melebihi batas.`
+    return pesanPeringatanBatasAyat(baris.nama_surat, maks)
   }
   if (nSelesai < nMulai) {
     return `${konteks}: ayat selesai tidak boleh kurang dari ayat mulai.`
@@ -145,21 +181,28 @@ export function validasiTeksHalamanQiroah(surahs: Surah[], halaman: string): str
   return null
 }
 
+export function infoAyatMelebihiDariTeks(
+  surahs: Surah[],
+  halaman: string,
+  konteks = 'Setoran qiroah',
+): InfoBatasAyat | null {
+  const segmen = parseSegmenHalamanQiroah(halaman)
+  for (const seg of segmen) {
+    const infoMulai = infoAyatMelebihi(surahs, seg.surah, seg.mulai, konteks)
+    if (infoMulai) return infoMulai
+    const infoSelesai = infoAyatMelebihi(surahs, seg.surah, seg.selesai, konteks)
+    if (infoSelesai) return infoSelesai
+  }
+  return null
+}
+
 export function peringatanAyatMelebihi(
   surahs: Surah[],
   namaSurah: string,
   ayat: string,
-  konteks: string,
+  konteks?: string,
 ): string | null {
-  const surah = String(namaSurah || '').trim()
-  const angka = String(ayat || '').trim()
-  if (!surah || !angka) return null
-  const baris = cariSurah(surahs, surah)
-  if (!baris) return null
-  const n = Number(angka)
-  if (!Number.isFinite(n) || n < 1) return null
-  if (n > baris.jumlah_ayat) {
-    return `${konteks}: Surat ${baris.nama_surat} hanya memiliki ${baris.jumlah_ayat} ayat.`
-  }
-  return null
+  const info = infoAyatMelebihi(surahs, namaSurah, ayat, konteks)
+  if (!info) return null
+  return pesanPeringatanBatasAyat(info.namaSurah, info.jumlahAyat)
 }

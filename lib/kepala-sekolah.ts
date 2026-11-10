@@ -6,7 +6,11 @@ import {
   normalizeSiswaTidakHadir,
   todayInputValue,
 } from '@/lib/jurnal'
-import { muatAbsensiGuruBantuKepsek, type RekapAbsensiGuruBantuKepsek } from '@/lib/kepsek-guru-bantu'
+import {
+  muatAbsensiGuruBantuKepsek,
+  rekapAbsensiGuruBantuKosong,
+  type RekapAbsensiGuruBantuKepsek,
+} from '@/lib/kepsek-guru-bantu'
 import {
   hitungPemantauanRaporHq,
   muatDataRaporHqKepsek,
@@ -628,15 +632,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     muatAbsensiGuruBantuKepsek(hari).catch((error: Error) => {
       catatan.push('Absensi guru bantu belum dapat dimuat.')
       console.error(error.message)
-      return {
-        tanggal: hari,
-        total: 0,
-        sudahAbsen: 0,
-        hadir: 0,
-        terlambat: 0,
-        tidakHadir: 0,
-        baris: [],
-      } satisfies RekapAbsensiGuruBantuKepsek
+      return rekapAbsensiGuruBantuKosong(hari)
     }),
   ])
   catatan.push(...raporHqHasil.catatan)

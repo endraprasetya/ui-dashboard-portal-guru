@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
-import { fetchAllSurah, peringatanAyatMelebihi, validasiAyatSurat, type Surah } from '@/lib/surah'
+import { fetchAllSurah, infoAyatMelebihi, validasiAyatSurat, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import {
   formatLabelAyat,
   formatMurojaahRecord,
@@ -18,6 +18,7 @@ import {
 import { ArrowLeft, Save, Edit3, Trash2, XCircle, Search } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
 import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
+import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import {
   cekAbsenSiswaPadaTanggal,
   tanggalKemarinJakarta,
@@ -88,10 +89,11 @@ async function fetchSetoranSiswa(idSiswa: string) {
 export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
   const [students, setStudents] = useState<any[]>([])
   const [surahs, setSurahs] = useState<Surah[]>([])
+  const [peringatanAyat, setPeringatanAyat] = useState<InfoBatasAyat | { pesan: string } | null>(null)
 
   const peringatAyat = (surah: string, ayat: string, konteks: string) => {
-    const pesan = peringatanAyatMelebihi(surahs, surah, ayat, konteks)
-    if (pesan) alert(pesan)
+    const info = infoAyatMelebihi(surahs, surah, ayat, konteks)
+    if (info) setPeringatanAyat(info)
   }
 
   const validasiFormTahfidz = () => {
@@ -187,6 +189,55 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       tugasMAyatSelesaiE,
     ],
   )
+
+  const infoAyatAktif = useMemo(() => {
+    const cek: [string, string, string][] = [
+      ['Ziyadah', hSurah, hMulai],
+      ['Ziyadah (ayat selesai)', hSurah, hSelesai],
+      ['Murojaah (surah awal)', mSurahMulai, mMulaiA],
+      ['Murojaah (surah awal, ayat selesai)', mSurahMulai, mSelesaiA],
+      ['Murojaah (surah akhir)', mSurahSelesai, mMulaiE],
+      ['Murojaah (surah akhir, ayat selesai)', mSurahSelesai, mSelesaiE],
+    ]
+    if (tugasH) {
+      cek.push(['Tugas ziyadah', tugasZSurah, tugasZAyatMulai], ['Tugas ziyadah (ayat selesai)', tugasZSurah, tugasZAyatSelesai])
+    }
+    if (tugasM) {
+      cek.push(
+        ['Tugas murojaah (surah awal)', tugasMSurah, tugasMAyatMulai],
+        ['Tugas murojaah (surah awal, ayat selesai)', tugasMSurah, tugasMAyatSelesai],
+        ['Tugas murojaah (surah akhir)', tugasMSurahSelesai, tugasMAyatMulaiE],
+        ['Tugas murojaah (surah akhir, ayat selesai)', tugasMSurahSelesai, tugasMAyatSelesaiE],
+      )
+    }
+    return cek.map(([konteks, surah, ayat]) => infoAyatMelebihi(surahs, surah, ayat, konteks)).find(Boolean) ?? null
+  }, [
+    surahs,
+    hSurah,
+    hMulai,
+    hSelesai,
+    mSurahMulai,
+    mSurahSelesai,
+    mMulaiA,
+    mSelesaiA,
+    mMulaiE,
+    mSelesaiE,
+    tugasH,
+    tugasM,
+    tugasZSurah,
+    tugasZAyatMulai,
+    tugasZAyatSelesai,
+    tugasMSurah,
+    tugasMSurahSelesai,
+    tugasMAyatMulai,
+    tugasMAyatSelesai,
+    tugasMAyatMulaiE,
+    tugasMAyatSelesaiE,
+  ])
+
+  useEffect(() => {
+    if (infoAyatAktif) setPeringatanAyat(infoAyatAktif)
+  }, [infoAyatAktif])
 
   // Tutup dropdown pencarian siswa saat klik di luar
   useEffect(() => {
@@ -471,7 +522,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
     const galatAyat = validasiFormTahfidz()
     if (galatAyat) {
-      alert(galatAyat)
+      setPeringatanAyat(infoAyatAktif || { pesan: galatAyat })
       return
     }
 
@@ -937,6 +988,13 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
       {peringatanKemarin ? (
         <PeringatanPrioritasSetoranDialog pesan={peringatanKemarin} onTutup={() => setPeringatanKemarin(null)} />
+      ) : null}
+      {peringatanAyat ? (
+        <PeringatanBatasAyatDialog
+          info={'namaSurah' in peringatanAyat ? peringatanAyat : null}
+          pesan={'pesan' in peringatanAyat ? peringatanAyat.pesan : null}
+          onTutup={() => setPeringatanAyat(null)}
+        />
       ) : null}
     </div>
   )

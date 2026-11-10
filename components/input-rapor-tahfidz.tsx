@@ -5,11 +5,12 @@ import Link from 'next/link'
 import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Download, Printer, Save, Search, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
-import { fetchAllSurah, type Surah } from '@/lib/surah'
+import { fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
 import { formatDateString } from '@/lib/qiroah'
 import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
+import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
 import {
   ASESMEN_TAHFIDZ,
@@ -46,6 +47,7 @@ export function InputRaporTahfidz({
   const [menyimpan, setMenyimpan] = useState(false)
   const [status, setStatus] = useState('')
   const [galat, setGalat] = useState(false)
+  const [peringatanAyat, setPeringatanAyat] = useState<InfoBatasAyat | { pesan: string } | null>(null)
   const [nilaiTarget, setNilaiTarget] = useState<TargetNilaiUjian | null>(null)
   const [teksJadwalUjian, setTeksJadwalUjian] = useState('')
   const [riwayatTahfidz, setRiwayatTahfidz] = useState<RiwayatSetoranTahfidz[]>([])
@@ -207,7 +209,22 @@ export function InputRaporTahfidz({
   }
 
   const ubahAyat = (nomor: number, field: 'ayatMulai' | 'ayatSelesai', nilai: string) => {
-    setMateri((current) => current.map((item) => (item.nomor === nomor ? { ...item, [field]: nilai } : item)))
+    setMateri((current) =>
+      current.map((item) => {
+        if (item.nomor !== nomor) return item
+        const berikutnya = { ...item, [field]: nilai }
+        const konteks = field === 'ayatMulai' ? `${item.nama} (ayat mulai)` : `${item.nama} (ayat selesai)`
+        const info = infoAyatMelebihi(surahs, item.nama, nilai, konteks)
+        if (info) setPeringatanAyat(info)
+        return berikutnya
+      }),
+    )
+  }
+
+  const cekBatasAyat = (item: MateriSurah, field: 'ayatMulai' | 'ayatSelesai') => {
+    const konteks = field === 'ayatMulai' ? `${item.nama} (ayat mulai)` : `${item.nama} (ayat selesai)`
+    const info = infoAyatMelebihi(surahs, item.nama, item[field], konteks)
+    if (info) setPeringatanAyat(info)
   }
 
   const handleSimpan = async () => {
@@ -223,6 +240,13 @@ export function InputRaporTahfidz({
     }
     const galatMateri = validasiMateriUjian(surahs, materi)
     if (galatMateri) {
+      const info = materi
+        .flatMap((item) => [
+          infoAyatMelebihi(surahs, item.nama, item.ayatMulai, `${item.nama} (ayat mulai)`),
+          infoAyatMelebihi(surahs, item.nama, item.ayatSelesai, `${item.nama} (ayat selesai)`),
+        ])
+        .find(Boolean)
+      setPeringatanAyat(info || { pesan: galatMateri })
       setStatus(galatMateri)
       setGalat(true)
       return
@@ -390,6 +414,7 @@ export function InputRaporTahfidz({
                     max={item.jumlahAyat}
                     value={item.ayatMulai}
                     onChange={(event) => ubahAyat(item.nomor, 'ayatMulai', event.target.value)}
+                    onBlur={() => cekBatasAyat(item, 'ayatMulai')}
                     className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                   />
                 </label>
@@ -401,6 +426,7 @@ export function InputRaporTahfidz({
                     max={item.jumlahAyat}
                     value={item.ayatSelesai}
                     onChange={(event) => ubahAyat(item.nomor, 'ayatSelesai', event.target.value)}
+                    onBlur={() => cekBatasAyat(item, 'ayatSelesai')}
                     className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                   />
                 </label>
@@ -522,6 +548,13 @@ export function InputRaporTahfidz({
           targetTahfidzAktif={targetTahfidzAktif}
         />
       )}
+      {peringatanAyat ? (
+        <PeringatanBatasAyatDialog
+          info={'namaSurah' in peringatanAyat ? peringatanAyat : null}
+          pesan={'pesan' in peringatanAyat ? peringatanAyat.pesan : null}
+          onTutup={() => setPeringatanAyat(null)}
+        />
+      ) : null}
     </div>
   )
 }

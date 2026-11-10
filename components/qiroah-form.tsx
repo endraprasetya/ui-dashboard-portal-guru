@@ -23,7 +23,7 @@ import {
   untukPengampu,
 } from '@/lib/qiroah'
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
-import { fetchAllSurah, validasiTeksHalamanQiroah, type Surah } from '@/lib/surah'
+import { fetchAllSurah, infoAyatMelebihiDariTeks, validasiTeksHalamanQiroah, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
 import { muatRekapanUntukSiswa } from '@/lib/rekapan-qiroah'
 import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
@@ -35,6 +35,7 @@ import {
 } from '@/lib/ujian-relasi'
 import { lulusUjian } from '@/components/cetak-ujian-qiroah'
 import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
+import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import {
   cekAbsenSiswaPadaTanggal,
   tanggalKemarinJakarta,
@@ -80,6 +81,14 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
   const [surahs, setSurahs] = useState<Surah[]>([])
   const [absenHariIni, setAbsenHariIni] = useState<HasilCekAbsenSiswa | null>(null)
   const [peringatanKemarin, setPeringatanKemarin] = useState<string | null>(null)
+  const [peringatanAyat, setPeringatanAyat] = useState<InfoBatasAyat | { pesan: string } | null>(null)
+
+  const tampilkanPeringatanAyat = (teksHalaman: string) => {
+    const info = infoAyatMelebihiDariTeks(surahs, teksHalaman)
+    const galat = validasiTeksHalamanQiroah(surahs, teksHalaman)
+    if (info) setPeringatanAyat(info)
+    else if (galat) setPeringatanAyat({ pesan: galat })
+  }
 
   useEffect(() => {
     fetchAllSurah().then(setSurahs)
@@ -291,7 +300,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
     const galatAyat = validasiTeksHalamanQiroah(surahs, halaman)
     if (galatAyat) {
-      alert(galatAyat)
+      tampilkanPeringatanAyat(halaman)
       return
     }
 
@@ -727,11 +736,13 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
           <input
             type="text"
             value={halaman}
-            onChange={(e) => setHalaman(e.target.value)}
-            onBlur={() => {
-              const galat = validasiTeksHalamanQiroah(surahs, halaman)
-              if (galat) alert(galat)
+            onChange={(e) => {
+              const nilai = e.target.value
+              setHalaman(nilai)
+              const info = infoAyatMelebihiDariTeks(surahs, nilai)
+              if (info) setPeringatanAyat(info)
             }}
+            onBlur={() => tampilkanPeringatanAyat(halaman)}
             placeholder="Contoh: Hal 15 atau Adh-Dhuha: 1-11"
             className="w-full rounded-xl border border-slate-300 p-3 text-sm"
           />
@@ -800,6 +811,13 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
 
       {peringatanKemarin ? (
         <PeringatanPrioritasSetoranDialog pesan={peringatanKemarin} onTutup={() => setPeringatanKemarin(null)} />
+      ) : null}
+      {peringatanAyat ? (
+        <PeringatanBatasAyatDialog
+          info={'namaSurah' in peringatanAyat ? peringatanAyat : null}
+          pesan={'pesan' in peringatanAyat ? peringatanAyat.pesan : null}
+          onTutup={() => setPeringatanAyat(null)}
+        />
       ) : null}
 
       {showPengajuan && (

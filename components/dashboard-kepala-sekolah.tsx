@@ -335,7 +335,7 @@ export function DashboardKepalaSekolah() {
                   <span className="text-amber-800">{laporan.guruBantu.terlambat} Terlambat</span>,{' '}
                   <span>{laporan.guruBantu.tidakHadir} Tidak Hadir</span>
                 </p>
-                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk detail jam & foto selfie absensi.</p>
+                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk filter tanggal, detail jam & foto, serta rekap bulanan.</p>
               </article>
             </section>
 
