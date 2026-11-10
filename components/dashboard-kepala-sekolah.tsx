@@ -35,6 +35,7 @@ import {
 import { normalKelas } from '@/lib/qiroah'
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
+import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 
 type Panel = 'absensi' | 'qiroah' | 'skl' | null
 type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
@@ -175,6 +176,9 @@ export function DashboardKepalaSekolah() {
             <p className="text-xs text-emerald-50/80">{KEPALA_SEKOLAH.nama} · NIY {KEPALA_SEKOLAH.niy} · Unit {UNIT_KEPALA_SEKOLAH}</p>
           </div>
           <div className="flex items-center gap-2">
+            <a href="#keuangan-tunggakan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
+              Keuangan
+            </a>
             <a href="/data-siswa" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
               Data Siswa
             </a>
@@ -187,6 +191,7 @@ export function DashboardKepalaSekolah() {
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
         {galat && <p className="no-print rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{galat}</p>}
+        <ModulKeuangan />
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>
