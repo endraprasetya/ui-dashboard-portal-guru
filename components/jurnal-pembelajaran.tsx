@@ -121,7 +121,7 @@ const JurnalMetaBar = memo(function JurnalMetaBar({
           onChange={(e) => onKelas(e.target.value)}
           className="mt-1 block min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
         >
-          {kelasList.length === 0 && <option value="">Memuat kelas...</option>}
+          <option value="">{kelasList.length === 0 ? 'Memuat kelas...' : 'Pilih kelas'}</option>
           {kelasList.map((nama) => (
             <option key={nama} value={nama}>
               {nama}
@@ -156,7 +156,8 @@ const JurnalMetaBar = memo(function JurnalMetaBar({
       <button
         type="button"
         onClick={() => window.print()}
-        className="no-print inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
+        disabled={!kelas}
+        className="no-print inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Printer className="size-4" /> Cetak
       </button>
@@ -290,7 +291,7 @@ export function JurnalPembelajaran({
       if (batal) return
       setKelasList(result.classes)
       setJumlahSiswa(result.counts)
-      setKelas((prev) => prev || result.classes[0] || '')
+      setKelas((prev) => (prev && result.classes.includes(prev) ? prev : ''))
     }
     void loadKelas()
     return () => {
@@ -302,9 +303,17 @@ export function JurnalPembelajaran({
     if (!kelas) {
       setSiswaKelas([])
       setRosterKelas('')
+      setEntries({})
+      setLoading(false)
+      setStatus('')
+      setStatusError(false)
       return
     }
     let batal = false
+    setEntries({})
+    setLoading(true)
+    setStatus('')
+    setStatusError(false)
     fetchSiswaKelas(kelas, currentUserRef.current).then((rows) => {
       if (batal) return
       setSiswaKelas(rows)
@@ -394,7 +403,7 @@ export function JurnalPembelajaran({
 
   const simpanJurnalRef = useRef<() => Promise<void>>(async () => {})
   simpanJurnalRef.current = async () => {
-    if (!kelas || !tanggal || !jadwal) return
+    if (!kelas || !tanggal || !jadwal || rosterKelas !== kelas || loading) return
     const aktif = document.activeElement
     if (aktif instanceof HTMLElement) aktif.blur()
     await new Promise((selesai) => window.setTimeout(selesai, 0))
@@ -629,7 +638,7 @@ export function JurnalPembelajaran({
           hariIndex={hariIndex}
           tanggalLabel={tanggalLabel}
           saving={saving}
-          bisaSimpan={Boolean(jadwal)}
+          bisaSimpan={Boolean(kelas && jadwal && rosterKelas === kelas && !loading)}
           onKelas={setKelas}
           onTanggal={setTanggal}
           onSemester={setSemester}
@@ -637,17 +646,13 @@ export function JurnalPembelajaran({
         />
 
         <div className="jurnal-print-body space-y-3 px-5 py-4">
-          <p className="no-print text-xs text-slate-500">
-            {loading ? 'Memuat jurnal...' : null}
-            {!loading && jumlahKelas > 0 && (
-              <>
-                {' '}
-                Default <b className="text-emerald-700">{jumlahKelas} siswa hadir</b>
-                {unit ? ` (${unit})` : ''}. Tandai yang tidak hadir saja.
-              </>
-            )}
-          </p>
-          {!loading && jadwal && (
+          {kelas && !loading && rosterKelas === kelas && jumlahKelas > 0 && (
+            <p className="no-print text-xs text-slate-500">
+              Default <b className="text-emerald-700">{jumlahKelas} siswa hadir</b>
+              {unit ? ` (${unit})` : ''}. Tandai yang tidak hadir saja.
+            </p>
+          )}
+          {kelas && !loading && jadwal && (
             <p className="no-print text-xs font-semibold text-amber-900 bg-amber-50 rounded-lg border border-amber-100 px-3 py-2">
               Tidak ada penyimpanan otomatis ke Supabase. Absensi Jam ke-1 yang Anda ubah langsung disalin ke jam
               berikutnya di layar (kecuali jam dengan absen khusus). Ubah per jam untuk izin/pulang di tengah pelajaran
@@ -665,9 +670,17 @@ export function JurnalPembelajaran({
           )}
           {dikte.galat && <p className="no-print text-xs font-bold text-red-600">{dikte.galat}</p>}
 
-          {!jadwal ? (
+          {!kelas ? (
+            <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 px-6 py-16 text-center text-sm font-semibold text-amber-950">
+              Silakan pilih kelas terlebih dahulu untuk mengisi atau melihat jurnal pembelajaran.
+            </div>
+          ) : !jadwal ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-slate-500">
               Hari {hariIndex >= 0 ? NAMA_HARI[hariIndex] : '-'} libur. Tidak ada jam pelajaran.
+            </div>
+          ) : loading || rosterKelas !== kelas ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">
+              Memuat jurnal kelas {kelas}...
             </div>
           ) : (
             <div className="jurnal-print-table-wrap overflow-x-auto rounded-xl border border-slate-200">

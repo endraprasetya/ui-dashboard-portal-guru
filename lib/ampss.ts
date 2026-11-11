@@ -188,7 +188,7 @@ async function bangun(): Promise<RekapKeuangan> {
     ambilHtml(`/rombongan_belajar?r_tapel=${encodeURIComponent(tapelDiminta)}&r_school=${encodeURIComponent(sekolah.id)}&r_kelas=`),
     ambilHtml(`/belum_terbayar?school_2=${encodeURIComponent(sekolah.id)}`),
     ambilHtml('/siswa').catch(() => ''),
-    ambilHtml('/report_index').catch(() => ''),
+    ambilHtml('/report_bank').catch(() => ''),
     ambilHtml('/psb'),
   ])
 

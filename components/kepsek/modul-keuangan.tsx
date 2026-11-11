@@ -152,7 +152,7 @@ export function ModulKeuangan() {
               <ChevronRight className="size-4 text-emerald-700/70" />
             </span>
             <span className="mt-2 block text-xl font-black text-slate-900">{rupiah(data.penerimaanHariIni)}</span>
-            <span className="mt-1 block text-xs font-medium text-slate-600">Penerimaan pada laporan harian AMPSS.</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">Total penerimaan unit pada laporan bank AMPSS.</span>
           </button>
           <button type="button" onClick={() => bukaPanel('menunggak')} className={`${kelasKartu} border-slate-200 bg-white`}>
             <span className="flex items-center justify-between gap-2 text-amber-800">
@@ -216,7 +216,7 @@ export function ModulKeuangan() {
             </div>
           )}
           {panel === 'masuk' && (
-            <PanelPos judul="Penerimaan hari ini per jenis" baris={data.penerimaanPerItem} kosong="Belum ada penerimaan pada laporan hari ini." />
+            <PanelPos judul="Penerimaan bank hari ini per jenis" baris={data.penerimaanPerItem} kosong="Belum ada penerimaan pada laporan bank hari ini." />
           )}
           {(panel === 'menunggak' || panel === 'lunas') && (
             <DaftarSiswa
@@ -310,7 +310,7 @@ function judulPanel(panel: PanelRingkas) {
 
 function keteranganPanel(panel: PanelRingkas, data: RekapKeuangan) {
   if (panel === 'piutang') return `${rupiah(data.piutang)} · tagihan terbuka ${data.sekolah}`
-  if (panel === 'masuk') return `${rupiah(data.penerimaanHariIni)} · laporan harian AMPSS`
+  if (panel === 'masuk') return `${rupiah(data.penerimaanHariIni)} · laporan bank AMPSS`
   if (panel === 'menunggak') return `${data.siswaMenunggak} siswa · ${data.diLuarRombel} di luar rombel ${data.tapel}`
   return `${data.siswaLunas} dari ${data.siswaAktif} siswa rombel aktif`
 }

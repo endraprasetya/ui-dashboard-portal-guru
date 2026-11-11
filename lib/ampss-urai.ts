@@ -341,7 +341,7 @@ export function uraiDirektoriSiswa(html: string): Map<string, DirektoriSiswa> {
 
 export function uraiPenerimaan(html: string, sekolah: string): { total: number; perItem: PosUang[] } {
   const aman = sekolah.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const totalMentah = html.match(new RegExp(`<td colspan="3">\\s*${aman}\\s*</td>\\s*<td>\\s*([^<]+?)\\s*</td>`, 'i'))
+  const totalMentah = html.match(new RegExp(`<td colspan="3">\\s*${aman}\\s*</td>\\s*<td[^>]*>\\s*([^<]+?)\\s*</td>`, 'i'))
   const perItem: PosUang[] = []
   const pecahan = html.split(/<th class="text-primary" colspan="3">/i)
   const blok = pecahan.find((bagian) => teksHtml(bagian.slice(0, 180)).startsWith(sekolah))
