@@ -1,4 +1,4 @@
-import type { PosUang, RincianTagihan } from './keuangan-tipe'
+import type { BarisRekapan, PosUang, RincianTagihan } from './keuangan-tipe'
 
 const BULAN = ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni']
 
@@ -100,8 +100,90 @@ export function jenisItem(kode: string, nama: string): string {
   return 'Lainnya'
 }
 
+export function kelompokRekapan(kode: string, nama: string): string {
+  const kodeBesar = kode.toUpperCase()
+  if (kodeBesar === 'EVT002') return 'ASAS'
+  if (kodeBesar === 'EVT001' || kodeBesar === 'EVT003') return 'ASTS'
+  if (kodeBesar === 'EVT004') return 'ASAT'
+  if (kodeBesar === 'EVT005' || kodeBesar === 'EVT006') return 'Ujian'
+  return jenisItem(kode, nama)
+}
+
+export function tanggalJakarta(sekarang = new Date()): Date {
+  const bagian = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(sekarang)
+  const angka = (tipe: Intl.DateTimeFormatPartTypes) => Number(bagian.find((item) => item.type === tipe)?.value)
+  return new Date(angka('year'), angka('month') - 1, angka('day'))
+}
+
+export function indeksBulanKode(kode: string): number | null {
+  const cocok = kode.trim().toUpperCase().match(/^(?:SYA|KTR)(\d{3})$/)
+  if (!cocok) return null
+  const nomor = Number(cocok[1])
+  if (nomor < 1 || nomor > 12) return null
+  return nomor - 1
+}
+
+export function tagihanJatuhTempo(baris: { tapel: string; kode: string }, sekarang = new Date()): boolean {
+  const indeks = indeksBulanKode(baris.kode)
+  if (indeks == null) return true
+  if (!/^\d{4}$/.test(baris.tapel)) return true
+  const tahunMulai = 2000 + Number(baris.tapel.slice(0, 2))
+  const tahun = indeks <= 5 ? tahunMulai : tahunMulai + 1
+  const bulan = indeks <= 5 ? 6 + indeks : indeks - 6
+  const batas = tanggalJakarta(sekarang)
+  return tahun < batas.getFullYear() || (tahun === batas.getFullYear() && bulan <= batas.getMonth())
+}
+
+export function periodeBulanTagihan(tapel: string, kode: string): { kunci: string; label: string } | null {
+  const indeks = indeksBulanKode(kode)
+  if (indeks == null || !/^\d{4}$/.test(tapel)) return null
+  const tahunMulai = 2000 + Number(tapel.slice(0, 2))
+  const tahun = indeks <= 5 ? tahunMulai : tahunMulai + 1
+  const bulan = indeks <= 5 ? 6 + indeks : indeks - 6
+  return {
+    kunci: `${tahun}-${String(bulan + 1).padStart(2, '0')}`,
+    label: `${BULAN[indeks]} ${tahun}`,
+  }
+}
+
+export function labelPeriodeBerjalan(tapel: string, sekarang = new Date()): string {
+  const batas = tanggalJakarta(sekarang)
+  const indeks = batas.getMonth() >= 6 ? batas.getMonth() - 6 : batas.getMonth() + 6
+  const nama = BULAN[indeks]
+  if (!/^\d{4}$/.test(tapel)) return `sampai ${nama} ${batas.getFullYear()}`
+  const tahunMulai = 2000 + Number(tapel.slice(0, 2))
+  const awal = new Date(tahunMulai, 6, 1)
+  const akhir = new Date(tahunMulai + 1, 6, 1)
+  if (batas >= awal && batas < akhir) return `Juli ${tahunMulai} – ${nama} ${batas.getFullYear()}`
+  return `sampai ${nama} ${batas.getFullYear()}`
+}
+
+export function saringTagihanAktif(tagihan: BarisTagihan[], sekarang = new Date()): BarisTagihan[] {
+  return tagihan.filter((baris) => baris.jumlah > 0 && tagihanJatuhTempo(baris, sekarang))
+}
+
 export type BarisRombel = { nis: string; nama: string; kelas: string }
-export type BarisTagihan = { nis: string; tapel: string; kode: string; jumlah: number }
+export type BarisTagihan = {
+  nis: string
+  tapel: string
+  kode: string
+  jumlah: number
+  tagihanAwal?: number
+  terbayar?: number
+}
+export type BarisPsb = {
+  nis: string
+  nama: string
+  tapel: string
+  tagihan: number
+  bayar: number
+  kurang: number
+}
 export type DirektoriSiswa = { nama: string; kelas: string }
 
 export function uraiRombel(html: string): { tapel: string; siswa: BarisRombel[] } {
@@ -127,6 +209,125 @@ export function uraiBelumTerbayar(html: string): BarisTagihan[] {
     })
   }
   return hasil
+}
+
+export function uraiPsb(html: string): BarisPsb[] {
+  const mulai = html.indexOf('id="psb_table"')
+  const wilayah = mulai >= 0 ? html.slice(mulai) : html
+  const hasil: BarisPsb[] = []
+  for (const kolom of barisTabel(wilayah, 'datatables')) {
+    if (kolom.length < 6) continue
+    const tapel = kolom[0]
+    const nis = kolom[1]
+    if (!/^\d{4}$/.test(tapel) || !/^\d{3,12}$/.test(nis)) continue
+    hasil.push({
+      nis,
+      nama: kolom[2] || `NIS ${nis}`,
+      tapel,
+      tagihan: angkaAmpss(kolom[3]),
+      bayar: angkaAmpss(kolom[4]),
+      kurang: angkaAmpss(kolom[5]),
+    })
+  }
+  return hasil
+}
+
+export function saringPsbSekolah(baris: BarisPsb[], sekolahId: string, nisRombel: Iterable<string> = []): BarisPsb[] {
+  const aktif = new Set(nisRombel)
+  return baris.filter((item) => item.nis.startsWith(sekolahId) || aktif.has(item.nis))
+}
+
+export function susunRekapanTagihan(
+  rombel: BarisRombel[],
+  direktori: Map<string, DirektoriSiswa>,
+  tagihan: BarisTagihan[],
+  tapelAktif: string,
+  sekarang = new Date(),
+): BarisRekapan[] {
+  const aktif = new Map(rombel.map((baris) => [baris.nis, baris]))
+  const identitas = (nis: string) => {
+    const siswa = aktif.get(nis)
+    const arsip = direktori.get(nis)
+    return {
+      nis,
+      nama: siswa?.nama || arsip?.nama || `NIS ${nis}`,
+      kelas: siswa?.kelas || arsip?.kelas || '—',
+    }
+  }
+
+  const hasil: BarisRekapan[] = []
+  const syahriahTerbuka = new Set<string>()
+  for (const baris of tagihan) {
+    if (baris.jumlah <= 0 || !tagihanJatuhTempo(baris, sekarang)) continue
+    const periode = periodeBulanTagihan(baris.tapel, baris.kode)
+    const kode = baris.kode.toUpperCase()
+    if (kode.startsWith('SYA') && periode) syahriahTerbuka.add(`${baris.nis}|${baris.tapel}|${kode}`)
+    const item = namaItem(baris.kode)
+    hasil.push({
+      ...identitas(baris.nis),
+      tapel: baris.tapel,
+      kunciBulan: periode?.kunci || '9999-99',
+      bulan: periode?.label || '',
+      jenis: kelompokRekapan(baris.kode, item),
+      item,
+      kode: baris.kode,
+      status: 'Belum',
+      nominal: baris.jumlah,
+    })
+  }
+
+  if (/^\d{4}$/.test(tapelAktif)) {
+    for (const siswa of rombel) {
+      for (let nomor = 1; nomor <= 12; nomor += 1) {
+        const kode = `SYA${String(nomor).padStart(3, '0')}`
+        if (!tagihanJatuhTempo({ tapel: tapelAktif, kode }, sekarang)) continue
+        if (syahriahTerbuka.has(`${siswa.nis}|${tapelAktif}|${kode}`)) continue
+        const periode = periodeBulanTagihan(tapelAktif, kode)
+        if (!periode) continue
+        hasil.push({
+          nis: siswa.nis,
+          nama: siswa.nama,
+          kelas: siswa.kelas,
+          tapel: tapelAktif,
+          kunciBulan: periode.kunci,
+          bulan: periode.label,
+          jenis: 'Syahriah',
+          item: namaItem(kode),
+          kode,
+          status: 'Lunas',
+          nominal: 0,
+        })
+      }
+    }
+  }
+
+  hasil.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'Belum' ? -1 : 1
+    return (
+      a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) ||
+      a.nama.localeCompare(b.nama, 'id') ||
+      a.kunciBulan.localeCompare(b.kunciBulan) ||
+      a.jenis.localeCompare(b.jenis, 'id') ||
+      a.item.localeCompare(b.item, 'id')
+    )
+  })
+  return hasil
+}
+
+export function gabungTagihanPsb(tagihan: BarisTagihan[], psb: BarisPsb[]): BarisTagihan[] {
+  const tambahan: BarisTagihan[] = psb
+    .filter((baris) => baris.kurang > 0)
+    .map((baris) => ({
+      nis: baris.nis,
+      tapel: baris.tapel,
+      kode: 'PSB000',
+      jumlah: baris.kurang,
+      tagihanAwal: baris.tagihan,
+      terbayar: baris.bayar,
+    }))
+  const nisPsb = new Set(tambahan.map((baris) => baris.nis))
+  const tanpaDobel = tagihan.filter((baris) => !(nisPsb.has(baris.nis) && baris.kode.toUpperCase().startsWith('PSB')))
+  return [...tanpaDobel, ...tambahan]
 }
 
 export function uraiDirektoriSiswa(html: string): Map<string, DirektoriSiswa> {
@@ -167,6 +368,8 @@ export function rincianDariTagihan(baris: BarisTagihan): RincianTagihan {
     kode: baris.kode,
     item: namaItem(baris.kode),
     jumlah: baris.jumlah,
+    ...(baris.tagihanAwal != null ? { tagihanAwal: baris.tagihanAwal } : {}),
+    ...(baris.terbayar != null ? { terbayar: baris.terbayar } : {}),
   }
 }
 

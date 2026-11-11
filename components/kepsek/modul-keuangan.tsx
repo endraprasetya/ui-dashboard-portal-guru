@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Banknote, ChevronRight, RefreshCw, Search, Users, Wallet } from 'lucide-react'
 import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
+import { KartuRekapanTagihan } from '@/components/kepsek/rekapan-tagihan'
 import { labelTapel } from '@/lib/ampss-urai'
 import type { DetailTunggakan, RekapKeuangan, SiswaTunggakan, StatusBayar } from '@/lib/keuangan-tipe'
 
@@ -115,7 +116,9 @@ export function ModulKeuangan() {
             <h2 className="text-sm font-extrabold">Keuangan & rekap tunggakan</h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            {data ? `${data.sekolah} · tahun pelajaran ${data.tapel} · diperbarui ${waktuLokal(data.diambilPada)}` : 'Sumber data admin AMPSS'}
+            {data
+              ? `${data.sekolah} · tahun pelajaran ${data.tapel} · tunggakan ${data.periodeTagihan} · diperbarui ${waktuLokal(data.diambilPada)}`
+              : 'Sumber data admin AMPSS'}
           </p>
         </div>
         <button
@@ -139,7 +142,7 @@ export function ModulKeuangan() {
               <ChevronRight className="size-4 text-amber-700/70" />
             </span>
             <span className="mt-2 block text-xl font-black text-slate-900">{rupiah(data.piutang)}</span>
-            <span className="mt-1 block text-xs font-medium text-slate-600">Total piutang tagihan yang masih terbuka.</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">Piutang yang sudah jatuh tempo sampai bulan berjalan.</span>
           </button>
           <button type="button" onClick={() => bukaPanel('masuk')} className={`${kelasKartu} border-emerald-200 bg-emerald-50`}>
             <span className="flex items-center justify-between gap-2 text-emerald-900">
@@ -159,7 +162,7 @@ export function ModulKeuangan() {
               <ChevronRight className="size-4 text-slate-400" />
             </span>
             <span className="mt-2 block text-xl font-black text-slate-900">{data.siswaMenunggak}</span>
-            <span className="mt-1 block text-xs font-medium text-slate-600">Jumlah siswa dengan tagihan terbuka.</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">Siswa dengan tagihan jatuh tempo yang masih terbuka.</span>
           </button>
           <button type="button" onClick={() => bukaPanel('lunas')} className={`${kelasKartu} border-slate-200 bg-white`}>
             <span className="flex items-center justify-between gap-2 text-emerald-800">
@@ -167,8 +170,9 @@ export function ModulKeuangan() {
               <ChevronRight className="size-4 text-slate-400" />
             </span>
             <span className="mt-2 block text-xl font-black text-slate-900">{data.siswaLunas}</span>
-            <span className="mt-1 block text-xs font-medium text-slate-600">Jumlah siswa rombel aktif tanpa tagihan terbuka.</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">Siswa rombel aktif tanpa tagihan jatuh tempo.</span>
           </button>
+          <KartuRekapanTagihan baris={data.rekapan} periode={data.periodeTagihan} />
         </div>
       )}
 
@@ -266,10 +270,17 @@ export function ModulKeuangan() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.rincian.map((item) => (
-                      <tr key={`${item.tapel}-${item.kode}-${item.jumlah}`}>
+                    {detail.rincian.map((item, indeks) => (
+                      <tr key={`${item.tapel}-${item.kode}-${item.jumlah}-${indeks}`}>
                         <td className="border-b p-2">{labelTapel(item.tapel)}</td>
-                        <td className="border-b p-2">{item.item}</td>
+                        <td className="border-b p-2">
+                          <p>{item.item}</p>
+                          {item.tagihanAwal != null && item.terbayar != null && (
+                            <p className="text-[11px] font-medium text-slate-500">
+                              Tagihan {rupiah(item.tagihanAwal)} · terbayar {rupiah(item.terbayar)}
+                            </p>
+                          )}
+                        </td>
                         <td className="border-b p-2 text-end font-bold">{rupiah(item.jumlah)}</td>
                       </tr>
                     ))}
@@ -374,7 +385,9 @@ function DaftarSiswa({
             ) : tampil.map((baris) => (
               <tr key={baris.nis}>
                 <td className="border-b p-2">
-                  <p className="font-bold">{baris.nama}</p>
+                  <button type="button" onClick={() => onRincian(baris.nis)} className="text-left font-bold text-emerald-950 underline-offset-2 hover:underline">
+                    {baris.nama}
+                  </button>
                   <p className="text-[11px] text-slate-500">NIS {baris.nis}{baris.aktif ? '' : ' · di luar rombel aktif'}</p>
                 </td>
                 <td className="border-b p-2">{baris.kelas}</td>

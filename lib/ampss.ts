@@ -1,13 +1,19 @@
 import {
   jumlahkanPos,
+  labelPeriodeBerjalan,
   labelTapel,
   jenisItem,
   namaItem,
   rincianDariTagihan,
   SEKOLAH_AMPSS,
+  gabungTagihanPsb,
+  saringPsbSekolah,
+  saringTagihanAktif,
+  susunRekapanTagihan,
   uraiBelumTerbayar,
   uraiDirektoriSiswa,
   uraiPenerimaan,
+  uraiPsb,
   uraiRombel,
   type BarisTagihan,
 } from './ampss-urai'
@@ -178,19 +184,27 @@ function rekapKelas(siswa: SiswaTunggakan[]): RekapKelas[] {
 async function bangun(): Promise<RekapKeuangan> {
   const sekolah = sekolahAktif()
   const tapelDiminta = (process.env.AMPSS_TAPEL || '2627').trim()
-  const [rombelHtml, belumHtml, siswaHtml, laporanHtml] = await Promise.all([
+  const [rombelHtml, belumHtml, siswaHtml, laporanHtml, psbHtml] = await Promise.all([
     ambilHtml(`/rombongan_belajar?r_tapel=${encodeURIComponent(tapelDiminta)}&r_school=${encodeURIComponent(sekolah.id)}&r_kelas=`),
     ambilHtml(`/belum_terbayar?school_2=${encodeURIComponent(sekolah.id)}`),
     ambilHtml('/siswa').catch(() => ''),
     ambilHtml('/report_index').catch(() => ''),
+    ambilHtml('/psb'),
   ])
 
   if (!rombelHtml.includes(sekolah.nama)) throw new Error(`Rombel ${sekolah.nama} tidak ditemukan di AMPSS.`)
   if (!belumHtml.includes(sekolah.nama)) throw new Error(`Daftar tagihan ${sekolah.nama} tidak ditemukan di AMPSS.`)
+  if (!psbHtml.includes('Daftar Tagihan PSB')) throw new Error('Daftar tagihan PSB tidak ditemukan di AMPSS.')
 
   const rombel = uraiRombel(rombelHtml)
-  const tagihan = uraiBelumTerbayar(belumHtml)
-  const direktori = siswaHtml ? uraiDirektoriSiswa(siswaHtml) : new Map()
+  const sekarang = new Date()
+  const psb = saringPsbSekolah(uraiPsb(psbHtml), sekolah.id, rombel.siswa.map((baris) => baris.nis))
+  const tagihan = saringTagihanAktif(gabungTagihanPsb(uraiBelumTerbayar(belumHtml), psb), sekarang)
+  const tapel = rombel.tapel || tapelDiminta
+  const direktori = siswaHtml ? uraiDirektoriSiswa(siswaHtml) : new Map<string, { nama: string; kelas: string }>()
+  for (const baris of psb) {
+    if (!direktori.has(baris.nis) && baris.nama) direktori.set(baris.nis, { nama: baris.nama, kelas: '—' })
+  }
   const penerimaan = laporanHtml ? uraiPenerimaan(laporanHtml, sekolah.nama) : { total: 0, perItem: [] }
   const susunan = susunSiswa(rombel.siswa, direktori, tagihan)
   rincian = susunan.rincian
@@ -201,7 +215,7 @@ async function bangun(): Promise<RekapKeuangan> {
   return {
     sekolah: sekolah.nama,
     sekolahId: sekolah.id,
-    tapel: rombel.tapel || tapelDiminta,
+    tapel,
     diambilPada: new Date().toISOString(),
     piutang: menunggak.reduce((jumlah, baris) => jumlah + baris.tunggakan, 0),
     penerimaanHariIni: penerimaan.total,
@@ -218,6 +232,8 @@ async function bangun(): Promise<RekapKeuangan> {
     ),
     perKelas: rekapKelas(susunan.siswa),
     siswa: susunan.siswa,
+    periodeTagihan: labelPeriodeBerjalan(tapel, sekarang),
+    rekapan: susunRekapanTagihan(rombel.siswa, direktori, tagihan, tapel, sekarang),
   }
 }
 
