@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Search, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { adalahBendahara } from '@/lib/bendahara'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { unitLogin } from '@/lib/siswa'
 
@@ -85,7 +86,13 @@ export function DataSiswaBuku() {
         return
       }
       setUnitAktif(unitLogin(user))
-      setKembali(adalahKepalaSekolah(user) ? '/dashboard/kepala-sekolah' : '/')
+      setKembali(
+        adalahKepalaSekolah(user)
+          ? '/dashboard/kepala-sekolah'
+          : adalahBendahara(user)
+            ? '/dashboard/bendahara'
+            : '/',
+      )
       setSiap(true)
     } catch {
       window.location.replace('/')

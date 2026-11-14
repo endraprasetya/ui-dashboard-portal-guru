@@ -11,7 +11,6 @@ import { QiroahPenguji } from '@/components/qiroah-penguji'
 import QiroahKoordinator from '@/components/qiroah-koordinator'
 import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/components/pusat-notifikasi'
 import TertibPoint from '@/components/tertib-point'
-import { isPortalWali } from '@/lib/portal-wali'
 import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
@@ -21,7 +20,7 @@ import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
 import { PortalGuruNav } from '@/components/portal-guru-nav'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
-import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
@@ -76,13 +75,10 @@ export default function Home() {
     try {
       const raw = localStorage.getItem('user_session')
       const user = raw ? JSON.parse(raw) : null
-      if (adalahKepalaSekolah(user)) {
-        window.location.replace('/dashboard/kepala-sekolah')
-        return
-      }
       if (user) {
-        if (isPortalWali(user)) {
-          window.location.replace('/portal-wali')
+        const tujuan = tujuanSetelahLogin(user)
+        if (tujuan !== '/') {
+          window.location.replace(tujuan)
           return
         }
         setCurrentUser(user)
@@ -199,12 +195,9 @@ export default function Home() {
 
   if (!currentUser) {
     return <Login onLoginSuccess={(user) => {
-      if (adalahKepalaSekolah(user)) {
-        window.location.assign('/dashboard/kepala-sekolah')
-        return
-      }
-      if (isPortalWali(user)) {
-        window.location.assign('/portal-wali')
+      const tujuan = tujuanSetelahLogin(user)
+      if (tujuan !== '/') {
+        window.location.assign(tujuan)
         return
       }
       setCurrentUser(user)

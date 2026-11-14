@@ -36,6 +36,7 @@ import { normalKelas } from '@/lib/qiroah'
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
+import { tujuanSetelahLogin } from '@/lib/bendahara'
 
 type Panel = 'absensi' | 'qiroah' | 'skl' | null
 type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
@@ -84,6 +85,7 @@ function keHasil(row: RekapLulus): HasilUjianCetak {
 
 export function DashboardKepalaSekolah() {
   const [siap, setSiap] = useState<'memuat' | 'siap' | 'tolak'>('memuat')
+  const [tujuan, setTujuan] = useState('/')
   const [laporan, setLaporan] = useState<LaporanKepsek | null>(null)
   const [galat, setGalat] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
@@ -100,6 +102,7 @@ export function DashboardKepalaSekolah() {
       const raw = localStorage.getItem('user_session')
       const user = raw ? JSON.parse(raw) : null
       if (!adalahKepalaSekolah(user)) {
+        setTujuan(tujuanSetelahLogin(user))
         setSiap('tolak')
         return
       }
@@ -110,8 +113,8 @@ export function DashboardKepalaSekolah() {
   }, [])
 
   useEffect(() => {
-    if (siap === 'tolak') window.location.replace('/')
-  }, [siap])
+    if (siap === 'tolak') window.location.replace(tujuan)
+  }, [siap, tujuan])
 
   useEffect(() => {
     if (siap !== 'siap') return

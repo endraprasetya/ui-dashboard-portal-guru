@@ -15,7 +15,7 @@ export function isPortalWali(user?: { role?: string } | null) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
   if (!role) return false
-  if (/\b(ustadz|ustad|guru|admin|penguji|koordinator|pembimbing|kepala\s*sekolah)\b/i.test(role) && !/wali/.test(role)) {
+  if (/\b(ustadz|ustad|guru|admin|penguji|koordinator|pembimbing|kepala\s*sekolah|bendahara)\b/i.test(role) && !/wali/.test(role)) {
     return false
   }
   return (

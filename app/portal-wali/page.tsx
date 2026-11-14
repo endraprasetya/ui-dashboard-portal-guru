@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Login } from '@/components/login'
 import { PortalWali } from '@/components/portal-wali'
+import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { isPortalWali } from '@/lib/portal-wali'
 
 /** Rute aktif Parent Portal — `/portal-wali` */
@@ -15,7 +16,7 @@ export default function HalamanPortalWali() {
       const raw = localStorage.getItem('user_session')
       const sesi = raw ? JSON.parse(raw) : null
       if (sesi && !isPortalWali(sesi)) {
-        window.location.replace('/')
+        window.location.replace(tujuanSetelahLogin(sesi))
         return
       }
       if (sesi) setUser(sesi)
@@ -43,6 +44,11 @@ export default function HalamanPortalWali() {
         tombolMasuk="Masuk ke Portal Wali"
         onLoginSuccess={(akun) => {
           if (!isPortalWali(akun)) {
+            const tujuan = tujuanSetelahLogin(akun)
+            if (tujuan !== '/') {
+              window.location.assign(tujuan)
+              return
+            }
             localStorage.removeItem('user_session')
             window.alert('Akun ini bukan Portal Wali. Gunakan halaman utama untuk login guru.')
             window.location.replace('/')
