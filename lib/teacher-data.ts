@@ -34,7 +34,7 @@ export const educationCalendar = [
   { date: "1 Okt", title: "SPMB 2027/2028", detail: "1 Oktober – 31 November 2026" },
   { date: "8 Okt", title: "Outing Class", detail: "8 dan 15 Oktober 2026" },
   { date: "8 Nov", title: "Tasmi' Juz'iyyah", detail: "8 November 2026" },
-  { date: "23 Nov", title: "Ujian Praktek ASAS", detail: "23 - 28 November 2026" },
+  { date: "23 Nov", title: "Ujian Praktek", detail: "23 November 2026" },
   { date: "30 Nov", title: "Asesmen Sumatif Akhir Semester Gasal", detail: "30 November – 12 Desember 2026" },
   { date: "19 Des", title: "Penyerahan Buku Laporan Hasil Belajar Semester Gasal", detail: "19 Desember 2026" },
   { date: "21 Des", title: "Libur Akhir Semester Gasal", detail: "21 Desember 2026 – 2 Januari 2027" },

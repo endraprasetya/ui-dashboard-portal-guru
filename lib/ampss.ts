@@ -8,6 +8,7 @@ import {
   SEKOLAH_AMPSS,
   gabungTagihanPsb,
   saringPsbSekolah,
+  saringRincianPortalWali,
   saringTagihanAktif,
   susunRekapanTagihan,
   uraiBelumTerbayar,
@@ -376,12 +377,46 @@ export async function muatDetailTunggakan(nis: string): Promise<DetailTunggakan 
   const rekap = await muatRekapKeuangan(false)
   const siswa = rekap.siswa.find((baris) => baris.nis === nis)
   if (!siswa) return null
+  return susunDetailTunggakan(siswa)
+}
+
+function angkaNis(nilai?: string) {
+  return String(nilai || '').replace(/\D/g, '')
+}
+
+function cocokNisKeuangan(kandidat: string, nisAmpss: string) {
+  const a = angkaNis(kandidat)
+  const b = angkaNis(nisAmpss)
+  if (a.length < 3 || b.length < 3) return false
+  return a === b || b.endsWith(a) || a.endsWith(b)
+}
+
+function susunDetailTunggakan(siswa: SiswaTunggakan, ketatWali = false): DetailTunggakan {
+  const sumber = rincian.get(siswa.nis) || []
+  const aktif = ketatWali ? saringRincianPortalWali(sumber) : sumber
+  const tunggakan = aktif.reduce((jumlah, item) => jumlah + item.jumlah, 0)
   return {
     nis: siswa.nis,
     nama: siswa.nama,
     kelas: siswa.kelas,
-    tunggakan: siswa.tunggakan,
-    status: siswa.status,
-    rincian: rincian.get(nis) || [],
+    tunggakan,
+    status: tunggakan > 0 ? 'Menunggak' : 'Lunas',
+    rincian: aktif,
   }
+}
+
+/** Rincian tunggakan ananda untuk Portal Wali: SPP/katering hanya s.d. bulan berjalan. */
+export async function muatTunggakanWali(kunciNis: string[]): Promise<DetailTunggakan[]> {
+  const unik = [...new Set(kunciNis.map(angkaNis).filter((nilai) => nilai.length >= 3))]
+  if (unik.length === 0) return []
+  const rekap = await muatRekapKeuangan(false)
+  const hasil: DetailTunggakan[] = []
+  const sudah = new Set<string>()
+  for (const siswa of rekap.siswa) {
+    if (!unik.some((kunci) => cocokNisKeuangan(kunci, siswa.nis))) continue
+    if (sudah.has(siswa.nis)) continue
+    sudah.add(siswa.nis)
+    hasil.push(susunDetailTunggakan(siswa, true))
+  }
+  return hasil
 }

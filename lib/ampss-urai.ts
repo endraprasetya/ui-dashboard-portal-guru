@@ -121,34 +121,70 @@ export function tanggalJakarta(sekarang = new Date()): Date {
 }
 
 export function indeksBulanKode(kode: string): number | null {
-  const cocok = kode.trim().toUpperCase().match(/^(?:SYA|KTR)(\d{3})$/)
+  const cocok = String(kode || '')
+    .trim()
+    .toUpperCase()
+    .match(/(?:SYA|KTR)(\d{1,3})/)
   if (!cocok) return null
   const nomor = Number(cocok[1])
   if (nomor < 1 || nomor > 12) return null
   return nomor - 1
 }
 
-export function tagihanJatuhTempo(baris: { tapel: string; kode: string }, sekarang = new Date()): boolean {
-  const indeks = indeksBulanKode(baris.kode)
-  if (indeks == null) return true
-  if (!/^\d{4}$/.test(baris.tapel)) return true
-  const tahunMulai = 2000 + Number(baris.tapel.slice(0, 2))
-  const tahun = indeks <= 5 ? tahunMulai : tahunMulai + 1
-  const bulan = indeks <= 5 ? 6 + indeks : indeks - 6
+export function kunciBulanBerjalan(sekarang = new Date()): string {
   const batas = tanggalJakarta(sekarang)
-  return tahun < batas.getFullYear() || (tahun === batas.getFullYear() && bulan <= batas.getMonth())
+  return `${batas.getFullYear()}-${String(batas.getMonth() + 1).padStart(2, '0')}`
 }
 
-export function periodeBulanTagihan(tapel: string, kode: string): { kunci: string; label: string } | null {
-  const indeks = indeksBulanKode(kode)
-  if (indeks == null || !/^\d{4}$/.test(tapel)) return null
-  const tahunMulai = 2000 + Number(tapel.slice(0, 2))
+function indeksBulanDariNama(item?: string): number | null {
+  const rendah = String(item || '').toLowerCase()
+  if (!rendah || !/(syahriah|syahriyah|spp|katering|catering)/.test(rendah)) return null
+  const indeks = BULAN.findIndex((nama) => new RegExp(`(^|[^a-z])${nama.toLowerCase()}([^a-z]|$)`, 'i').test(rendah))
+  return indeks >= 0 ? indeks : null
+}
+
+function tahunMulaiTapel(tapel: string, sekarang = new Date()): number {
+  const angka = String(tapel || '').replace(/\D/g, '')
+  if (angka.length >= 4) return 2000 + Number(angka.slice(0, 2))
+  if (angka.length === 2) return 2000 + Number(angka)
+  const batas = tanggalJakarta(sekarang)
+  return batas.getMonth() >= 6 ? batas.getFullYear() : batas.getFullYear() - 1
+}
+
+function periodeDariIndeks(indeks: number, tapel: string, sekarang = new Date()): { kunci: string; label: string } {
+  const tahunMulai = tahunMulaiTapel(tapel, sekarang)
   const tahun = indeks <= 5 ? tahunMulai : tahunMulai + 1
   const bulan = indeks <= 5 ? 6 + indeks : indeks - 6
   return {
     kunci: `${tahun}-${String(bulan + 1).padStart(2, '0')}`,
     label: `${BULAN[indeks]} ${tahun}`,
   }
+}
+
+/** Tagihan bulanan (SPP/syahriah & katering) hanya aktif s.d. bulan berjalan. */
+export function tagihanJatuhTempo(baris: { tapel: string; kode: string; item?: string }, sekarang = new Date()): boolean {
+  const periode = periodeBulanTagihan(baris.tapel, baris.kode, baris.item, sekarang)
+  if (!periode) return true
+  return periode.kunci <= kunciBulanBerjalan(sekarang)
+}
+
+export function periodeBulanTagihan(
+  tapel: string,
+  kode: string,
+  item?: string,
+  sekarang = new Date(),
+): { kunci: string; label: string } | null {
+  const indeks = indeksBulanKode(kode) ?? indeksBulanDariNama(item)
+  if (indeks == null) return null
+  return periodeDariIndeks(indeks, tapel, sekarang)
+}
+
+/** Filter ketat Portal Wali: SPP/katering masa depan dibuang, biaya sekali bayar tetap. */
+export function saringRincianPortalWali<T extends { tapel: string; kode: string; item?: string; jumlah?: number }>(
+  daftar: T[],
+  sekarang = new Date(),
+): T[] {
+  return daftar.filter((baris) => (baris.jumlah == null || baris.jumlah > 0) && tagihanJatuhTempo(baris, sekarang))
 }
 
 export function labelPeriodeBerjalan(tapel: string, sekarang = new Date()): string {

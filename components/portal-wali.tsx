@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { UjianQiroahWaliBeranda, UjianQiroahWaliMenu } from '@/components/ujian-qiroah-wali'
+import { KeuanganWaliBeranda, KeuanganWaliMenu } from '@/components/keuangan-wali'
+import { PengingatAsasWali } from '@/components/pengingat-asas-wali'
 import {
   ArrowRight,
   Award,
@@ -17,7 +19,7 @@ import { EkskulWali } from '@/components/ekskul-wali'
 import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { educationCalendar } from '@/lib/teacher-data'
 
-type ViewWali = 'dashboard' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul' | 'qiroah'
+type ViewWali = 'dashboard' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul' | 'qiroah' | 'keuangan'
 
 const NAV: { id: ViewWali; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -26,6 +28,7 @@ const NAV: { id: ViewWali; label: string }[] = [
   { id: 'prestasi', label: 'Prestasi' },
   { id: 'ekskul', label: 'Ekskul' },
   { id: 'qiroah', label: 'Qiroah' },
+  { id: 'keuangan', label: 'Keuangan' },
 ]
 
 export function PortalWali({
@@ -103,10 +106,13 @@ export function PortalWali({
       <main className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
         {view === 'dashboard' && (
           <div className="space-y-5">
-            <div>
-              <p className="text-xs font-bold capitalize text-emerald-600">{todayLabel}</p>
-              <h2 className="text-xl font-black text-slate-900">Dashboard Wali Murid</h2>
-              <p className="text-xs text-slate-500">Pantau tertib poin, pengumuman, prestasi, dan kegiatan ananda.</p>
+            <div className="space-y-3">
+              <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-700 to-emerald-900 p-5 text-white shadow-sm">
+                <p className="text-xs font-bold capitalize text-emerald-100">{todayLabel}</p>
+                <h2 className="mt-1 text-xl font-black">Ahlan wa Sahlan, {nama}</h2>
+                <p className="mt-1 text-xs text-emerald-50/90">Pantau tertib poin, keuangan, pengumuman, prestasi, dan kegiatan ananda.</p>
+              </section>
+              <PengingatAsasWali />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -148,6 +154,7 @@ export function PortalWali({
               </button>
             </div>
 
+            <KeuanganWaliBeranda currentUser={currentUser} onBuka={() => setView('keuangan')} />
             <UjianQiroahWaliBeranda currentUser={currentUser} />
 
             <section className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
@@ -209,6 +216,13 @@ export function PortalWali({
           <div>
             <TombolKembali onClick={() => setView('dashboard')} />
             <UjianQiroahWaliMenu currentUser={currentUser} />
+          </div>
+        )}
+
+        {view === 'keuangan' && (
+          <div>
+            <TombolKembali onClick={() => setView('dashboard')} />
+            <KeuanganWaliMenu currentUser={currentUser} />
           </div>
         )}
       </main>

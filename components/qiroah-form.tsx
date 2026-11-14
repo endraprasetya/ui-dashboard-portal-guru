@@ -855,7 +855,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   </p>
                 ) : (
                   <p className="mt-1.5 text-[11px] text-slate-500">
-                    Contoh: At-Tartil Jilid 3 tercatat {labelRentangKenaikanJilid('At-Tartil Jilid 3')}.
+                    Contoh: pilih At-Tartil Jilid 4 → Tercatat: {labelRentangKenaikanJilid('At-Tartil Jilid 4')}.
                   </p>
                 )}
               </div>

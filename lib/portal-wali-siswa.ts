@@ -9,11 +9,12 @@ function mapSiswa(row: Record<string, unknown>): SantriWali {
     kelas: String(row.kelas ?? ''),
     unit: String(row.unit ?? '').trim() || undefined,
     idOrtu: String(row.id_ortu ?? ''),
+    nis: String(row.nis ?? '').trim() || undefined,
   }
 }
 
 function siswaRowSelect() {
-  return 'id_siswa,nama_siswa,kelas,id_ortu,unit' as const
+  return 'id_siswa,nama_siswa,kelas,id_ortu,unit,nis' as const
 }
 
 /** Santri yang tertaut ke akun wali (id siswa, id ortu, atau username). */

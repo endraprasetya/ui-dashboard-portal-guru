@@ -132,7 +132,7 @@ function indeksUrutanJilid(nama: string) {
   return URUTAN_JILID_KENAIKAN.findIndex((item) => item.toLowerCase() === normal.toLowerCase())
 }
 
-/** Jilid yang diujikan = tujuan. Asal = jenjang sebelumnya. */
+/** Jenjang sebelumnya dalam urutan kenaikan (untuk data lama / fallback). */
 export function prevJilid(jilidDiujikan: string) {
   const indeks = indeksUrutanJilid(jilidDiujikan)
   if (indeks <= 0) return ''
@@ -147,16 +147,22 @@ export function nextJilid(jilidAsal: string) {
 }
 
 export function pemetaanKenaikanJilid(jilidDiujikan?: string, jilidAsal?: string, jilidTujuan?: string) {
+  const asalTersimpan = normalisasiJenjangJilid(jilidAsal || '')
+  const tujuanTersimpan = normalisasiJenjangJilid(jilidTujuan || '')
+  if (asalTersimpan && tujuanTersimpan && tujuanTersimpan !== 'Hafalan Mandiri') {
+    return { asal: asalTersimpan, tujuan: tujuanTersimpan }
+  }
+
   const diuji = normalisasiJenjangJilid(jilidDiujikan || '')
+  /** Pilihan pengajuan: jilid yang diujikan = asal; target kenaikan = jenjang berikutnya. */
   if (diuji && diuji !== 'Hafalan Mandiri') {
-    return { asal: prevJilid(diuji), tujuan: diuji }
+    return { asal: diuji, tujuan: nextJilid(diuji) }
   }
-  const tujuan = normalisasiJenjangJilid(jilidTujuan || '')
-  if (tujuan && tujuan !== 'Hafalan Mandiri') {
-    const asalTersimpan = normalisasiJenjangJilid(jilidAsal || '')
-    return { asal: asalTersimpan || prevJilid(tujuan), tujuan }
+
+  if (tujuanTersimpan && tujuanTersimpan !== 'Hafalan Mandiri') {
+    return { asal: asalTersimpan || prevJilid(tujuanTersimpan), tujuan: tujuanTersimpan }
   }
-  const asal = normalisasiJenjangJilid(jilidAsal || '')
+  const asal = asalTersimpan
   return { asal, tujuan: asal ? nextJilid(asal) : '' }
 }
 
