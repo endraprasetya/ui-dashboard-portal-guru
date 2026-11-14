@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Banknote, ChevronRight, RefreshCw, Search, Users, Wallet } from 'lucide-react'
+import { Banknote, ChevronRight, Printer, RefreshCw, Search, Users, Wallet } from 'lucide-react'
 import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
 import { KartuRekapanTagihan } from '@/components/kepsek/rekapan-tagihan'
+import { SuratTunggakan } from '@/components/kepsek/surat-tunggakan'
 import { labelTapel } from '@/lib/ampss-urai'
 import type { DetailTunggakan, RekapKeuangan, SiswaTunggakan, StatusBayar } from '@/lib/keuangan-tipe'
 
@@ -41,6 +42,7 @@ export function ModulKeuangan() {
   const [detailMuat, setDetailMuat] = useState(false)
   const [detailGalat, setDetailGalat] = useState('')
   const [panel, setPanel] = useState<PanelRingkas | null>(null)
+  const [surat, setSurat] = useState<SiswaTunggakan | null>(null)
   const permintaanDetail = useRef(0)
 
   const muat = (segar = false) => {
@@ -108,6 +110,7 @@ export function ModulKeuangan() {
   }
 
   return (
+    <>
     <section id="keuangan-tunggakan" className="no-print space-y-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -237,6 +240,7 @@ export function ModulKeuangan() {
               }}
               onHalaman={(arah) => setHalaman((nilai) => Math.max(0, Math.min(halamanMaks, nilai + arah)))}
               onRincian={bukaDetail}
+              onCetak={panel === 'menunggak' ? setSurat : undefined}
             />
           )}
         </ModalKerangka>
@@ -298,6 +302,8 @@ export function ModulKeuangan() {
         </ModalKerangka>
       )}
     </section>
+    {surat && <SuratTunggakan siswa={surat} onTutup={() => setSurat(null)} />}
+    </>
   )
 }
 
@@ -327,6 +333,7 @@ function DaftarSiswa({
   onKelas,
   onHalaman,
   onRincian,
+  onCetak,
 }: {
   cari: string
   kelas: string
@@ -339,6 +346,7 @@ function DaftarSiswa({
   onKelas: (nilai: string) => void
   onHalaman: (arah: number) => void
   onRincian: (nis: string) => void
+  onCetak?: (siswa: SiswaTunggakan) => void
 }) {
   return (
     <div className="space-y-3">
@@ -366,7 +374,7 @@ function DaftarSiswa({
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-left text-xs">
+        <table className="w-full min-w-[820px] border-collapse text-left text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600">
               <th className="border-b p-2">Siswa</th>
@@ -395,9 +403,20 @@ function DaftarSiswa({
                 <td className="border-b p-2 text-end font-bold">{rupiah(baris.tunggakan)}</td>
                 <td className="border-b p-2"><LencanaStatus status={baris.status} /></td>
                 <td className="border-b p-2 text-end">
-                  <button type="button" onClick={() => onRincian(baris.nis)} className="rounded-lg bg-[#143d32] px-3 py-1.5 text-[11px] font-bold text-white">
-                    Rincian
-                  </button>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {onCetak && (
+                      <button
+                        type="button"
+                        onClick={() => onCetak(baris)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 px-2.5 py-1.5 text-[11px] font-bold text-emerald-900 hover:bg-emerald-50"
+                      >
+                        <Printer className="size-3" /> Cetak Surat
+                      </button>
+                    )}
+                    <button type="button" onClick={() => onRincian(baris.nis)} className="rounded-lg bg-[#143d32] px-3 py-1.5 text-[11px] font-bold text-white">
+                      Rincian
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

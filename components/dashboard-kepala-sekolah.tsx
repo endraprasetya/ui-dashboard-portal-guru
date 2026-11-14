@@ -32,7 +32,7 @@ import {
   type LaporanKepsek,
   type RekapLulus,
 } from '@/lib/kepala-sekolah'
-import { normalKelas } from '@/lib/qiroah'
+import { normalKelas, pemetaanKenaikanJilid, ujianTanpaTajwid } from '@/lib/qiroah'
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
@@ -58,8 +58,8 @@ function StatusGuru({ nilai }: { nilai: string }) {
 }
 
 function keHasil(row: RekapLulus): HasilUjianCetak {
-  const jilid = `${row.jilid_asal} ${row.jilid_tujuan}`.toLowerCase()
-  const tanpaTajwid = jilid.includes('jilid 1') || jilid.includes('jilid 2')
+  const peta = pemetaanKenaikanJilid('', row.jilid_asal, row.jilid_tujuan)
+  const tanpaTajwid = ujianTanpaTajwid('', peta.tujuan, peta.asal)
   return {
     nomor: row.id_ujian,
     nama: row.nama,
@@ -69,8 +69,8 @@ function keHasil(row: RekapLulus): HasilUjianCetak {
     tanggal: row.tanggal_ujian,
     penguji: row.penguji,
     guruPengampu: row.guru_pengampu,
-    jilidAsal: row.jilid_asal,
-    jilidTujuan: row.jilid_tujuan,
+    jilidAsal: peta.asal,
+    jilidTujuan: peta.tujuan,
     kelancaran: row.kelancaran,
     makhraj: row.makhraj,
     harakat: row.harakat,

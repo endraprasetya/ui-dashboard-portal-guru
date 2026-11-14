@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
-import { formatDateString, formatCapaianQiroah, hasKoordinatorQQRole, labelPredikatUjian } from '@/lib/qiroah'
+import { formatDateString, formatCapaianQiroah, hasKoordinatorQQRole, labelPredikatUjian, labelRentangKenaikanJilid } from '@/lib/qiroah'
 import {
   muatDataKoordinatorQQ,
   persenKelulusan,
@@ -326,7 +326,7 @@ export default function QiroahKoordinator({
                     <tr key={j.id_pengajuan}>
                       <td className="px-3 py-2 font-medium">{j.nama_siswa}</td>
                       <td className="px-3 py-2">{j.kelas}</td>
-                      <td className="px-3 py-2">{j.jilid_diujikan}</td>
+                      <td className="px-3 py-2">{labelRentangKenaikanJilid(j.jilid_diujikan)}</td>
                       <td className="px-3 py-2">{formatDateString(String(j.tanggal_pelaksanaan || '-'))}</td>
                       <td className="px-3 py-2">{j.waktu || '-'}</td>
                       <td className="px-3 py-2">{j.penguji || '-'}</td>
@@ -364,8 +364,7 @@ export default function QiroahKoordinator({
                       <td className="px-3 py-2 font-medium">{row.nama}</td>
                       <td className="px-3 py-2">{row.kelas}</td>
                       <td className="px-3 py-2 text-xs">
-                        {row.jilid_asal}
-                        {row.jilid_tujuan ? ` → ${row.jilid_tujuan}` : ''}
+                        {labelRentangKenaikanJilid('', row.jilid_asal, row.jilid_tujuan)}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{row.nilai_akhir ?? '—'}</td>
                       <td className="px-3 py-2">{labelPredikatUjian(row.predikat) || '—'}</td>

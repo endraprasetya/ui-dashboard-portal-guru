@@ -20,6 +20,8 @@ import {
 
   formatDateString,
 
+  labelRentangKenaikanJilid,
+
   parseCustomDate,
 
 } from '@/lib/qiroah'
@@ -888,9 +890,7 @@ export function QiroahRekap({ onBack, currentUser }: { onBack: () => void; curre
 
                               <td className="border border-emerald-100 p-2.5 font-semibold">
 
-                                {row.jilid_asal || '-'}
-
-                                {row.jilid_tujuan ? ` → ${row.jilid_tujuan}` : ''}
+                                {labelRentangKenaikanJilid('', row.jilid_asal, row.jilid_tujuan)}
 
                               </td>
 

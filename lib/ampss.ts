@@ -47,55 +47,165 @@ function sekolahAktif(): { id: string; nama: string } {
   return { id, nama }
 }
 
+const UA_PERAMBAN =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
 function headerCookie(peta: Sesi): string {
   return [...peta.entries()].map(([kunci, nilai]) => `${kunci}=${nilai}`).join('; ')
 }
 
+function daftarSetCookie(respon: Response): string[] {
+  if (typeof respon.headers.getSetCookie === 'function') {
+    const daftar = respon.headers.getSetCookie()
+    if (daftar.length > 0) return daftar
+  }
+  const headers = respon.headers as Headers & { getAll?: (nama: string) => string[]; raw?: () => Record<string, string[]> }
+  const getAll = headers.getAll?.('set-cookie')
+  if (getAll?.length) return getAll
+  const mentah = headers.raw?.()['set-cookie']
+  if (mentah?.length) return mentah
+  const satu = respon.headers.get('set-cookie')
+  if (!satu) return []
+  return satu.split(/,(?=\s*[A-Za-z0-9_-]+=)/)
+}
+
+function cookieKedaluwarsa(mentah: string) {
+  const rendah = mentah.toLowerCase()
+  if (/\bmax-age=\s*0\b/.test(rendah)) return true
+  const kedaluwarsa = mentah.match(/expires=([^;]+)/i)?.[1]
+  if (kedaluwarsa) {
+    const waktu = Date.parse(kedaluwarsa)
+    if (Number.isFinite(waktu) && waktu <= Date.now()) return true
+  }
+  return false
+}
+
 function simpanCookie(respon: Response, peta: Sesi) {
-  const daftar = typeof respon.headers.getSetCookie === 'function' ? respon.headers.getSetCookie() : []
-  for (const mentah of daftar) {
+  for (const mentah of daftarSetCookie(respon)) {
     const pasangan = mentah.split(';')[0]
     const batas = pasangan.indexOf('=')
     if (batas <= 0) continue
-    peta.set(pasangan.slice(0, batas).trim(), pasangan.slice(batas + 1).trim())
+    const kunci = pasangan.slice(0, batas).trim()
+    const nilai = pasangan.slice(batas + 1).trim()
+    if (!kunci) continue
+    if (!nilai || cookieKedaluwarsa(mentah)) {
+      peta.delete(kunci)
+      continue
+    }
+    peta.set(kunci, nilai)
   }
 }
 
-async function minta(url: string, init: RequestInit & { sesi?: Sesi } = {}): Promise<Response> {
-  const headers = new Headers(init.headers)
-  headers.set('User-Agent', 'PortalGuru-KepalaSekolah/1.0')
-  if (init.sesi && init.sesi.size > 0) headers.set('Cookie', headerCookie(init.sesi))
-  return fetch(url, { ...init, headers, signal: AbortSignal.timeout(BATAS_MS) })
+function tokenXsrf(peta: Sesi) {
+  const mentah = peta.get('XSRF-TOKEN')
+  if (!mentah) return ''
+  try {
+    return decodeURIComponent(mentah)
+  } catch {
+    return mentah
+  }
+}
+
+function urlPenuh(jalur: string) {
+  if (/^https?:\/\//i.test(jalur)) return jalur
+  return `${dasarUrl()}${jalur.startsWith('/') ? jalur : `/${jalur}`}`
+}
+
+function jalurDariUrl(url: string) {
+  try {
+    return new URL(url, dasarUrl()).pathname.toLowerCase()
+  } catch {
+    return url.toLowerCase()
+  }
+}
+
+function adalahRedirectMasuk(tujuan: string) {
+  const jalur = jalurDariUrl(tujuan)
+  return jalur === '/login' || jalur.startsWith('/login/') || jalur === '/filter'
+}
+
+function halamanLogin(html: string) {
+  return html.includes('name="username"') && (html.includes('Masukkan username') || html.includes('name="password"'))
+}
+
+function adalahAlihan(status: number) {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+}
+
+async function minta(url: string, init: RequestInit & { sesi?: Sesi; referer?: string } = {}): Promise<Response> {
+  const { sesi: peta, referer, headers: headersAwal, signal, ...sisa } = init
+  const headers = new Headers(headersAwal)
+  headers.set('User-Agent', UA_PERAMBAN)
+  headers.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+  headers.set('Accept-Language', 'id-ID,id;q=0.9,en;q=0.8')
+  headers.set('Origin', dasarUrl())
+  if (referer) headers.set('Referer', referer)
+  if (peta && peta.size > 0) headers.set('Cookie', headerCookie(peta))
+  const xsrf = peta ? tokenXsrf(peta) : ''
+  if (xsrf) headers.set('X-XSRF-TOKEN', xsrf)
+  return fetch(url, {
+    ...sisa,
+    headers,
+    redirect: sisa.redirect ?? 'manual',
+    cache: 'no-store',
+    signal: signal ?? AbortSignal.timeout(BATAS_MS),
+  })
+}
+
+async function ikutiRedirect(respon: Response, peta: Sesi, referer: string, hop = 0): Promise<Response> {
+  simpanCookie(respon, peta)
+  if (!adalahAlihan(respon.status)) return respon
+  const tujuan = respon.headers.get('location')
+  if (!tujuan) return respon
+  const jalur = jalurDariUrl(tujuan)
+  if (jalur === '/login' || jalur.startsWith('/login/')) return respon
+  if (hop >= 8) throw new Error('AMPSS mengalihkan permintaan terlalu banyak.')
+  const url = urlPenuh(tujuan)
+  const berikutnya = await minta(url, { redirect: 'manual', sesi: peta, referer })
+  const tujuanBerikut = berikutnya.headers.get('location') || ''
+  if (adalahAlihan(berikutnya.status) && jalurDariUrl(tujuanBerikut) === jalur) {
+    simpanCookie(berikutnya, peta)
+    return berikutnya
+  }
+  return ikutiRedirect(berikutnya, peta, url, hop + 1)
 }
 
 async function masukAdmin(): Promise<Sesi> {
   const dasar = dasarUrl()
   const peta: Sesi = new Map()
-  const halaman = await minta(`${dasar}/login`, { redirect: 'manual', sesi: peta })
-  simpanCookie(halaman, peta)
+  const halaman = await ikutiRedirect(await minta(`${dasar}/login`, { redirect: 'manual', sesi: peta, referer: `${dasar}/login` }), peta, `${dasar}/login`)
   const html = await halaman.text()
-  const token = html.match(/name="_token" value="([^"]+)"/)?.[1]
+  const token = html.match(/name="_token"\s+value="([^"]+)"/)?.[1]
   if (!token) throw new Error('Halaman masuk AMPSS tidak menyediakan token keamanan.')
 
   const badan = new URLSearchParams({
     _token: token,
     username: wajibEnv('AMPSS_USERNAME'),
     password: wajibEnv('AMPSS_PASSWORD'),
+    remember: '1',
   })
   const masuk = await minta(`${dasar}/login`, {
     method: 'POST',
     redirect: 'manual',
     sesi: peta,
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Referer: `${dasar}/login`,
-    },
+    referer: `${dasar}/login`,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: badan,
   })
   simpanCookie(masuk, peta)
   const tujuan = masuk.headers.get('location') || ''
-  if (masuk.status !== 302 && masuk.status !== 303) throw new Error('Login admin AMPSS ditolak.')
-  if (tujuan.includes('/login')) throw new Error('Login admin AMPSS ditolak.')
+  if (adalahAlihan(masuk.status)) {
+    if (jalurDariUrl(tujuan) === '/login' || jalurDariUrl(tujuan).startsWith('/login/')) {
+      throw new Error('Login admin AMPSS ditolak.')
+    }
+    const setelah = await ikutiRedirect(masuk, peta, `${dasar}/login`)
+    const htmlSetelah = await setelah.text()
+    if (halamanLogin(htmlSetelah) || adalahAlihan(setelah.status)) throw new Error('Login admin AMPSS ditolak.')
+  } else if (masuk.status >= 200 && masuk.status < 300) {
+    if (halamanLogin(await masuk.text())) throw new Error('Login admin AMPSS ditolak.')
+  } else {
+    throw new Error(`Login admin AMPSS ditolak (${masuk.status}).`)
+  }
   if (!peta.has('laravel_session')) throw new Error('Sesi admin AMPSS tidak terbentuk.')
   return peta
 }
@@ -117,18 +227,28 @@ async function pastikanSesi(): Promise<Sesi> {
 
 async function ambilHtml(jalur: string, percobaan = 0): Promise<string> {
   const peta = await pastikanSesi()
-  const respon = await minta(`${dasarUrl()}${jalur}`, { redirect: 'manual', sesi: peta })
+  const url = urlPenuh(jalur)
+  const respon = await minta(url, { redirect: 'manual', sesi: peta, referer: `${dasarUrl()}/filter` })
   const tujuan = respon.headers.get('location') || ''
-  if ((respon.status === 302 || respon.status === 303) && tujuan.includes('/login') && percobaan < 1) {
+  if (adalahAlihan(respon.status) && adalahRedirectMasuk(tujuan) && percobaan < 1) {
     sesi = null
     return ambilHtml(jalur, percobaan + 1)
   }
-  if (!respon.ok) throw new Error(`AMPSS menolak permintaan (${respon.status}).`)
-  const html = await respon.text()
-  if (html.includes('name="username"') && html.includes('Masukkan username') && percobaan < 1) {
+  const akhir = await ikutiRedirect(respon, peta, url)
+  const tujuanAkhir = akhir.headers.get('location') || ''
+  if (!akhir.ok) {
+    if (adalahRedirectMasuk(tujuanAkhir) && percobaan < 1) {
+      sesi = null
+      return ambilHtml(jalur, percobaan + 1)
+    }
+    throw new Error(`AMPSS menolak permintaan (${akhir.status}${tujuanAkhir ? ` → ${jalurDariUrl(tujuanAkhir)}` : ''}).`)
+  }
+  const html = await akhir.text()
+  if (halamanLogin(html) && percobaan < 1) {
     sesi = null
     return ambilHtml(jalur, percobaan + 1)
   }
+  if (halamanLogin(html)) throw new Error('Sesi admin AMPSS kedaluwarsa.')
   return html
 }
 

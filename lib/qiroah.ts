@@ -99,13 +99,79 @@ export function labelPredikatUjian(predikat?: string | null) {
   return p
 }
 
+export const URUTAN_JILID_KENAIKAN = [
+  'At-Tartil Jilid 1',
+  'At-Tartil Jilid 2',
+  'At-Tartil Jilid 3',
+  'At-Tartil Jilid 4',
+  'At-Tartil Jilid 5',
+  "Al-Qur'an",
+] as const
+
 function normalisasiJenjangJilid(nama: string): string {
-  const s = String(nama || '').trim()
+  const s = String(nama || '').trim().replace(/\s+/g, ' ')
   if (!s) return ''
-  if (/at-tartil/i.test(s)) return s.replace(/\s+/g, ' ')
+  const rendah = s.toLowerCase()
+  if (rendah.includes('hafalan')) return 'Hafalan Mandiri'
+  if (rendah.includes('qur') || rendah.includes('quran') || rendah.includes('talaqqi')) return "Al-Qur'an"
   const angka = s.match(/jilid\s*(\d+)/i)
   if (angka) return `At-Tartil Jilid ${angka[1]}`
+  if (/at-tartil/i.test(s)) return s
   return s
+}
+
+function indeksUrutanJilid(nama: string) {
+  const normal = normalisasiJenjangJilid(nama)
+  if (!normal) return -1
+  if (normal === "Al-Qur'an") return 5
+  const angka = normal.match(/Jilid\s*(\d+)/i)
+  if (angka) {
+    const indeks = Number(angka[1]) - 1
+    if (indeks >= 0 && indeks <= 4) return indeks
+  }
+  return URUTAN_JILID_KENAIKAN.findIndex((item) => item.toLowerCase() === normal.toLowerCase())
+}
+
+/** Jilid yang diujikan = tujuan. Asal = jenjang sebelumnya. */
+export function prevJilid(jilidDiujikan: string) {
+  const indeks = indeksUrutanJilid(jilidDiujikan)
+  if (indeks <= 0) return ''
+  return URUTAN_JILID_KENAIKAN[indeks - 1]
+}
+
+export function nextJilid(jilidAsal: string) {
+  const indeks = indeksUrutanJilid(jilidAsal)
+  if (indeks < 0) return 'Lanjut'
+  if (indeks >= URUTAN_JILID_KENAIKAN.length - 1) return 'Hafalan Mandiri'
+  return URUTAN_JILID_KENAIKAN[indeks + 1]
+}
+
+export function pemetaanKenaikanJilid(jilidDiujikan?: string, jilidAsal?: string, jilidTujuan?: string) {
+  const diuji = normalisasiJenjangJilid(jilidDiujikan || '')
+  if (diuji && diuji !== 'Hafalan Mandiri') {
+    return { asal: prevJilid(diuji), tujuan: diuji }
+  }
+  const tujuan = normalisasiJenjangJilid(jilidTujuan || '')
+  if (tujuan && tujuan !== 'Hafalan Mandiri') {
+    const asalTersimpan = normalisasiJenjangJilid(jilidAsal || '')
+    return { asal: asalTersimpan || prevJilid(tujuan), tujuan }
+  }
+  const asal = normalisasiJenjangJilid(jilidAsal || '')
+  return { asal, tujuan: asal ? nextJilid(asal) : '' }
+}
+
+export function labelRentangKenaikanJilid(jilidDiujikan?: string, jilidAsal?: string, jilidTujuan?: string) {
+  const { asal, tujuan } = pemetaanKenaikanJilid(jilidDiujikan, jilidAsal, jilidTujuan)
+  if (asal && tujuan) return `dari ${asal} ke ${tujuan}`
+  if (tujuan) return tujuan
+  if (asal) return asal
+  return '—'
+}
+
+/** Aspek tajwid tidak dipakai pada ujian Jilid 1 dan Jilid 2. */
+export function ujianTanpaTajwid(jilidDiujikan?: string, jilidTujuan?: string, jilidAsal?: string) {
+  const diuji = normalisasiJenjangJilid(jilidDiujikan || jilidTujuan || jilidAsal)
+  return diuji.includes('Jilid 1') || diuji.includes('Jilid 2')
 }
 
 /** Label tindak lanjut hasil ujian kenaikan jilid untuk kolom antrean/hasil. */
@@ -113,23 +179,12 @@ export function labelTindakLanjutKenaikanJilid(
   lulus: boolean,
   jilidAsal?: string,
   jilidTujuan?: string,
+  jilidDiujikan?: string,
 ) {
   if (!lulus) return 'Mengulang / Remedial'
-  const mentah = String(jilidTujuan || nextJilid(jilidAsal || '')).trim()
-  if (!mentah || mentah === 'Lanjut') return 'Naik ke jilid berikutnya'
-  const tujuan = normalisasiJenjangJilid(mentah)
+  const { tujuan } = pemetaanKenaikanJilid(jilidDiujikan, jilidAsal, jilidTujuan)
+  if (!tujuan || tujuan === 'Lanjut') return 'Naik ke jilid berikutnya'
   return `Naik ke ${tujuan}`
-}
-
-export function nextJilid(jilidAsal: string) {
-  const jStr = jilidAsal.toLowerCase()
-  if (jStr.includes('jilid 1')) return 'At-Tartil Jilid 2'
-  if (jStr.includes('jilid 2')) return 'At-Tartil Jilid 3'
-  if (jStr.includes('jilid 3')) return 'At-Tartil Jilid 4'
-  if (jStr.includes('jilid 4')) return 'At-Tartil Jilid 5'
-  if (jStr.includes('jilid 5')) return "Al-Qur'an"
-  if (jStr.includes("qur'an") || jStr.includes('quran') || jStr.includes('talaqqi')) return 'Hafalan Mandiri'
-  return 'Lanjut'
 }
 
 export function hasPengujiRole(currentUser?: { role?: string } | null) {

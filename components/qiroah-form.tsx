@@ -15,6 +15,7 @@ import {
   generateUjianId,
   isYa,
   labelPredikatUjian,
+  labelRentangKenaikanJilid,
   labelStatusPengajuan,
   labelTindakLanjutKenaikanJilid,
   namaPengujiCocok,
@@ -384,7 +385,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     }
     const milik = (data || []).filter((row) => untukPengampu(row, currentUser))
     const ids = Array.from(new Set(milik.map((row) => String(row.id_siswa || '')).filter(Boolean)))
-    const rekap = ids.length === 0 ? [] : await muatRekapanUntukSiswa(ids)
+    const rekap = ids.length === 0 ? [] : await muatRekapanUntukSiswa(ids).catch(() => [])
     setRekapAntrean(rekap as RekapanRingkas[])
     setAntrean(milik)
     setMemuatAntrean(false)
@@ -842,12 +843,21 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm"
                 >
                   <option value="">-- Pilih Jilid --</option>
-                  {JILID_UJIAN_OPTIONS.filter((opt) => !opt.includes('Jilid 1')).map((opt) => (
+                  {JILID_UJIAN_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>
                   ))}
                 </select>
+                {jilidDiuji ? (
+                  <p className="mt-1.5 text-[11px] font-semibold text-emerald-800">
+                    Tercatat: {labelRentangKenaikanJilid(jilidDiuji)}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-slate-500">
+                    Contoh: At-Tartil Jilid 3 tercatat {labelRentangKenaikanJilid('At-Tartil Jilid 3')}.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-600">Diajukan Oleh</label>
@@ -927,8 +937,9 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                       const tindak = rekap
                         ? labelTindakLanjutKenaikanJilid(
                             lulus,
-                            rekap.jilid_asal || row.jilid_diujikan,
+                            rekap.jilid_asal,
                             rekap.jilid_tujuan,
+                            row.jilid_diujikan,
                           )
                         : ''
                       return (
@@ -937,20 +948,27 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                           <td className="border p-2.5">{row.kelas || '-'}</td>
                           <td className="border p-2.5">
                             {sedangEdit ? (
-                              <select
-                                value={editJilid}
-                                onChange={(e) => setEditJilid(e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs"
-                              >
-                                <option value="">-- Pilih Jilid --</option>
-                                {JILID_UJIAN_OPTIONS.filter((opt) => !opt.includes('Jilid 1')).map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
+                              <>
+                                <select
+                                  value={editJilid}
+                                  onChange={(e) => setEditJilid(e.target.value)}
+                                  className="w-full rounded-lg border border-slate-300 bg-white p-1.5 text-xs"
+                                >
+                                  <option value="">-- Pilih Jilid --</option>
+                                  {JILID_UJIAN_OPTIONS.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                                {editJilid ? (
+                                  <p className="mt-1 text-[10px] font-semibold text-emerald-800">
+                                    {labelRentangKenaikanJilid(editJilid)}
+                                  </p>
+                                ) : null}
+                              </>
                             ) : (
-                              row.jilid_diujikan || '-'
+                              labelRentangKenaikanJilid(row.jilid_diujikan, rekap?.jilid_asal, rekap?.jilid_tujuan)
                             )}
                           </td>
                           <td className="border p-2.5">

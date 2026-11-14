@@ -5,7 +5,7 @@ import { BookOpenCheck } from 'lucide-react'
 import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
 import { muatAnandaUntukWali } from '@/lib/portal-wali-siswa'
 import { muatRekapanUntukSiswa } from '@/lib/rekapan-qiroah'
-import { labelPredikatUjian } from '@/lib/qiroah'
+import { labelPredikatUjian, labelRentangKenaikanJilid } from '@/lib/qiroah'
 import { catatanPenguji } from '@/lib/ujian-relasi'
 import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
 import { todayInputValue } from '@/lib/jurnal'
@@ -123,8 +123,7 @@ function DaftarUjian({
               {row.nama} · {row.kelas}
             </p>
             <p className="mt-0.5 text-[11px] text-slate-600">
-              {String(row.tanggal_ujian || '').slice(0, 10)} · {row.jilid_asal}
-              {row.jilid_tujuan ? ` → ${row.jilid_tujuan}` : ''}
+              {String(row.tanggal_ujian || '').slice(0, 10)} · {labelRentangKenaikanJilid('', row.jilid_asal, row.jilid_tujuan)}
             </p>
             <p className="mt-1 text-[11px]">
               <span className="font-semibold text-emerald-800">{labelPredikatUjian(row.predikat)}</span>

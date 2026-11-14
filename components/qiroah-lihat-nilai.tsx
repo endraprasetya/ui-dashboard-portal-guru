@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Eye, X } from 'lucide-react'
 import type { HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
 import { lulusUjian } from '@/components/cetak-ujian-qiroah'
+import { labelRentangKenaikanJilid } from '@/lib/qiroah'
 
 function formatTanggal(value?: string) {
   const iso = String(value || '').slice(0, 10)
@@ -39,7 +40,7 @@ export function ModalDetailNilaiUjianQiroah({ data, onTutup }: { data: HasilUjia
         </div>
         <div className="space-y-4 p-4 text-sm">
           <dl className="grid grid-cols-2 gap-2 text-xs">
-            <BarisInfo label="Jilid" value={`${data.jilidAsal} → ${data.jilidTujuan || '—'}`} />
+            <BarisInfo label="Jilid" value={labelRentangKenaikanJilid('', data.jilidAsal, data.jilidTujuan)} />
             <BarisInfo label="Penguji" value={data.penguji} />
             <BarisInfo label="Guru pengampu" value={data.guruPengampu || '—'} />
             <BarisInfo label="Nilai akhir" value={String(data.nilaiAkhir || '—')} bold />

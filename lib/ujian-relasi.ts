@@ -52,11 +52,18 @@ export function kunciJilid(value?: string) {
   return teks
 }
 
+export function kunciJilidRekapan(row: { jilid_asal?: string; jilid_tujuan?: string; jilid_diujikan?: string }) {
+  return kunciJilid(row.jilid_diujikan) || kunciJilid(row.jilid_tujuan) || kunciJilid(row.jilid_asal)
+}
+
 export function cariRekapan<T extends RekapanRingkas>(pengajuan: { id_siswa?: string; jilid_diujikan?: string }, daftar: T[]) {
   const id = String(pengajuan.id_siswa || '')
   const jilid = kunciJilid(pengajuan.jilid_diujikan)
   if (!id || !jilid) return null
-  const cocok = daftar.filter((row) => String(row.id_siswa || '') === id && kunciJilid(row.jilid_asal) === jilid)
+  const cocok = daftar.filter((row) => {
+    if (String(row.id_siswa || '') !== id) return false
+    return kunciJilid(row.jilid_tujuan) === jilid || kunciJilid(row.jilid_asal) === jilid
+  })
   if (cocok.length === 0) return null
   return [...cocok].sort((a, b) => String(b.tanggal_ujian || '').localeCompare(String(a.tanggal_ujian || '')))[0]
 }

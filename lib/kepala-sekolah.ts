@@ -20,6 +20,7 @@ import {
 } from '@/lib/kepsek-rapor-hq'
 import { hitungRingkasJurnal } from '@/lib/kepsek-rekap'
 import {
+  labelRentangKenaikanJilid,
   labelStatusPengajuan,
   menungguJadwal,
   namaPengujiCocok,
@@ -489,7 +490,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       nama: row.nama_siswa || 'Siswa',
       kelas: row.kelas || '-',
       unit: row.unit || UNIT_KEPALA_SEKOLAH,
-      jilid: row.jilid_diujikan || '-',
+      jilid: labelRentangKenaikanJilid(row.jilid_diujikan),
       pengampu: row.diajukan_oleh || '-',
       penguji: row.nama_penguji || pengujiUntukKelas(row.kelas, row.unit) || '-',
       status: labelStatusPengajuan(row.status),

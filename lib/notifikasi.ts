@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { educationCalendar } from '@/lib/teacher-data'
 import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
-import { barisUntukPenguji, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
+import { barisUntukPenguji, labelRentangKenaikanJilid, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib'
@@ -199,7 +199,7 @@ export async function muatNotifikasi(currentUser?: any) {
     }
     const nama = row.nama_siswa || 'Siswa'
     const kelas = row.kelas || '-'
-    const jilid = row.jilid_diujikan || 'kenaikan jilid'
+    const rentangJilid = labelRentangKenaikanJilid(row.jilid_diujikan)
     const rekap = cariRekapan(row, daftarRekap)
     const selesai = ujianSudahSelesai(row.status, rekap)
     if (!selesai && menungguJadwal(row.status) && barisUntukPenguji(relasi, currentUser)) {
@@ -209,7 +209,7 @@ export async function muatNotifikasi(currentUser?: any) {
         peran: 'penguji',
         tahap: 'menunggu',
         judul: `Pengajuan ujian ${nama}`,
-        detail: `${kelas} · ${jilid} menunggu tanggal dan waktu ujian`,
+        detail: `${kelas} · ${rentangJilid} menunggu tanggal dan waktu ujian`,
         tujuan: 'qiroah_penguji',
         nama,
         kelas,
@@ -228,7 +228,7 @@ export async function muatNotifikasi(currentUser?: any) {
           peran: 'pengampu',
           tahap: 'selesai',
           judul: `Ujian ${nama} selesai`,
-          detail: `${kelas} · ${rekap?.jilid_asal || jilid}${rekap?.jilid_tujuan ? ` menuju ${rekap.jilid_tujuan}` : ''}${hasil ? ` · ${hasil}` : ''}`,
+          detail: `${kelas} · ${labelRentangKenaikanJilid(row.jilid_diujikan, rekap?.jilid_asal, rekap?.jilid_tujuan)}${hasil ? ` · ${hasil}` : ''}`,
           tujuan: 'qiroah_menu',
           nama,
           kelas,
@@ -251,7 +251,7 @@ export async function muatNotifikasi(currentUser?: any) {
         judul: terjadwal ? `Jadwal ujian ${nama} sudah ditentukan` : `Pengajuan ${nama} menunggu jadwal`,
         detail: terjadwal
           ? `${kelas} · ${tanggal || 'tanggal menyusul'}${waktu ? ` pukul ${waktu}` : ''} · ${penguji}`
-          : `${kelas} · ${jilid} · status menunggu jadwal dari guru penguji`,
+          : `${kelas} · ${rentangJilid} · status menunggu jadwal dari guru penguji`,
         tujuan: 'qiroah_menu',
         nama,
         kelas,
@@ -265,18 +265,19 @@ export async function muatNotifikasi(currentUser?: any) {
   const sudahAdaPengajuan = new Set((pengajuan.data || []).map((row) => `${row.id_siswa}|${kunciJilid(row.jilid_diujikan)}`))
   const namaUser = teacherDisplayName(currentUser)
   for (const rekap of daftarRekap) {
-    const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
-    if (sudahAdaPengajuan.has(kunci) || !namaPengujiCocok(namaUser, rekap.guru_pengampu)) continue
+    const kunciTujuan = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_tujuan)}`
+    const kunciAsal = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
+    if (sudahAdaPengajuan.has(kunciTujuan) || sudahAdaPengajuan.has(kunciAsal) || !namaPengujiCocok(namaUser, rekap.guru_pengampu)) continue
     const hasil = ringkasHasil(rekap)
     selesaiPengampu.push({
       urutan: String(rekap.tanggal_ujian || ''),
       item: {
-        id: `qiroah-pengampu-rekap:${rekap.id_ujian || kunci}`,
+        id: `qiroah-pengampu-rekap:${rekap.id_ujian || kunciAsal}`,
         kategori: 'qiroah',
         peran: 'pengampu',
         tahap: 'selesai',
         judul: `Ujian ${rekap.nama || 'siswa'} selesai`,
-        detail: `${rekap.kelas || '-'} · ${rekap.jilid_asal || 'kenaikan jilid'}${rekap.jilid_tujuan ? ` menuju ${rekap.jilid_tujuan}` : ''}${hasil ? ` · ${hasil}` : ''}`,
+        detail: `${rekap.kelas || '-'} · ${labelRentangKenaikanJilid('', rekap.jilid_asal, rekap.jilid_tujuan)}${hasil ? ` · ${hasil}` : ''}`,
         tujuan: 'qiroah_menu',
         nama: rekap.nama || 'Siswa',
         kelas: rekap.kelas || '-',

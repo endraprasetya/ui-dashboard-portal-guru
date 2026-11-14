@@ -7,27 +7,29 @@ import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
 import { buatKendaliSegar } from '@/lib/langganan-segar'
 import { supabase } from '@/lib/supabase'
 import {
-  JILID_UJIAN_OPTIONS,
   barisUntukPenguji,
   formatDateString,
   generateUjianId,
   labelStatusPengajuan,
   menungguJadwal,
   labelPredikatUjian,
+  labelRentangKenaikanJilid,
   labelTindakLanjutKenaikanJilid,
-  nextJilid,
+  pemetaanKenaikanJilid,
   pengujiEfektif,
   pengujiUntukKelas,
   statusDenganWaktu,
   sudahTerjadwal,
   teacherDisplayName,
   hitungNilaiAkhirUjianQiroah,
+  ujianTanpaTajwid,
   waktuDariStatus,
 } from '@/lib/qiroah'
 import {
   cariRekapan,
   catatanPenguji,
   kunciJilid,
+  kunciJilidRekapan,
   ujianSudahSelesai,
   unikPerJilid,
 } from '@/lib/ujian-relasi'
@@ -67,11 +69,6 @@ type RekapanUjian = {
   predikat?: string
   keputusan?: string
   nilai_akhir?: number
-}
-
-function tanpaTajwid(jilid?: string) {
-  const teks = String(jilid || '').toLowerCase()
-  return teks.includes('jilid 1') || teks.includes('jilid 2')
 }
 
 function TombolCetak({
@@ -209,21 +206,27 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
       const yatim = unikPerJilid(
         daftarRekap
           .filter((rekap) => {
-            const kunci = `${rekap.id_siswa}|${kunciJilid(rekap.jilid_asal)}`
-            return Boolean(rekap.id_siswa) && !tertutup.has(kunci) && barisUntukPenguji({ kelas: rekap.kelas, nama_penguji: rekap.penguji }, currentUser)
+            const id = String(rekap.id_siswa || '')
+            if (!id) return false
+            const kunciTujuan = `${id}|${kunciJilid(rekap.jilid_tujuan)}`
+            const kunciAsal = `${id}|${kunciJilid(rekap.jilid_asal)}`
+            return !tertutup.has(kunciTujuan) && !tertutup.has(kunciAsal) && barisUntukPenguji({ kelas: rekap.kelas, nama_penguji: rekap.penguji }, currentUser)
           })
-          .map((rekap) => ({
-            id_pengajuan: String(rekap.id_ujian || `${rekap.id_siswa}-${kunciJilid(rekap.jilid_asal)}`),
+          .map((rekap) => {
+            const peta = pemetaanKenaikanJilid('', rekap.jilid_asal, rekap.jilid_tujuan)
+            return {
+            id_pengajuan: String(rekap.id_ujian || `${rekap.id_siswa}-${kunciJilidRekapan(rekap)}`),
             tanggal_diajukan: String(rekap.tanggal_ujian || ''),
             tanggal_pelaksanaan: String(rekap.tanggal_ujian || '').slice(0, 10),
             unit: '',
             id_siswa: String(rekap.id_siswa),
             nama_siswa: rekap.nama || 'Siswa',
             kelas: rekap.kelas || '-',
-            jilid_diujikan: rekap.jilid_asal || '-',
+            jilid_diujikan: peta.tujuan || rekap.jilid_tujuan || rekap.jilid_asal || '-',
             nama_penguji: rekap.penguji || '',
             status: 'Selesai',
-          })),
+          }
+          }),
       )
       const aktif = milik.filter((row) => !sudahDiuji(row))
       setRekapans(daftarRekap)
@@ -283,17 +286,10 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     await loadAntrean()
   }
 
-  const isJilid12 = useMemo(() => {
-    const j = (jilidAsal || selected?.jilid_diujikan || '').toLowerCase()
-    return j.includes('jilid 1') || j.includes('jilid 2')
-  }, [jilidAsal, selected])
-
-  const opsiJilid = useMemo(() => {
-    const semua = [...JILID_UJIAN_OPTIONS, jilidAsal, jilidTujuan]
-      .map((item) => String(item || '').trim())
-      .filter(Boolean)
-    return Array.from(new Set(semua))
-  }, [jilidAsal, jilidTujuan])
+  const isJilid12 = useMemo(
+    () => ujianTanpaTajwid(selected?.jilid_diujikan, jilidTujuan, jilidAsal),
+    [jilidAsal, jilidTujuan, selected],
+  )
 
   const nilaiAspek = isJilid12 ? [kelancaran, makhraj, harakat, adab] : [kelancaran, makhraj, harakat, tajwid, adab]
   const nilaiLengkap = nilaiAspek.every((nilai) => nilai !== '' && Number.isFinite(Number(nilai)))
@@ -314,9 +310,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
 
   const bukaForm = (item: UjianItem) => {
     setSelected(item)
-    const asal = item.jilid_diujikan || item.jilid_asal || ''
-    setJilidAsal(asal)
-    setJilidTujuan(nextJilid(asal))
+    const peta = pemetaanKenaikanJilid(item.jilid_diujikan, item.jilid_asal)
+    setJilidAsal(peta.asal)
+    setJilidTujuan(peta.tujuan)
     setKelancaran('')
     setMakhraj('')
     setHarakat('')
@@ -332,7 +328,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
   const rekapanUntuk = (item: UjianItem) => cariRekapan(item, rekapans)
 
   const hasilDariRekapan = (item: UjianItem, rekap: RekapanUjian): HasilUjianCetak => {
-    const asal = rekap.jilid_asal || item.jilid_diujikan || ''
+    const peta = pemetaanKenaikanJilid(item.jilid_diujikan, rekap.jilid_asal, rekap.jilid_tujuan)
     return {
       nomor: String(rekap.id_ujian || item.id_pengajuan),
       nama: rekap.nama || item.nama_siswa,
@@ -342,12 +338,12 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
       tanggal: String(rekap.tanggal_ujian || item.tanggal_pelaksanaan || ''),
       penguji: rekap.penguji || item.nama_penguji || teacherDisplayName(currentUser),
       guruPengampu: rekap.guru_pengampu || item.diajukan_oleh || '',
-      jilidAsal: asal,
-      jilidTujuan: rekap.jilid_tujuan || '',
+      jilidAsal: peta.asal,
+      jilidTujuan: peta.tujuan,
       kelancaran: Number(rekap.kelancaran || 0),
       makhraj: Number(rekap.makhraj || 0),
       harakat: Number(rekap.harakat || 0),
-      tajwid: tanpaTajwid(asal) ? null : Number(rekap.tajwid || 0),
+      tajwid: ujianTanpaTajwid(item.jilid_diujikan, peta.tujuan, peta.asal) ? null : Number(rekap.tajwid || 0),
       adab: Number(rekap.adab || 0),
       nilaiAkhir: Number(rekap.nilai_akhir || 0),
       predikat: rekap.predikat || '-',
@@ -398,8 +394,8 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
 
   const handleSimpanUjian = async () => {
     if (!selected) return
-    if (!jilidAsal || !jilidTujuan) {
-      alert('Pilih jilid asal dan jilid tujuan terlebih dahulu.')
+    if (!jilidTujuan) {
+      alert('Jilid yang diujikan belum terbaca. Buka ulang form penilaian.')
       return
     }
     if (totalNilai == null || !ringkasan) {
@@ -514,39 +510,14 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-bold">Jilid Asal</label>
-                <select
-                  value={jilidAsal}
-                  onChange={(e) => setJilidAsal(e.target.value)}
-                  disabled={nilaiTersimpan}
-                  className="w-full rounded-xl border border-slate-300 p-2 text-sm disabled:bg-slate-100"
-                >
-                  <option value="">-- Pilih Jilid --</option>
-                  {opsiJilid.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-bold text-emerald-700">Jilid Tujuan</label>
-                <select
-                  value={jilidTujuan}
-                  onChange={(e) => setJilidTujuan(e.target.value)}
-                  disabled={nilaiTersimpan}
-                  className="w-full rounded-xl border border-slate-300 p-2 text-sm disabled:bg-slate-100"
-                >
-                  <option value="">-- Pilih Jilid --</option>
-                  {opsiJilid.map((opt) => (
-                    <option key={`tujuan-${opt}`} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Kenaikan jilid</p>
+              <p className="mt-0.5 text-sm font-extrabold text-emerald-950">
+                {labelRentangKenaikanJilid(selected.jilid_diujikan, jilidAsal, jilidTujuan)}
+              </p>
+              <p className="mt-0.5 text-[11px] text-emerald-800">
+                Diujikan {selected.jilid_diujikan || jilidTujuan || '—'} · otomatis dari pilihan pengampu
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -600,8 +571,9 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                   {ringkasan
                     ? labelTindakLanjutKenaikanJilid(
                         ringkasan.keputusan === 'Lulus',
-                        jilidAsal || selected?.jilid_diujikan,
+                        jilidAsal,
                         jilidTujuan,
+                        selected?.jilid_diujikan,
                       )
                     : '—'}
                 </strong>
@@ -740,7 +712,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                     <td className="border p-2 whitespace-nowrap">{formatDateString(item.tanggal_pelaksanaan || '')}</td>
                     <td className="border p-2 whitespace-nowrap">{waktuDariStatus(item.status) || '-'}</td>
                     <td className="border p-2 font-bold">{item.nama_siswa}</td>
-                    <td className="border p-2">{item.jilid_diujikan}</td>
+                    <td className="border p-2">{labelRentangKenaikanJilid(item.jilid_diujikan)}</td>
                     <td className="border p-2">{item.kelas}</td>
                     <td className="border p-2">{pengujiEfektif(item) || '-'}</td>
                     <td className="border p-2">
@@ -804,13 +776,14 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                         {formatDateString(String(rekap?.tanggal_ujian || item.tanggal_pelaksanaan || ''))}
                       </td>
                       <td className="border p-2 font-bold">{item.nama_siswa}</td>
-                      <td className="border p-2">{rekap?.jilid_asal || item.jilid_diujikan}</td>
+                      <td className="border p-2">{labelRentangKenaikanJilid(item.jilid_diujikan, rekap?.jilid_asal, rekap?.jilid_tujuan)}</td>
                       <td className="border p-2">{labelPredikatUjian(rekap?.predikat)}</td>
                       <td className={`border p-2 text-left text-[11px] font-bold leading-snug ${lulus ? 'text-emerald-700' : 'text-red-600'}`}>
                         {labelTindakLanjutKenaikanJilid(
                           lulus,
-                          rekap?.jilid_asal || item.jilid_diujikan,
+                          rekap?.jilid_asal,
                           rekap?.jilid_tujuan,
+                          item.jilid_diujikan,
                         )}
                       </td>
                       <td className="max-w-[220px] border p-2 text-left text-[11px] leading-relaxed text-slate-600">
@@ -861,7 +834,7 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
                         <div>
                           <p className="text-sm font-extrabold text-slate-900">{item.nama_siswa}</p>
                           <p className="text-[11px] text-slate-500">
-                            Kelas {item.kelas} · {item.unit || '-'} · {item.jilid_diujikan}
+                            Kelas {item.kelas} · {item.unit || '-'} · {labelRentangKenaikanJilid(item.jilid_diujikan)}
                           </p>
                           <p className="text-[11px] text-slate-500">
                             Diajukan {formatDateString(item.tanggal_diajukan)} oleh {item.diajukan_oleh || '-'}

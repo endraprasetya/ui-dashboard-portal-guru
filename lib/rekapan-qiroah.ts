@@ -1,9 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import type { RekapanRingkas } from '@/lib/ujian-relasi'
 
-/** Kolom standar tabel `rekapan` untuk komponen penilaian ujian QQ. */
+/** Kolom tabel `rekapan` yang benar-benar ada (tanpa `unit`). */
 export const KOLOM_REKAPAN_QIROAH =
-  'id_ujian,tanggal_ujian,id_siswa,nama,kelas,unit,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,keterangan,kelebihan_siswa,predikat,keputusan,nilai_akhir' as const
+  'id_ujian,tanggal_ujian,id_siswa,nama,kelas,guru_pengampu,jilid_asal,jilid_tujuan,penguji,kelancaran,makhraj,harakat,tajwid,adab,keterangan,kelebihan_siswa,predikat,keputusan,nilai_akhir'
 
 export type RekapanLengkap = RekapanRingkas & {
   kelas?: string
@@ -18,10 +18,19 @@ export type RekapanLengkap = RekapanRingkas & {
   kelebihan_siswa?: string | null
 }
 
-async function ambilChunk(ids: string[]) {
-  const { data, error } = await supabase.from('rekapan').select(KOLOM_REKAPAN_QIROAH).in('id_siswa', ids)
-  if (error) throw new Error(error.message)
-  return (data || []) as RekapanLengkap[]
+async function ambilChunk(ids: string[], kolom = KOLOM_REKAPAN_QIROAH): Promise<RekapanLengkap[]> {
+  const { data, error } = await supabase.from('rekapan').select(kolom).in('id_siswa', ids)
+  if (!error) return (data || []) as RekapanLengkap[]
+  const hilang = error.message.match(/column rekapan\.(\w+) does not exist/i)?.[1]
+  if (hilang) {
+    const sisa = kolom
+      .split(',')
+      .map((nama) => nama.trim())
+      .filter((nama) => nama && nama !== hilang)
+      .join(',')
+    if (sisa && sisa !== kolom) return ambilChunk(ids, sisa)
+  }
+  throw new Error(error.message)
 }
 
 /** Muat rekapan untuk banyak siswa (batangan 80 id). */
@@ -30,8 +39,13 @@ export async function muatRekapanUntukSiswa(idsSiswa: string[]): Promise<Rekapan
   if (ids.length === 0) return []
   const ukuran = 80
   const gabung: RekapanLengkap[] = []
-  for (let i = 0; i < ids.length; i += ukuran) {
-    gabung.push(...(await ambilChunk(ids.slice(i, i + ukuran))))
+  try {
+    for (let i = 0; i < ids.length; i += ukuran) {
+      gabung.push(...(await ambilChunk(ids.slice(i, i + ukuran))))
+    }
+  } catch (error) {
+    console.error('Gagal memuat rekapan ujian:', error instanceof Error ? error.message : error)
+    return []
   }
   gabung.sort((a, b) => String(b.tanggal_ujian || '').localeCompare(String(a.tanggal_ujian || '')))
   return gabung

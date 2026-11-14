@@ -7,6 +7,7 @@ import type { RekapLulus } from '@/lib/kepala-sekolah'
 import { statusUjianFilter } from '@/lib/rekapan-qiroah'
 import { rekapLulusKepsekKeTampilan } from '@/lib/ujian-nilai-tampilan'
 import { todayInputValue } from '@/lib/jurnal'
+import { labelRentangKenaikanJilid } from '@/lib/qiroah'
 
 const BATAS = 7
 
@@ -119,7 +120,7 @@ function TabelHasil({ tabel }: { tabel: RekapLulus[] }) {
               <td className="border-b p-2 font-bold">{row.nama}</td>
               <td className="border-b p-2">{row.kelas}</td>
               <td className="border-b p-2">
-                {row.jilid_asal} → {row.jilid_tujuan || '—'}
+                {labelRentangKenaikanJilid('', row.jilid_asal, row.jilid_tujuan)}
               </td>
               <td className="border-b p-2 tabular-nums">{row.nilai_akhir || '—'}</td>
               <td className="border-b p-2">{row.predikat}</td>

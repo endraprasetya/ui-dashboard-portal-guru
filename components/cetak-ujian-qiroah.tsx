@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Printer, X } from 'lucide-react'
 import { fetchPejabatUntukCetak, type PejabatCetakTerselesaikan } from '@/lib/setting-cetak'
-import { labelPredikatUjian } from '@/lib/qiroah'
+import { labelPredikatUjian, labelRentangKenaikanJilid } from '@/lib/qiroah'
 
 export type HasilUjianCetak = {
   nomor: string
@@ -194,12 +194,8 @@ export function CetakUjianQiroah({
                   <td>: {pejabat?.unit || data.unit || '-'}</td>
                 </tr>
                 <tr>
-                  <td className="py-0.5">Jilid asal</td>
-                  <td>: {data.jilidAsal || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="py-0.5">Jilid tujuan</td>
-                  <td>: {data.jilidTujuan || '-'}</td>
+                  <td className="py-0.5">Kenaikan jilid</td>
+                  <td>: {labelRentangKenaikanJilid('', data.jilidAsal, data.jilidTujuan)}</td>
                 </tr>
               </tbody>
             </table>
@@ -235,12 +231,8 @@ export function CetakUjianQiroah({
                   <td>: {tanggalPanjang(data.tanggal)}</td>
                 </tr>
                 <tr>
-                  <td className="py-0.5">Jilid asal</td>
-                  <td>: {data.jilidAsal || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="py-0.5">Jilid tujuan</td>
-                  <td>: {data.jilidTujuan || '-'}</td>
+                  <td className="py-0.5">Kenaikan jilid</td>
+                  <td>: {labelRentangKenaikanJilid('', data.jilidAsal, data.jilidTujuan)}</td>
                 </tr>
               </tbody>
             </table>

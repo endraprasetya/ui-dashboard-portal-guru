@@ -1,5 +1,5 @@
 import type { HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
-import { labelPredikatUjian } from '@/lib/qiroah'
+import { labelPredikatUjian, pemetaanKenaikanJilid, ujianTanpaTajwid } from '@/lib/qiroah'
 import { catatanPenguji } from '@/lib/ujian-relasi'
 
 export function jilidTanpaTajwid(jilid?: string) {
@@ -45,7 +45,7 @@ export function rekapKeTampilanNilai(
   rekap: SumberRekap,
   pengajuan?: SumberPengajuan | null,
 ): HasilUjianCetak {
-  const asal = String(rekap.jilid_asal || pengajuan?.jilid_diujikan || '')
+  const peta = pemetaanKenaikanJilid(pengajuan?.jilid_diujikan, rekap.jilid_asal, rekap.jilid_tujuan)
   const catatan = catatanPenguji(rekap)
   return {
     nomor: String(rekap.id_ujian || pengajuan?.id_pengajuan || ''),
@@ -56,12 +56,12 @@ export function rekapKeTampilanNilai(
     tanggal: String(rekap.tanggal_ujian || pengajuan?.tanggal_pelaksanaan || ''),
     penguji: String(rekap.penguji || pengajuan?.nama_penguji || '-'),
     guruPengampu: String(rekap.guru_pengampu || pengajuan?.diajukan_oleh || '-'),
-    jilidAsal: asal,
-    jilidTujuan: String(rekap.jilid_tujuan || ''),
+    jilidAsal: peta.asal,
+    jilidTujuan: peta.tujuan,
     kelancaran: Number(rekap.kelancaran || 0),
     makhraj: Number(rekap.makhraj || 0),
     harakat: Number(rekap.harakat || 0),
-    tajwid: jilidTanpaTajwid(asal) ? null : Number(rekap.tajwid || 0),
+    tajwid: ujianTanpaTajwid(pengajuan?.jilid_diujikan, peta.tujuan, peta.asal) ? null : Number(rekap.tajwid || 0),
     adab: Number(rekap.adab || 0),
     nilaiAkhir: Number(rekap.nilai_akhir || 0),
     predikat: labelPredikatUjian(rekap.predikat) || String(rekap.predikat || '-'),

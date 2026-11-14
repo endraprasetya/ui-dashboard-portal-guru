@@ -1,4 +1,4 @@
-import { cekTargetQiroahSiswa, formatCapaianQiroah, TARGET_QIROAH } from '@/lib/qiroah'
+import { cekTargetQiroahSiswa, formatCapaianQiroah, pemetaanKenaikanJilid, TARGET_QIROAH } from '@/lib/qiroah'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSurah } from '@/lib/surah'
@@ -262,14 +262,17 @@ export async function fetchRaporSiswa(idSiswa: string): Promise<DataRapor | null
       catatan: teks(terakhirQiroah?.catatan) || teks(terakhirQiroah?.status),
       jumlah: setoranQiroah.length,
     },
-    ujian: (ujianRes.data || []).map((row) => ({
+    ujian: (ujianRes.data || []).map((row) => {
+      const peta = pemetaanKenaikanJilid('', teks(row.jilid_asal), teks(row.jilid_tujuan))
+      return {
       tanggal: tanggalPanjang(teks(row.tanggal_ujian)),
-      jilidAsal: teks(row.jilid_asal),
-      jilidTujuan: teks(row.jilid_tujuan),
+      jilidAsal: peta.asal,
+      jilidTujuan: peta.tujuan,
       nilai: teks(row.nilai_akhir),
       predikat: teks(row.predikat),
       keputusan: teks(row.keputusan),
-    })),
+    }
+    }),
     kepsek: pejabat.kepsek,
     lokasi: pejabat.lokasi || unit || 'Nogosari',
   }
