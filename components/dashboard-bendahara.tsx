@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { LogOut, Wallet } from 'lucide-react'
+import { LogOut, ScrollText, Wallet } from 'lucide-react'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
+import { BendaharaValidasiKas } from '@/components/bendahara-validasi-kas'
+import { LaporanKeuangan } from '@/components/laporan-keuangan'
+import { kanonUnitKeuangan } from '@/lib/kasir'
 import {
   tujuanSetelahLogin,
   validasiSesiBendahara,
@@ -14,6 +17,7 @@ export function DashboardBendahara() {
   const [user, setUser] = useState<AkunSesi | null>(null)
   const [galat, setGalat] = useState('')
   const [tujuan, setTujuan] = useState('/')
+  const [segarLaporan, setSegarLaporan] = useState(0)
 
   useEffect(() => {
     let batal = false
@@ -71,7 +75,9 @@ export function DashboardBendahara() {
 
   const nama = String(user.nama_lengkap || user.nama || user.username || 'Bendahara')
   const unit = String(user.unit || '').trim()
+  const unitKunci = kanonUnitKeuangan(unit)
   const peran = String(user.role || 'Bendahara').trim()
+  const unitNogosari = !unitKunci || unitKunci === 'Nogosari'
 
   return (
     <div className="min-h-screen bg-[#f4f7f5] text-slate-800">
@@ -86,9 +92,14 @@ export function DashboardBendahara() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <a href="#keuangan-tunggakan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
-              <Wallet className="size-3.5" /> Keuangan
+            <a href="#laporan-keuangan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
+              <ScrollText className="size-3.5" /> Laporan
             </a>
+            {unitNogosari ? (
+              <a href="#keuangan-tunggakan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
+                <Wallet className="size-3.5" /> Tunggakan AMPSS
+              </a>
+            ) : null}
             <button type="button" onClick={keluar} className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
               <LogOut className="size-3.5" /> Keluar
             </button>
@@ -97,7 +108,18 @@ export function DashboardBendahara() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        <ModulKeuangan />
+        <BendaharaValidasiKas
+          namaBendahara={nama}
+          unit={unit}
+          user={user}
+          onSetelahValidasi={() => setSegarLaporan((nilai) => nilai + 1)}
+        />
+        <LaporanKeuangan unit={unit} judul={`Laporan keuangan ${unitKunci || unit || 'unit'}`} segar={segarLaporan} />
+        {unitNogosari ? <ModulKeuangan /> : (
+          <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            Rekap tunggakan AMPSS ditampilkan untuk unit Nogosari. Unit {unitKunci || unit} memakai laporan kas internal di atas.
+          </p>
+        )}
       </main>
     </div>
   )

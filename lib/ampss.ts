@@ -19,6 +19,7 @@ import {
   type BarisTagihan,
 } from './ampss-urai'
 import type { DetailTunggakan, RekapKeuangan, RekapKelas, RincianTagihan, SiswaTunggakan } from './keuangan-tipe'
+import { overlayDaftarTunggakan, overlayDetailTunggakan, overlayRekapKeuangan } from './kasir-tagihan'
 
 const UMUR_CACHE_MS = 5 * 60 * 1000
 const BATAS_MS = 45_000
@@ -359,8 +360,10 @@ async function bangun(): Promise<RekapKeuangan> {
 }
 
 export async function muatRekapKeuangan(segar = false): Promise<RekapKeuangan> {
-  if (!segar && cache && Date.now() - cache.at < UMUR_CACHE_MS) return cache.data
-  if (tugas) return tugas
+  if (!segar && cache && Date.now() - cache.at < UMUR_CACHE_MS) {
+    return overlayRekapKeuangan(cache.data, rincian)
+  }
+  if (tugas) return tugas.then((data) => overlayRekapKeuangan(data, rincian))
   tugas = bangun()
     .then((data) => {
       cache = { at: Date.now(), data }
@@ -369,15 +372,15 @@ export async function muatRekapKeuangan(segar = false): Promise<RekapKeuangan> {
     .finally(() => {
       tugas = null
     })
-  return tugas
+  return tugas.then((data) => overlayRekapKeuangan(data, rincian))
 }
 
 export async function muatDetailTunggakan(nis: string): Promise<DetailTunggakan | null> {
   if (!/^\d{3,12}$/.test(nis)) return null
   const rekap = await muatRekapKeuangan(false)
-  const siswa = rekap.siswa.find((baris) => baris.nis === nis)
+  const siswa = rekap.siswa.find((baris) => baris.nis === nis || cocokNisKeuangan(nis, baris.nis))
   if (!siswa) return null
-  return susunDetailTunggakan(siswa)
+  return overlayDetailTunggakan(susunDetailTunggakan(siswa))
 }
 
 function angkaNis(nilai?: string) {
@@ -418,5 +421,5 @@ export async function muatTunggakanWali(kunciNis: string[]): Promise<DetailTungg
     sudah.add(siswa.nis)
     hasil.push(susunDetailTunggakan(siswa, true))
   }
-  return hasil
+  return overlayDaftarTunggakan(hasil)
 }

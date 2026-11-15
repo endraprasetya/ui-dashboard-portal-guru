@@ -21,9 +21,19 @@ export function adalahBendahara(user?: { role?: string } | null) {
   return adalahPeranBendahara(user?.role)
 }
 
+export function adalahPeranKasir(role?: string | null) {
+  const peran = teksPeran(role)
+  return Boolean(peran) && peran.includes('kasir')
+}
+
+export function adalahKasir(user?: { role?: string } | null) {
+  return adalahPeranKasir(user?.role)
+}
+
 export function tujuanSetelahLogin(user?: { role?: string } | null) {
   if (adalahKepalaSekolah(user)) return '/dashboard/kepala-sekolah'
   if (adalahBendahara(user)) return '/dashboard/bendahara'
+  if (adalahKasir(user)) return '/dashboard/kasir'
   if (isPortalWali(user)) return '/portal-wali'
   return '/'
 }

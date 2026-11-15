@@ -3,7 +3,7 @@ import { DashboardBendahara } from '@/components/dashboard-bendahara'
 
 export const metadata: Metadata = {
   title: 'Dashboard Bendahara | Portal Guru',
-  description: 'Rekap keuangan, tunggakan siswa, dan sinkronisasi data AMPSS untuk Bendahara SD Islam Terpadu Al Madinah.',
+  description: 'Validasi transaksi kasir, rekap keuangan, dan sinkronisasi AMPSS untuk Bendahara SD Islam Terpadu Al Madinah.',
 }
 
 export default function HalamanBendahara() {
