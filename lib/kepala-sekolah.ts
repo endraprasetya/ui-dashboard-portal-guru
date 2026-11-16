@@ -31,6 +31,7 @@ import {
   waktuDariStatus,
 } from '@/lib/qiroah'
 import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+import { formatMurojaahRecord, formatZiyadahRecord, rincianTugasRumah } from '@/lib/tahfidz'
 import { cariRekapan } from '@/lib/ujian-relasi'
 
 export const KEPALA_SEKOLAH = {
@@ -137,7 +138,14 @@ export type SetoranHarian = {
   qiroahId: string[]
 }
 
-export type BarisSetoranRingkas = { id_siswa: string; tanggal: string }
+export type ButirSetoran = { label: string; nilai: string }
+
+export type BarisSetoranRingkas = {
+  id_siswa: string
+  tanggal: string
+  ustadz?: string
+  butir?: ButirSetoran[]
+}
 
 export type RingkasJurnal = {
   tanggal: string
@@ -219,12 +227,47 @@ function tanggalJakarta(nilai: unknown) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(waktu))
 }
 
-function diHariIni(nilai: unknown, hari: string, mulai: number) {
-  const teks = String(nilai || '').trim()
-  if (!teks) return false
-  if (/^\d{4}-\d{2}-\d{2}$/.test(teks.slice(0, 10)) && teks.length <= 10) return teks.slice(0, 10) === hari
-  const waktu = Date.parse(teks)
-  return Number.isFinite(waktu) && waktu >= mulai
+function butirSetoran(label: string, nilai: unknown) {
+  const teks = String(nilai ?? '').trim()
+  if (!teks || teks === '-') return null
+  return { label, nilai: teks }
+}
+
+function butirWajib(label: string, nilai: unknown) {
+  const teks = String(nilai ?? '').trim()
+  return { label, nilai: !teks || teks === '-' ? 'Belum diisi' : teks }
+}
+
+function kumpulkanButir(daftar: (ButirSetoran | null)[]) {
+  return daftar.filter((item): item is ButirSetoran => Boolean(item))
+}
+
+async function muatTabelBertahap(
+  tabel: 'setoran_qiroah' | 'setoran_tahfidz',
+  kolom: string[],
+  saring: (kueri: any) => any,
+) {
+  let pesan = ''
+  for (const pilih of kolom) {
+    try {
+      const semua: any[] = []
+      const ukuran = 1000
+      let dari = 0
+      while (dari <= 20000) {
+        const { data, error } = await saring(supabase.from(tabel).select(pilih)).range(dari, dari + ukuran - 1)
+        if (error) throw new Error(error.message)
+        const baris = data || []
+        semua.push(...baris)
+        if (baris.length < ukuran) break
+        dari += ukuran
+      }
+      return semua
+    } catch (error) {
+      pesan = error instanceof Error ? error.message : String(error)
+      if (!/column|schema cache|does not exist/i.test(pesan)) break
+    }
+  }
+  throw new Error(pesan || `Tabel ${tabel} belum dapat dimuat.`)
 }
 
 function rekapAbsen(
@@ -283,8 +326,6 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   const hari = todayInputValue(sekarang)
   const mulai = new Date(sekarang)
   mulai.setHours(0, 0, 0, 0)
-  const sejak = new Date(mulai)
-  sejak.setDate(sejak.getDate() - 1)
   const { start } = monthRange(hari.slice(0, 7))
   const catatan: string[] = []
 
@@ -323,17 +364,32 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       console.error(error.message)
       return []
     }),
-    supabase
-      .from('setoran_qiroah')
-      .select('id_qiroah,tanggal,ustadz,unit,id_siswa')
-      .eq('unit', UNIT_KEPALA_SEKOLAH)
-      .gte('tanggal', start)
-      .limit(4000),
-    supabase
-      .from('setoran_tahfidz')
-      .select('id_setoran,tanggal,id_siswa')
-      .gte('tanggal', start)
-      .limit(4000),
+    muatTabelBertahap(
+      'setoran_qiroah',
+      [
+        'id_qiroah,tanggal,ustadz,unit,id_siswa,jilid,halaman,status,catatan,tugas_rumah,murojaah_di_rumah,membaca_di_sekolah,murojaah_bersama_teman',
+        'id_qiroah,tanggal,ustadz,unit,id_siswa,jilid,halaman,status,catatan,tugas_rumah',
+        'id_qiroah,tanggal,ustadz,unit,id_siswa',
+      ],
+      (kueri) => kueri.eq('unit', UNIT_KEPALA_SEKOLAH).gte('tanggal', start).order('tanggal', { ascending: true }),
+    ).catch((error: Error) => {
+      catatan.push('Setoran qiroah belum dapat dimuat.')
+      console.error(error.message)
+      return [] as any[]
+    }),
+    muatTabelBertahap(
+      'setoran_tahfidz',
+      [
+        'id_setoran,tanggal,id_siswa,nama_ustadz,hafalan_baru,ayat_mulai,ayat_selesai,status,keterangan_pesan_hafalan,surah_ziyadah,ayat_ziyadah,murojaah,surah_murojaah,ayat_murojaah,tugas_rumah,surah_tugas,ayat_mulai_tugas,ayat_selesai_tugas',
+        'id_setoran,tanggal,id_siswa,nama_ustadz,hafalan_baru,ayat_mulai,ayat_selesai,status,murojaah,tugas_rumah',
+        'id_setoran,tanggal,id_siswa',
+      ],
+      (kueri) => kueri.gte('tanggal', start).order('tanggal', { ascending: true }),
+    ).catch((error: Error) => {
+      catatan.push('Setoran tahfidz belum dapat dimuat.')
+      console.error(error.message)
+      return [] as any[]
+    }),
     halaman<any>((dari, sampai) =>
       supabase
         .from('pengajuan')
@@ -408,32 +464,50 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
 
   const jurnalRingkas = hitungRingkasJurnal(jurnalUnit, hari, kelasUnit.size)
 
-  const setoranQiroahSemua = (qiroah.error ? [] : qiroah.data || []).filter((row) => unitKepalaSekolah(row.unit))
-  const setoranQiroah = setoranQiroahSemua.filter((row) => diHariIni(row.tanggal, hari, mulai.getTime()))
-  const setoranTahfidzSemua = (tahfidzContoh.error ? [] : tahfidzContoh.data || []).filter((row) =>
-    siswaById.has(String(row.id_siswa)),
-  )
-  const setoranTahfidz = setoranTahfidzSemua.filter((row) => diHariIni(row.tanggal, hari, mulai.getTime()))
-  const tahfidzIdHari = [...new Set(setoranTahfidz.map((row) => String(row.id_siswa)))]
-  const qiroahIdHari = [
-    ...new Set(
-      setoranQiroah.map((row) => String(row.id_siswa || '')).filter((id) => id && siswaById.has(id)),
-    ),
-  ]
-  const setoranBulan = {
-    tahfidz: setoranTahfidzSemua.map((row) => ({
-      id_siswa: String(row.id_siswa),
+  const petakanQiroah = (row: any): BarisSetoranRingkas => ({
+    id_siswa: String(row.id_siswa || ''),
+    tanggal: tanggalJakarta(row.tanggal) || String(row.tanggal || '').slice(0, 10),
+    ustadz: String(row.ustadz || '').trim(),
+    butir: kumpulkanButir([
+      butirSetoran('Guru', row.ustadz),
+      butirSetoran('Jilid', row.jilid),
+      butirSetoran('Halaman', row.halaman),
+      butirSetoran('Status', row.status),
+      butirSetoran('Catatan', row.catatan),
+      butirSetoran('Tugas di rumah', row.tugas_rumah),
+      butirSetoran('Murojaah di rumah', row.murojaah_di_rumah),
+      butirSetoran('Membaca di sekolah', row.membaca_di_sekolah),
+      butirSetoran('Murojaah bersama teman', row.murojaah_bersama_teman),
+    ]),
+  })
+  const petakanTahfidz = (row: any): BarisSetoranRingkas => {
+    const tugas = rincianTugasRumah(row)
+    return {
+      id_siswa: String(row.id_siswa || ''),
       tanggal: tanggalJakarta(row.tanggal) || String(row.tanggal || '').slice(0, 10),
-    })),
-    qiroah: setoranQiroahSemua
-      .filter((row) => row.id_siswa && siswaById.has(String(row.id_siswa)))
-      .map((row) => ({
-        id_siswa: String(row.id_siswa),
-        tanggal: tanggalJakarta(row.tanggal) || String(row.tanggal || '').slice(0, 10),
-      })),
+      ustadz: String(row.nama_ustadz || '').trim(),
+      butir: kumpulkanButir([
+        butirSetoran('Guru', row.nama_ustadz),
+        butirWajib('Ziyadah', formatZiyadahRecord(row)),
+        butirWajib('Status', row.status),
+        butirSetoran('Pesan ziyadah', row.keterangan_pesan_hafalan),
+        butirWajib('Murojaah', formatMurojaahRecord(row)),
+        butirWajib('Tugas di rumah', tugas.teks),
+      ]),
+    }
   }
-  if (tahfidzContoh.error) catatan.push('Setoran tahfidz belum dapat dimuat.')
-  if (qiroah.error) catatan.push('Setoran qiroah belum dapat dimuat.')
+  const setoranBulan = {
+    tahfidz: (Array.isArray(tahfidzContoh) ? tahfidzContoh : [])
+      .filter((row) => siswaById.has(String(row.id_siswa)))
+      .map(petakanTahfidz),
+    qiroah: (Array.isArray(qiroah) ? qiroah : [])
+      .filter((row) => unitKepalaSekolah(row.unit) && row.id_siswa && siswaById.has(String(row.id_siswa)))
+      .map(petakanQiroah),
+  }
+  const setoranTahfidz = setoranBulan.tahfidz.filter((row) => row.tanggal === hari)
+  const setoranQiroah = setoranBulan.qiroah.filter((row) => row.tanggal === hari)
+  const tahfidzIdHari = [...new Set(setoranTahfidz.map((row) => row.id_siswa))]
+  const qiroahIdHari = [...new Set(setoranQiroah.map((row) => row.id_siswa))]
   if (tertib.error) catatan.push('Tertib point belum dapat dimuat.')
 
   const tertibBulan: BarisTertib[] = (tertib.data || [])

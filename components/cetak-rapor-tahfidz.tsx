@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer } from 'lucide-react'
-import { fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import { denganPenandatanganSesi, fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
 function garis(value: string, panjang = 22) {
@@ -50,7 +50,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
     setStatus('memuat')
     fetchCetakRaporTahfidz(idSiswa, asesmen).then((hasil) => {
       if (batal) return
-      setData(hasil)
+      setData(hasil ? denganPenandatanganSesi(hasil) : hasil)
       setStatus(hasil ? 'siap' : 'kosong')
     })
     return () => {

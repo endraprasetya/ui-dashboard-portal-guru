@@ -112,12 +112,21 @@ export function parseTugasTeks(nilai: unknown) {
 
 export function formatZiyadahRecord(record: any) {
   const surah = teks(record?.surah_ziyadah) || teks(record?.hafalan_baru) || teks(record?.surah)
-  const label = formatLabelAyat(surah, teks(record?.ayat_mulai), teks(record?.ayat_selesai))
-  if (label) return label
-  const ayat = teks(record?.ayat_ziyadah)
-  const rentang = ayat.match(/^(\d+)\s*[-–]\s*(\d+)$/)
-  if (rentang) return formatLabelAyat(surah, rentang[1], rentang[2])
-  return '-'
+  let mulai = teks(record?.ayat_mulai)
+  let selesai = teks(record?.ayat_selesai)
+  if (!mulai && !selesai) {
+    const ayat = teks(record?.ayat_ziyadah)
+    const rentang = ayat.match(/(\d+)\s*[-–]\s*(\d+)/)
+    if (rentang) {
+      mulai = rentang[1]
+      selesai = rentang[2]
+    } else {
+      const satu = ayat.match(/(\d+)/)
+      if (satu) mulai = satu[1]
+    }
+  }
+  const label = formatLabelAyat(surah, mulai, selesai)
+  return label || '-'
 }
 
 export function formatMurojaahRecord(record: any) {

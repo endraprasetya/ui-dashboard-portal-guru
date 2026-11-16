@@ -3,8 +3,9 @@ import { educationCalendar } from '@/lib/teacher-data'
 import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { barisUntukPenguji, labelRentangKenaikanJilid, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
+import { guruPenerimaRevisi, kunciKirimRaporHq, muatKirimRaporHq } from '@/lib/rapor-hq-kirim'
 
-export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib'
+export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib' | 'rapor'
 
 export type NotifikasiItem = {
   id: string
@@ -30,9 +31,10 @@ export const LABEL_KATEGORI: Record<KategoriNotifikasi, string> = {
   tahfidz: 'Tahfidz',
   jurnal: 'Jurnal pembelajaran',
   tertib: 'Tertib Point',
+  rapor: 'Revisi rapor HQ',
 }
 
-const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
+const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
 const KUNCI_DIBACA = 'portal-guru-notifikasi-dibaca'
 const BATAS = 5
 
@@ -150,7 +152,7 @@ export async function muatNotifikasi(currentUser?: any) {
   tujuhHari.setDate(tujuhHari.getDate() - 7)
   const bulan = `${awalHari.getFullYear()}-${String(awalHari.getMonth() + 1).padStart(2, '0')}`
 
-  const [pengajuan, tahfidz, jurnal, tertib] = await Promise.all([
+  const [pengajuan, tahfidz, jurnal, tertib, kirimRapor] = await Promise.all([
     supabase
       .from('pengajuan')
       .select('id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,tanggal_pelaksanaan,status,nama_penguji,diajukan_oleh')
@@ -171,7 +173,21 @@ export async function muatNotifikasi(currentUser?: any) {
       .lt('pts', 0)
       .order('created_at', { ascending: false })
       .limit(12),
+    muatKirimRaporHq(),
   ])
+
+  if (!kirimRapor.error) {
+    for (const row of kirimRapor.data) {
+      if (row.status !== 'Revisi' || !row.catatanRevisi || !guruPenerimaRevisi(row, currentUser)) continue
+      lain.push({
+        id: `rapor-revisi:${kunciKirimRaporHq(row)}:${row.diperbaruiPada}`,
+        kategori: 'rapor',
+        judul: `Revisi rapor ${row.namaSiswa}`,
+        detail: `${row.kelas || '-'} · ${row.asesmen} · ${row.catatanRevisi}`,
+        tujuan: 'tahfidz_rapor',
+      })
+    }
+  }
 
   if (pengajuan.error) console.error('Gagal memuat pengajuan:', pengajuan.error.message)
 

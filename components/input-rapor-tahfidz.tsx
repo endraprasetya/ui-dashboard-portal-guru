@@ -2,11 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Download, Printer, Save, Search, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
+import {
+  guruPenerimaRevisi,
+  idGuruAktif,
+  kirimRaporKeKepsek,
+  muatKirimRaporHq,
+  type KirimRaporHq,
+} from '@/lib/rapor-hq-kirim'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
 import { formatDateString } from '@/lib/qiroah'
 import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
@@ -45,6 +52,8 @@ export function InputRaporTahfidz({
   const [panelSurah, setPanelSurah] = useState(false)
   const [memuat, setMemuat] = useState(true)
   const [menyimpan, setMenyimpan] = useState(false)
+  const [mengirim, setMengirim] = useState(false)
+  const [kiriman, setKiriman] = useState<KirimRaporHq[]>([])
   const [status, setStatus] = useState('')
   const [galat, setGalat] = useState(false)
   const [peringatanAyat, setPeringatanAyat] = useState<InfoBatasAyat | { pesan: string } | null>(null)
@@ -87,6 +96,16 @@ export function InputRaporTahfidz({
       batal = true
     }
   }, [])
+
+  useEffect(() => {
+    let batal = false
+    muatKirimRaporHq().then((hasil) => {
+      if (!batal) setKiriman(hasil.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
+    })
+    return () => {
+      batal = true
+    }
+  }, [kunciUserGuru(currentUser)])
 
   useEffect(() => {
     if (siswa.length === 0) {
@@ -469,16 +488,62 @@ export function InputRaporTahfidz({
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
-          <Link
-            href={asesmen ? `/raport/massal?asesmen=${encodeURIComponent(asesmen)}` : '/raport/massal'}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800"
+          <button
+            type="button"
+            disabled={mengirim}
+            onClick={async () => {
+              const sasaran = (asesmen ? rekap.filter((row) => row.asesmen === asesmen) : rekap).filter((row) => row.idSiswa)
+              if (sasaran.length === 0) {
+                setGalat(true)
+                setStatus(asesmen ? 'Belum ada materi rapor pada asesmen ini untuk dikirim.' : 'Pilih asesmen atau simpan materi rapor terlebih dahulu.')
+                return
+              }
+              setMengirim(true)
+              setGalat(false)
+              setStatus('')
+              const hasil = await kirimRaporKeKepsek(
+                sasaran.map((row) => ({
+                  idSiswa: row.idSiswa,
+                  namaSiswa: row.nama,
+                  kelas: row.kelas,
+                  asesmen: row.asesmen,
+                  idGuru: idGuruAktif(currentUser),
+                  namaGuru: teacherDisplayName(currentUser),
+                })),
+              )
+              setMengirim(false)
+              if (hasil.error) {
+                setGalat(true)
+                setStatus(hasil.error)
+                return
+              }
+              const segar = await muatKirimRaporHq()
+              setKiriman(segar.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
+              setGalat(false)
+              setStatus(`${hasil.jumlah} rapor terkirim ke Kepala Sekolah.`)
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
           >
-            <Download className="size-3.5" /> Kirim / Unduh Semua PDF Rapor
-          </Link>
+            <Send className="size-3.5" /> {mengirim ? 'Mengirim…' : 'Kirim ke Kepala Sekolah'}
+          </button>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Satu klik mengunduh file PDF terpisah untuk setiap siswa binaan (nama file mengikuti nama siswa).
+          Status pengiriman tersimpan agar Kepala Sekolah dapat memeriksa rapor dan menuliskan catatan revisi.
         </p>
+        {kiriman.some((row) => row.status === 'Revisi' && row.catatanRevisi) ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">Catatan revisi Kepala Sekolah</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-800">
+              {kiriman
+                .filter((row) => row.status === 'Revisi' && row.catatanRevisi)
+                .map((row) => (
+                  <li key={`${row.idSiswa}-${row.asesmen}`}>
+                    <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}: {row.catatanRevisi}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3">
           <p className="text-xs font-extrabold uppercase tracking-wide text-sky-900">{JUDUL_JADWAL_UJIAN_TAHFIDZ}</p>
           <p className="mt-1 text-sm leading-relaxed text-slate-700">{teksJadwalUjian || 'Memuat informasi jadwal…'}</p>

@@ -14,8 +14,9 @@ import {
   type NotifikasiItem,
   type NotifikasiQiroah,
 } from '@/lib/notifikasi'
+import { KANAL_REVISI_RAPOR_HQ } from '@/lib/rapor-hq-kirim'
 
-const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
+const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
 
 export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
   const [semua, setSemua] = useState<NotifikasiItem[]>([])
@@ -52,6 +53,16 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pengajuan' }, () => {
         segar.dariRealtime()
       })
+    return segar.pasang(kanal)
+  }, [muat])
+
+  useEffect(() => {
+    const segar = buatKendaliSegar(() => {
+      void muat(true)
+    })
+    const kanal = supabase.channel(KANAL_REVISI_RAPOR_HQ).on('broadcast', { event: 'revisi' }, () => {
+      segar.dariRealtime()
+    })
     return segar.pasang(kanal)
   }, [muat])
 

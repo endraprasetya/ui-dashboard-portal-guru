@@ -37,6 +37,21 @@ export type BarisCetakRaporTahfidz = {
   nilaiSurat: number | null
 }
 
+export function denganPenandatanganSesi<T extends { siswa: { pembimbing: string } }>(data: T): T {
+  if (typeof window === 'undefined') return data
+  try {
+    const mentah = window.localStorage.getItem('user_session')
+    const user = mentah ? JSON.parse(mentah) : null
+    const peran = String(user?.role || '').toLowerCase()
+    if (!user || peran.includes('kepala')) return data
+    const nama = String(user.nama_lengkap || user.nama || '').trim()
+    if (!nama) return data
+    return { ...data, siswa: { ...data.siswa, pembimbing: nama } }
+  } catch {
+    return data
+  }
+}
+
 export type DataCetakRaporTahfidz = {
   siswa: {
     idSiswa: string

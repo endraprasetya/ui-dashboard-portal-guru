@@ -9,15 +9,17 @@ export function ModalKerangka({
   onTutup,
   children,
   lebar = 'max-w-3xl',
+  lapisan = 'z-50',
 }: {
   judul: string
   keterangan?: string
   onTutup: () => void
   children: ReactNode
   lebar?: string
+  lapisan?: string
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/45 p-3 sm:p-4" onClick={onTutup}>
+    <div className={`fixed inset-0 ${lapisan} grid place-items-center bg-slate-900/45 p-3 sm:p-4`} onClick={onTutup}>
       <div
         role="dialog"
         aria-modal="true"

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchSiswaBinaan, kunciUserGuru } from '@/lib/siswa'
-import { fetchAllSurah, infoAyatMelebihi, validasiAyatSurat, type InfoBatasAyat, type Surah } from '@/lib/surah'
+import { cariSurah, fetchAllSurah, infoAyatMelebihi, validasiAyatSurat, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import {
   formatLabelAyat,
   formatMurojaahRecord,
@@ -804,7 +804,15 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
               autoComplete="off"
               placeholder="Ketik/Pilih Surah (Cari cepat)..."
               value={hSurah}
-              onChange={(e) => setHSurah(e.target.value)}
+              onChange={(e) => {
+                const nilai = e.target.value
+                setHSurah(nilai)
+                const ketemu = cariSurah(surahs, nilai)
+                if (!ketemu) return
+                const normal = (teks: string) => teks.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’'`]/g, '')
+                if (normal(ketemu.nama_surat) !== normal(nilai)) return
+                setHSelesai(String(ketemu.jumlah_ayat))
+              }}
               className="w-full rounded-lg border border-slate-300 p-2 text-sm mb-2 bg-white"
             />
             <div className="grid grid-cols-2 gap-2">

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Download, Loader2, Printer } from 'lucide-react'
 import { fetchSiswaBinaan, type Siswa } from '@/lib/siswa'
 import { ASESMEN_TAHFIDZ } from '@/lib/materi-ujian-tahfidz'
-import { fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import { denganPenandatanganSesi, fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
 import { GAYA_CETAK_RAPOR_TAHFIDZ, LembarRaporTahfidz } from '@/components/cetak-rapor-tahfidz'
 import { unduhSemuaPdfRapor } from '@/lib/unduh-pdf-rapor'
 
@@ -17,7 +17,7 @@ async function muatRaporBergiliran(siswa: Siswa[], asesmen: string) {
       const item = antrian.shift()
       if (!item) break
       const data = await fetchCetakRaporTahfidz(item.id_siswa, asesmen)
-      if (data) hasil.push(data)
+      if (data) hasil.push(denganPenandatanganSesi(data))
     }
   })
   await Promise.all(pekerja)

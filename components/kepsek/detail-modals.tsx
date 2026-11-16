@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
 import { FilterGuru, FilterTanggalKelas } from '@/components/kepsek/filter-kepsek'
-import type { LaporanKepsek } from '@/lib/kepala-sekolah'
+import type { BarisSetoranRingkas, LaporanKepsek } from '@/lib/kepala-sekolah'
 import { buatKonteksSiswa, hitungRingkasJurnal, rekapKehadiranDariJurnal, trenKehadiran7Hari } from '@/lib/kepsek-rekap'
 import { normalKelas } from '@/lib/qiroah'
 
@@ -16,6 +16,20 @@ function labelAbsen(kode: 'S' | 'I' | 'A') {
   if (kode === 'S') return 'Sakit'
   if (kode === 'I') return 'Izin'
   return 'Alpa'
+}
+
+function labelAbsenSetoran(kode: 'S' | 'I' | 'A') {
+  if (kode === 'S') return 'Tidak Masuk - Sakit'
+  if (kode === 'I') return 'Izin'
+  return 'Alpa'
+}
+
+function BadgeAbsen({ kode }: { kode: 'S' | 'I' | 'A' }) {
+  return (
+    <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-900">
+      {labelAbsenSetoran(kode)}
+    </span>
+  )
 }
 
 function tanggalBarisSetoran(teks: string, hari: string) {
@@ -141,87 +155,189 @@ export function ModalTidakHadir({
   )
 }
 
+type BarisDaftarSetoran = {
+  id: string
+  nama: string
+  kelas: string
+  tahfidz: boolean
+  qiroah: boolean
+  absen?: 'S' | 'I' | 'A'
+}
+
+type DetailSetoran = {
+  jenis: 'Tahfidz' | 'Qiroah'
+  nama: string
+  kelas: string
+  baris: BarisSetoranRingkas[]
+}
+
+function CentangSetoran({
+  aktif,
+  label,
+  onBuka,
+}: {
+  aktif: boolean
+  label: string
+  onBuka: () => void
+}) {
+  if (!aktif) return <span className="text-slate-300">—</span>
+  return (
+    <button
+      type="button"
+      onClick={onBuka}
+      className="rounded-md px-2 py-0.5 text-base font-black text-emerald-800 hover:bg-emerald-50"
+      aria-label={label}
+    >
+      ✓
+    </button>
+  )
+}
+
 export function ModalSetoran({ laporan, onTutup }: { laporan: LaporanKepsek; onTutup: () => void }) {
   const [tanggal, setTanggal] = useState(laporan.tanggalLaporan)
   const [kelas, setKelas] = useState('')
   const [tab, setTab] = useState<'sudah' | 'belum'>('sudah')
+  const [detail, setDetail] = useState<DetailSetoran | null>(null)
   const siswaKelas = useMemo(() => {
     let daftar = laporan.siswa
     if (kelas) daftar = daftar.filter((row) => normalKelas(row.kelas) === kelas)
     return daftar
   }, [laporan.siswa, kelas])
 
-  const { sudah, belum } = useMemo(() => {
-    const tahfidz = new Set(
-      laporan.setoranBulan.tahfidz.filter((row) => tanggalBarisSetoran(row.tanggal, tanggal)).map((row) => row.id_siswa),
-    )
-    const qiroah = new Set(
-      laporan.setoranBulan.qiroah.filter((row) => tanggalBarisSetoran(row.tanggal, tanggal)).map((row) => row.id_siswa),
-    )
-    const sudahList: { nama: string; kelas: string; tahfidz: boolean; qiroah: boolean }[] = []
-    const belumList: typeof sudahList = []
+  const absenPadaTanggal = useMemo(() => {
+    const ctx = buatKonteksSiswa(laporan.siswa)
+    const rekap = rekapKehadiranDariJurnal(laporan.jurnalBulan, tanggal, ctx, kelas || undefined)
+    const peta = new Map<string, 'S' | 'I' | 'A'>()
+    for (const row of rekap.tidakHadir) {
+      peta.set(`${normalKelas(row.kelas)}|${row.nama.trim().toLowerCase()}`, row.keterangan)
+    }
+    return peta
+  }, [laporan.jurnalBulan, laporan.siswa, tanggal, kelas])
+
+  const { sudah, belum, jumlahTahfidz, jumlahQiroah } = useMemo(() => {
+    const tahfidz = laporan.setoranBulan.tahfidz.filter((row) => tanggalBarisSetoran(row.tanggal, tanggal))
+    const qiroah = laporan.setoranBulan.qiroah.filter((row) => tanggalBarisSetoran(row.tanggal, tanggal))
+    const idTahfidz = new Set(tahfidz.map((row) => row.id_siswa))
+    const idQiroah = new Set(qiroah.map((row) => row.id_siswa))
+    const sudahList: BarisDaftarSetoran[] = []
+    const belumList: BarisDaftarSetoran[] = []
     for (const row of siswaKelas) {
-      const t = tahfidz.has(row.id_siswa)
-      const q = qiroah.has(row.id_siswa)
-      const item = { nama: row.nama_siswa, kelas: row.kelas, tahfidz: t, qiroah: q }
+      const t = idTahfidz.has(row.id_siswa)
+      const q = idQiroah.has(row.id_siswa)
+      const item = {
+        id: row.id_siswa,
+        nama: row.nama_siswa,
+        kelas: row.kelas,
+        tahfidz: t,
+        qiroah: q,
+        absen: absenPadaTanggal.get(`${normalKelas(row.kelas)}|${row.nama_siswa.trim().toLowerCase()}`),
+      }
       if (t || q) sudahList.push(item)
       else belumList.push(item)
     }
     sudahList.sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.nama.localeCompare(b.nama, 'id'))
     belumList.sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.nama.localeCompare(b.nama, 'id'))
-    return { sudah: sudahList, belum: belumList }
-  }, [laporan.setoranBulan, siswaKelas, tanggal])
+    return { sudah: sudahList, belum: belumList, jumlahTahfidz: tahfidz.length, jumlahQiroah: qiroah.length }
+  }, [absenPadaTanggal, laporan.setoranBulan, siswaKelas, tanggal])
 
   const tampil = tab === 'sudah' ? sudah : belum
 
+  const bukaDetail = (jenis: DetailSetoran['jenis'], row: BarisDaftarSetoran) => {
+    const sumber = jenis === 'Tahfidz' ? laporan.setoranBulan.tahfidz : laporan.setoranBulan.qiroah
+    const baris = sumber.filter((item) => item.id_siswa === row.id && tanggalBarisSetoran(item.tanggal, tanggal))
+    setDetail({ jenis, nama: row.nama, kelas: row.kelas, baris })
+  }
+
   return (
-    <ModalKerangka judul="Rincian setoran" keterangan={`Unit ${laporan.unit}`} onTutup={onTutup} lebar="max-w-4xl">
-      <FilterTanggalKelas tanggal={tanggal} kelas={kelas} daftarKelas={laporan.kelas} onTanggal={setTanggal} onKelas={setKelas} />
-      <div className="mb-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab('sudah')}
-          className={`rounded-lg px-3 py-1.5 text-xs font-bold ${tab === 'sudah' ? 'bg-sky-800 text-white' : 'bg-slate-100 text-slate-700'}`}
-        >
-          Sudah setor ({sudah.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('belum')}
-          className={`rounded-lg px-3 py-1.5 text-xs font-bold ${tab === 'belum' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700'}`}
-        >
-          Belum setor ({belum.length})
-        </button>
-      </div>
-      <p className="mb-2 text-xs text-slate-500">
-        Tahfidz hari ini: {laporan.setoranBulan.tahfidz.filter((r) => tanggalBarisSetoran(r.tanggal, tanggal)).length} · Qiroah:{' '}
-        {laporan.setoranBulan.qiroah.filter((r) => tanggalBarisSetoran(r.tanggal, tanggal)).length}
-      </p>
-      {tampil.length === 0 ? (
-        <p className="py-4 text-sm text-slate-500">{tab === 'sudah' ? 'Belum ada setoran tercatat.' : 'Semua siswa sudah setor.'}</p>
-      ) : (
-        <table className="w-full border-collapse text-left text-sm">
-          <thead>
-            <tr className="text-xs text-slate-500">
-              <th className="border-b p-2">Nama</th>
-              <th className="border-b p-2">Kelas</th>
-              <th className="border-b p-2">Tahfidz</th>
-              <th className="border-b p-2">Qiroah</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tampil.map((row) => (
-              <tr key={`${row.kelas}-${row.nama}`}>
-                <td className="border-b p-2 font-bold">{row.nama}</td>
-                <td className="border-b p-2">{row.kelas}</td>
-                <td className="border-b p-2">{row.tahfidz ? '✓' : '—'}</td>
-                <td className="border-b p-2">{row.qiroah ? '✓' : '—'}</td>
+    <>
+      <ModalKerangka judul="Rincian setoran" keterangan={`Unit ${laporan.unit}`} onTutup={onTutup} lebar="max-w-4xl">
+        <FilterTanggalKelas tanggal={tanggal} kelas={kelas} daftarKelas={laporan.kelas} onTanggal={setTanggal} onKelas={setKelas} />
+        <div className="mb-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab('sudah')}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold ${tab === 'sudah' ? 'bg-sky-800 text-white' : 'bg-slate-100 text-slate-700'}`}
+          >
+            Sudah setor ({sudah.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('belum')}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold ${tab === 'belum' ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-700'}`}
+          >
+            Belum setor ({belum.length})
+          </button>
+        </div>
+        <p className="mb-2 text-xs text-slate-500">
+          Tahfidz: {jumlahTahfidz} setoran · Qiroah: {jumlahQiroah} setoran. Centang dapat diklik untuk melihat isian guru.
+        </p>
+        {tampil.length === 0 ? (
+          <p className="py-4 text-sm text-slate-500">{tab === 'sudah' ? 'Belum ada setoran tercatat.' : 'Semua siswa sudah setor.'}</p>
+        ) : (
+          <table className="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="text-xs text-slate-500">
+                <th className="border-b p-2">Nama</th>
+                <th className="border-b p-2">Kelas</th>
+                <th className="border-b p-2">Tahfidz</th>
+                <th className="border-b p-2">Qiroah</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </ModalKerangka>
+            </thead>
+            <tbody>
+              {tampil.map((row) => (
+                <tr key={row.id}>
+                  <td className="border-b p-2 font-bold">
+                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                      {row.nama}
+                      {row.absen ? <BadgeAbsen kode={row.absen} /> : null}
+                    </span>
+                  </td>
+                  <td className="border-b p-2">{row.kelas}</td>
+                  <td className="border-b p-2">
+                    <CentangSetoran aktif={row.tahfidz} label={`Rincian tahfidz ${row.nama}`} onBuka={() => bukaDetail('Tahfidz', row)} />
+                  </td>
+                  <td className="border-b p-2">
+                    <CentangSetoran aktif={row.qiroah} label={`Rincian qiroah ${row.nama}`} onBuka={() => bukaDetail('Qiroah', row)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ModalKerangka>
+      {detail ? (
+        <ModalKerangka
+          judul={`Setoran ${detail.jenis}`}
+          keterangan={`${detail.nama} · ${detail.kelas} · ${tanggal}`}
+          onTutup={() => setDetail(null)}
+          lebar="max-w-lg"
+          lapisan="z-[60]"
+        >
+          {detail.baris.length === 0 ? (
+            <p className="py-3 text-sm text-slate-500">Rincian setoran pada tanggal ini belum tersedia.</p>
+          ) : (
+            <div className="space-y-3">
+              {detail.baris.map((item, indeks) => (
+                <article key={`${item.id_siswa}-${indeks}`} className="rounded-xl border border-slate-200 p-3">
+                  {(item.butir || []).length === 0 ? (
+                    <p className="text-sm text-slate-500">Guru mencatat setoran, tetapi rincian isian belum tersimpan.</p>
+                  ) : (
+                    <dl className="space-y-1.5">
+                      {(item.butir || []).map((butir) => (
+                        <div key={butir.label} className="grid grid-cols-[8.5rem_1fr] gap-2 text-sm">
+                          <dt className="text-xs font-bold text-slate-500">{butir.label}</dt>
+                          <dd className="font-semibold text-slate-800">{butir.nilai}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </ModalKerangka>
+      ) : null}
+    </>
   )
 }
 
