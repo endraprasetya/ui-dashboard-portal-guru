@@ -1,6 +1,7 @@
 import { akunCocokKodeTagihan, angkaIdentitas, muatPembayaranKasTerverifikasi, type PembayaranKas } from '@/lib/kasir'
-import { jumlahkanPos, jenisItem } from '@/lib/ampss-urai'
-import type { DetailTunggakan, RekapKeuangan, RincianTagihan, SiswaTunggakan } from '@/lib/keuangan-tipe'
+import { jumlahkanPos, jenisItem, labelTapel } from '@/lib/ampss-urai'
+import type { DetailTunggakan, PosUang, RekapKeuangan, RincianTagihan, SiswaTunggakan } from '@/lib/keuangan-tipe'
+import { muatKunciYatim, nisTermasukYatim } from '@/lib/yatim'
 
 function identitasCocok(kandidat: string | null | undefined, nis: string) {
   const a = angkaIdentitas(kandidat)
@@ -85,46 +86,102 @@ function overlaySiswaDanRincian(
   return { siswa: siswaBaru, rincian: rincianBaru }
 }
 
+function kurangiPos(pos: PosUang[], potongan: [string, number][]) {
+  const peta = new Map(pos.map((item) => [item.nama, item.jumlah]))
+  for (const [nama, jumlah] of potongan) peta.set(nama, (peta.get(nama) || 0) - jumlah)
+  return [...peta.entries()]
+    .filter(([, jumlah]) => jumlah > 0)
+    .map(([nama, jumlah]) => ({ nama, jumlah }))
+}
+
+function bebaskanDetail(detail: DetailTunggakan, kunci: Set<string>): DetailTunggakan {
+  if (!nisTermasukYatim(kunci, detail.nis)) return detail
+  return {
+    ...detail,
+    yatim: true,
+    subsidi: detail.tunggakan,
+    tunggakan: 0,
+    status: 'Ditanggung Yayasan',
+    rincian: [],
+  }
+}
+
 export async function overlayRekapKeuangan(rekap: RekapKeuangan, rincian: Map<string, RincianTagihan[]>): Promise<RekapKeuangan> {
   const daftar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  if (daftar.length === 0) return rekap
-  const overlay = overlaySiswaDanRincian(rekap.siswa, rincian, daftar)
-  const siswaAktif = overlay.siswa.filter((baris) => baris.aktif)
-  const menunggak = overlay.siswa.filter((baris) => baris.status === 'Menunggak')
+  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+  const overlay = daftar.length === 0 ? { siswa: rekap.siswa, rincian } : overlaySiswaDanRincian(rekap.siswa, rincian, daftar)
+  const adaYatim = overlay.siswa.some((baris) => nisTermasukYatim(kunci, baris.nis))
+  if (!adaYatim && daftar.length === 0) return rekap
+
+  const siswa = overlay.siswa.map((baris) => {
+    if (!nisTermasukYatim(kunci, baris.nis)) return baris
+    return {
+      ...baris,
+      yatim: true,
+      subsidi: baris.tunggakan,
+      tunggakan: 0,
+      status: 'Ditanggung Yayasan' as const,
+      jumlahTagihan: 0,
+    }
+  })
+  const siswaAktif = siswa.filter((baris) => baris.aktif)
+  const menunggak = siswa.filter((baris) => baris.status === 'Menunggak')
   const sisaTagihan: [string, number][] = []
-  for (const daftarTagihan of overlay.rincian.values()) {
+  const potonganJenis: [string, number][] = []
+  const potonganTapel: [string, number][] = []
+  for (const [nis, daftarTagihan] of overlay.rincian) {
+    const yatim = nisTermasukYatim(kunci, nis)
     for (const item of daftarTagihan) {
-      sisaTagihan.push([jenisItem(item.kode, item.item), item.jumlah])
+      if (yatim) {
+        potonganJenis.push([jenisItem(item.kode, item.item), item.jumlah])
+        potonganTapel.push([labelTapel(item.tapel), item.jumlah])
+      } else {
+        sisaTagihan.push([jenisItem(item.kode, item.item), item.jumlah])
+      }
     }
   }
+  const anakYatim = siswa.filter((baris) => baris.yatim)
   return {
     ...rekap,
-    siswa: overlay.siswa,
+    siswa,
     piutang: menunggak.reduce((jumlah, baris) => jumlah + baris.tunggakan, 0),
-    siswaLunas: siswaAktif.filter((baris) => baris.status === 'Lunas').length,
+    siswaLunas: siswaAktif.filter((baris) => baris.status === 'Lunas' || baris.yatim).length,
     siswaMenunggak: menunggak.length,
     diLuarRombel: menunggak.filter((baris) => !baris.aktif).length,
-    piutangPerJenis: jumlahkanPos(sisaTagihan),
-    perKelas: rekapKelasLokal(overlay.siswa),
+    piutangPerJenis: daftar.length > 0 ? jumlahkanPos(sisaTagihan) : kurangiPos(rekap.piutangPerJenis, potonganJenis),
+    piutangPerTapel: kurangiPos(rekap.piutangPerTapel, potonganTapel),
+    perKelas: rekapKelasLokal(siswa),
     rekapan: rekap.rekapan.map((baris) => {
+      if (nisTermasukYatim(kunci, baris.nis)) return { ...baris, status: 'Lunas' as const, nominal: 0 }
       const sisa = overlay.rincian.get(baris.nis)?.find((item) => item.kode === baris.kode && item.tapel === baris.tapel)
-      if (baris.status === 'Belum' && !sisa) return { ...baris, status: 'Lunas' as const, nominal: 0 }
-      if (sisa) return { ...baris, nominal: sisa.jumlah, status: sisa.jumlah > 0 ? ('Belum' as const) : ('Lunas' as const) }
+      if (baris.status === 'Belum' && daftar.length > 0 && !sisa) return { ...baris, status: 'Lunas' as const, nominal: 0 }
+      if (sisa && daftar.length > 0) return { ...baris, nominal: sisa.jumlah, status: sisa.jumlah > 0 ? ('Belum' as const) : ('Lunas' as const) }
       return baris
     }),
+    subsidiYatim: {
+      siswa: anakYatim.length,
+      nominal: anakYatim.reduce((jumlah, baris) => jumlah + (baris.subsidi || 0), 0),
+      baris: anakYatim.map((baris) => ({
+        nis: baris.nis,
+        nama: baris.nama,
+        kelas: baris.kelas,
+        nominal: baris.subsidi || 0,
+      })),
+    },
   }
 }
 
 export async function overlayDetailTunggakan(detail: DetailTunggakan): Promise<DetailTunggakan> {
   const daftar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  if (daftar.length === 0) return detail
-  return terapkanPembayaranKeDetail(detail, daftar)
+  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+  const dasar = daftar.length === 0 ? detail : terapkanPembayaranKeDetail(detail, daftar)
+  return bebaskanDetail(dasar, kunci)
 }
 
 export async function overlayDaftarTunggakan(daftar: DetailTunggakan[]): Promise<DetailTunggakan[]> {
   const bayar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  if (bayar.length === 0) return daftar
-  return daftar.map((item) => terapkanPembayaranKeDetail(item, bayar))
+  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+  return daftar.map((item) => bebaskanDetail(bayar.length === 0 ? item : terapkanPembayaranKeDetail(item, bayar), kunci))
 }
 
 function rekapKelasLokal(siswa: SiswaTunggakan[]) {
@@ -133,6 +190,11 @@ function rekapKelasLokal(siswa: SiswaTunggakan[]) {
     if (!baris.aktif) continue
     const kini = peta.get(baris.kelas) || { kelas: baris.kelas, siswa: 0, menunggak: 0, lunas: 0, piutang: 0 }
     kini.siswa += 1
+    if (baris.yatim) {
+      kini.lunas += 1
+      peta.set(baris.kelas, kini)
+      continue
+    }
     kini.piutang += baris.tunggakan
     if (baris.status === 'Menunggak') kini.menunggak += 1
     else kini.lunas += 1

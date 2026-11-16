@@ -6,11 +6,12 @@ import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
 import { KartuRekapanTagihan } from '@/components/kepsek/rekapan-tagihan'
 import { SuratTunggakan } from '@/components/kepsek/surat-tunggakan'
 import { labelTapel } from '@/lib/ampss-urai'
+import { LencanaYatim } from '@/components/lencana-yatim'
 import type { DetailTunggakan, RekapKeuangan, SiswaTunggakan, StatusBayar } from '@/lib/keuangan-tipe'
 
 const UKURAN_HALAMAN = 20
 
-type PanelRingkas = 'piutang' | 'masuk' | 'menunggak' | 'lunas'
+type PanelRingkas = 'piutang' | 'masuk' | 'menunggak' | 'lunas' | 'subsidi'
 
 const kelasKartu =
   'cursor-pointer rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'
@@ -25,7 +26,8 @@ function waktuLokal(iso: string) {
   return tanggal.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function LencanaStatus({ status }: { status: StatusBayar }) {
+function LencanaStatus({ status, yatim }: { status: StatusBayar; yatim?: boolean }) {
+  if (yatim || status === 'Ditanggung Yayasan') return <LencanaYatim />
   const kelas = status === 'Lunas' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${kelas}`}>{status}</span>
 }
@@ -70,13 +72,19 @@ export function ModulKeuangan() {
   const tersaring = useMemo(() => {
     const kata = cari.trim().toLowerCase()
     return (data?.siswa || []).filter((baris) => {
-      if (status === 'Lunas' && !baris.aktif) return false
-      if (status !== 'semua' && baris.status !== status) return false
+      if (panel === 'subsidi') {
+        if (!baris.yatim) return false
+      } else if (status === 'Lunas') {
+        if (!baris.aktif) return false
+        if (baris.status !== 'Lunas' && !baris.yatim) return false
+      } else if (status !== 'semua' && baris.status !== status) {
+        return false
+      }
       if (kelas !== 'semua' && baris.kelas !== kelas) return false
       if (!kata) return true
       return baris.nama.toLowerCase().includes(kata) || baris.nis.includes(kata)
     })
-  }, [data, cari, kelas, status])
+  }, [data, cari, kelas, status, panel])
 
   const halamanMaks = Math.max(0, Math.ceil(tersaring.length / UKURAN_HALAMAN) - 1)
   const halamanAman = Math.min(halaman, halamanMaks)
@@ -176,6 +184,18 @@ export function ModulKeuangan() {
             <span className="mt-1 block text-xs font-medium text-slate-600">Siswa rombel aktif tanpa tagihan jatuh tempo.</span>
           </button>
           <KartuRekapanTagihan baris={data.rekapan} periode={data.periodeTagihan} />
+          <button type="button" onClick={() => bukaPanel('subsidi')} className={`${kelasKartu} border-emerald-200 bg-emerald-50`}>
+            <span className="flex items-center justify-between gap-2 text-emerald-900">
+              <span className="inline-flex items-center gap-1 text-xs font-extrabold uppercase">
+                <Wallet className="size-3.5" /> Subsidi anak yatim
+              </span>
+              <ChevronRight className="size-4 text-emerald-700/70" />
+            </span>
+            <span className="mt-2 block text-xl font-black text-slate-900">{rupiah(data.subsidiYatim?.nominal || 0)}</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">
+              {data.subsidiYatim?.siswa || 0} siswa. Catatan subsidi silang, tidak masuk arus kas, LRA, atau neraca.
+            </span>
+          </button>
         </div>
       )}
 
@@ -184,7 +204,7 @@ export function ModulKeuangan() {
           judul={judulPanel(panel)}
           keterangan={keteranganPanel(panel, data)}
           onTutup={() => setPanel(null)}
-          lebar={panel === 'menunggak' || panel === 'lunas' ? 'max-w-5xl' : 'max-w-3xl'}
+          lebar={panel === 'menunggak' || panel === 'lunas' || panel === 'subsidi' ? 'max-w-5xl' : 'max-w-3xl'}
         >
           {panel === 'piutang' && (
             <div className="space-y-4">
@@ -221,7 +241,12 @@ export function ModulKeuangan() {
           {panel === 'masuk' && (
             <PanelPos judul="Penerimaan bank hari ini per jenis" baris={data.penerimaanPerItem} kosong="Belum ada penerimaan pada laporan bank hari ini." />
           )}
-          {(panel === 'menunggak' || panel === 'lunas') && (
+          {panel === 'subsidi' && (
+            <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+              Nominal ini adalah tagihan yang ditanggung yayasan. Kasir tidak menagihnya, dan angka ini tidak dicatat sebagai penerimaan atau pengeluaran kas.
+            </p>
+          )}
+          {(panel === 'menunggak' || panel === 'lunas' || panel === 'subsidi') && (
             <DaftarSiswa
               cari={cari}
               kelas={kelas}
@@ -241,6 +266,7 @@ export function ModulKeuangan() {
               onHalaman={(arah) => setHalaman((nilai) => Math.max(0, Math.min(halamanMaks, nilai + arah)))}
               onRincian={bukaDetail}
               onCetak={panel === 'menunggak' ? setSurat : undefined}
+              labelYatim={panel === 'lunas' ? 'Anak Yatim' : undefined}
             />
           )}
         </ModalKerangka>
@@ -262,8 +288,15 @@ export function ModulKeuangan() {
           {detailGalat && <p className="text-sm text-red-700">{detailGalat}</p>}
           {detail && (
             <>
+              {detail.yatim ? (
+                <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">
+                  Ditanggung Yayasan (Gratis). Tagihan aktif untuk kasir {rupiah(0)}. Nilai subsidi {rupiah(detail.subsidi || 0)}.
+                </p>
+              ) : null}
               {detail.rincian.length === 0 ? (
-                <p className="text-sm text-slate-600">Tidak ada tagihan yang belum dibayar.</p>
+                <p className="text-sm text-slate-600">
+                  {detail.yatim ? 'Tidak ada tagihan yang ditagihkan kepada wali.' : 'Tidak ada tagihan yang belum dibayar.'}
+                </p>
               ) : (
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
@@ -311,6 +344,7 @@ function judulPanel(panel: PanelRingkas) {
   if (panel === 'piutang') return 'Dana belum masuk'
   if (panel === 'masuk') return 'Dana masuk hari ini'
   if (panel === 'menunggak') return 'Siswa menunggak'
+  if (panel === 'subsidi') return 'Subsidi anak yatim'
   return 'Siswa lunas'
 }
 
@@ -318,6 +352,7 @@ function keteranganPanel(panel: PanelRingkas, data: RekapKeuangan) {
   if (panel === 'piutang') return `${rupiah(data.piutang)} · tagihan terbuka ${data.sekolah}`
   if (panel === 'masuk') return `${rupiah(data.penerimaanHariIni)} · laporan bank AMPSS`
   if (panel === 'menunggak') return `${data.siswaMenunggak} siswa · ${data.diLuarRombel} di luar rombel ${data.tapel}`
+  if (panel === 'subsidi') return `${data.subsidiYatim?.siswa || 0} siswa · ${rupiah(data.subsidiYatim?.nominal || 0)} ditanggung yayasan`
   return `${data.siswaLunas} dari ${data.siswaAktif} siswa rombel aktif`
 }
 
@@ -334,6 +369,7 @@ function DaftarSiswa({
   onHalaman,
   onRincian,
   onCetak,
+  labelYatim,
 }: {
   cari: string
   kelas: string
@@ -347,6 +383,7 @@ function DaftarSiswa({
   onHalaman: (arah: number) => void
   onRincian: (nis: string) => void
   onCetak?: (siswa: SiswaTunggakan) => void
+  labelYatim?: string
 }) {
   return (
     <div className="space-y-3">
@@ -393,18 +430,33 @@ function DaftarSiswa({
             ) : tampil.map((baris) => (
               <tr key={baris.nis}>
                 <td className="border-b p-2">
-                  <button type="button" onClick={() => onRincian(baris.nis)} className="text-left font-bold text-emerald-950 underline-offset-2 hover:underline">
+                  <button type="button" onClick={() => onRincian(baris.nis)} className="inline-flex flex-wrap items-center gap-1.5 text-left font-bold text-emerald-950 underline-offset-2 hover:underline">
                     {baris.nama}
+                    {baris.yatim ? <LencanaYatim label={labelYatim} /> : null}
                   </button>
                   <p className="text-[11px] text-slate-500">NIS {baris.nis}{baris.aktif ? '' : ' · di luar rombel aktif'}</p>
                 </td>
                 <td className="border-b p-2">{baris.kelas}</td>
                 <td className="border-b p-2 text-end">{baris.jumlahTagihan}</td>
-                <td className="border-b p-2 text-end font-bold">{rupiah(baris.tunggakan)}</td>
-                <td className="border-b p-2"><LencanaStatus status={baris.status} /></td>
+                <td className="border-b p-2 text-end font-bold">
+                  {baris.yatim ? (
+                    <span>
+                      {rupiah(0)}
+                      <span className="mt-0.5 block text-[10px] font-semibold text-emerald-800">Ditanggung {rupiah(baris.subsidi || 0)}</span>
+                    </span>
+                  ) : (
+                    rupiah(baris.tunggakan)
+                  )}
+                </td>
+                <td className="border-b p-2">
+                  <LencanaStatus
+                    status={labelYatim && baris.yatim ? 'Lunas' : baris.status}
+                    yatim={labelYatim ? false : baris.yatim}
+                  />
+                </td>
                 <td className="border-b p-2 text-end">
                   <div className="flex flex-wrap justify-end gap-1">
-                    {onCetak && (
+                    {onCetak && !baris.yatim && (
                       <button
                         type="button"
                         onClick={() => onCetak(baris)}

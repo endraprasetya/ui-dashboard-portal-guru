@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
+import { LencanaYatim } from '@/components/lencana-yatim'
 import { formatLabelSiswa, saringSiswaKasir } from '@/lib/kasir'
 import type { Siswa } from '@/lib/siswa'
 
@@ -113,7 +114,10 @@ export function CariSiswaKasir({
                 onClick={() => pilih(siswa)}
                 className={`flex w-full flex-col items-start border-b border-slate-50 px-3 py-2.5 text-left ${indeks === aktif ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
               >
-                <span className="text-sm font-bold text-slate-800">{formatLabelSiswa(siswa)}</span>
+                <span className="inline-flex flex-wrap items-center gap-1.5 text-sm font-bold text-slate-800">
+                  {formatLabelSiswa(siswa)}
+                  {siswa.is_yatim ? <LencanaYatim /> : null}
+                </span>
                 <span className="text-[11px] font-semibold text-slate-500">Kelas {siswa.kelas || '-'}</span>
               </button>
             ))
@@ -122,9 +126,15 @@ export function CariSiswaKasir({
           )}
         </div>
       ) : null}
-      <p className="mt-1 text-[11px] font-medium text-slate-500">
-        {terpilih ? 'Siswa tertaut. Transaksi penerimaan dapat menandai tagihan lunas setelah divalidasi Bendahara.' : 'Cari dengan NIS, nama depan, nama tengah, atau nama akhir.'}
-      </p>
+      {terpilih?.is_yatim ? (
+        <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-emerald-800">
+          <LencanaYatim /> Ditanggung Yayasan (Gratis). Tagihan aktif {`Rp 0`}.
+        </p>
+      ) : (
+        <p className="mt-1 text-[11px] font-medium text-slate-500">
+          {terpilih ? 'Siswa tertaut. Transaksi penerimaan dapat menandai tagihan lunas setelah divalidasi Bendahara.' : 'Cari dengan NIS, nama depan, nama tengah, atau nama akhir.'}
+        </p>
+      )}
     </div>
   )
 }

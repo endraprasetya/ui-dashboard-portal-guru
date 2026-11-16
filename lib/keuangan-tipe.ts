@@ -1,4 +1,4 @@
-export type StatusBayar = 'Lunas' | 'Menunggak'
+export type StatusBayar = 'Lunas' | 'Menunggak' | 'Ditanggung Yayasan'
 export type StatusTagihan = 'Lunas' | 'Belum'
 
 export type RincianTagihan = {
@@ -18,6 +18,9 @@ export type SiswaTunggakan = {
   status: StatusBayar
   aktif: boolean
   jumlahTagihan: number
+  yatim?: boolean
+  /** Nominal tagihan yang ditanggung yayasan, di luar piutang yang ditagihkan. */
+  subsidi?: number
 }
 
 export type PosUang = {
@@ -51,6 +54,12 @@ export type RekapKeuangan = {
   siswa: SiswaTunggakan[]
   periodeTagihan: string
   rekapan: BarisRekapan[]
+  /** Rekap internal subsidi silang. Tidak masuk arus kas, LRA, atau neraca. */
+  subsidiYatim?: {
+    siswa: number
+    nominal: number
+    baris: { nis: string; nama: string; kelas: string; nominal: number }[]
+  }
 }
 
 export type BarisRekapan = {
@@ -74,4 +83,6 @@ export type DetailTunggakan = {
   tunggakan: number
   status: StatusBayar
   rincian: RincianTagihan[]
+  yatim?: boolean
+  subsidi?: number
 }

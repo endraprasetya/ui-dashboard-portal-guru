@@ -203,7 +203,7 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
 
   useEffect(() => {
     const nis = siswaTerpilih ? nisTampilSiswa(siswaTerpilih) : ''
-    if (jenis !== 'Penerimaan' || !nis) {
+    if (jenis !== 'Penerimaan' || !nis || siswaTerpilih?.is_yatim) {
       setTagihan([])
       setGalatTagihan('')
       setMemuatTagihan(false)
@@ -259,6 +259,10 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
         }
       })
       .filter((baris) => baris.kode_akun && baris.nominal > 0)
+    if (jenis === 'Penerimaan' && siswaTerpilih?.is_yatim) {
+      setGalat('Ananda berstatus yatim. Tagihan ditanggung yayasan (gratis) dan tidak ditagihkan.')
+      return
+    }
     if (daftar.length === 0) {
       setGalat('Isi minimal satu baris kode akun dan nominal.')
       return
@@ -371,7 +375,7 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
                     <th className="border-b p-2 w-10">No</th>
                     <th className="border-b p-2">Kode akun</th>
                     <th className="border-b p-2 w-40">Nominal</th>
-                    {jenis === 'Penerimaan' && siswaTerpilih ? <th className="border-b p-2">Tagihan terkait</th> : null}
+                    {jenis === 'Penerimaan' && siswaTerpilih && !siswaTerpilih.is_yatim ? <th className="border-b p-2">Tagihan terkait</th> : null}
                     <th className="border-b p-2 w-12" />
                   </tr>
                 </thead>
@@ -406,7 +410,7 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
                             required
                           />
                         </td>
-                        {jenis === 'Penerimaan' && siswaTerpilih ? (
+                        {jenis === 'Penerimaan' && siswaTerpilih && !siswaTerpilih.is_yatim ? (
                           <td className="border-b p-2">
                             <select
                               value={baris.kunci_tagihan}
@@ -452,6 +456,11 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
                 </tbody>
               </table>
             </div>
+            {jenis === 'Penerimaan' && siswaTerpilih?.is_yatim ? (
+              <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                Ditanggung Yayasan (Gratis). Tagihan aktif disembunyikan agar tidak ditagihkan. Nilai subsidi tetap tercatat di rekap bendahara, terpisah dari arus kas.
+              </p>
+            ) : null}
             {galatTagihan ? <p className="text-[11px] font-medium text-amber-800">{galatTagihan}</p> : null}
             <p className="text-right text-sm font-black text-emerald-900">Total {rupiahKas(totalNominal)}</p>
           </div>

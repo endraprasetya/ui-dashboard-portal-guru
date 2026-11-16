@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { bacaYatim } from '@/lib/yatim'
 
 export type Siswa = {
   id_siswa: string
@@ -7,6 +8,7 @@ export type Siswa = {
   id_pembimbing?: string
   unit?: string
   nis?: string
+  is_yatim?: boolean
 }
 
 export function isKelasAlumni(kelas?: string | null) {
@@ -169,6 +171,26 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 menit
  * Fetch semua siswa dengan caching untuk performa
  * Gunakan filter di server-side jika memungkinkan untuk data besar
  */
+const KOLOM_DAFTAR_SISWA = [
+  'id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis, is_yatim',
+  'id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis, yatim',
+  'id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis, status_yatim',
+  'id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis',
+]
+let kolomDaftarSiswa: string | null = null
+
+function petakanSiswa(row: Record<string, unknown>): Siswa {
+  return {
+    id_siswa: String(row.id_siswa || ''),
+    nama_siswa: String(row.nama_siswa || ''),
+    kelas: String(row.kelas || ''),
+    id_pembimbing: row.id_pembimbing ? String(row.id_pembimbing) : undefined,
+    unit: row.unit ? String(row.unit) : undefined,
+    nis: row.nis ? String(row.nis) : undefined,
+    is_yatim: bacaYatim(row.is_yatim ?? row.yatim ?? row.status_yatim),
+  }
+}
+
 export async function fetchDaftarSiswa(): Promise<Siswa[]> {
   const now = Date.now()
   if (siswaCache && now - siswaCacheTime < CACHE_DURATION) {
@@ -180,19 +202,31 @@ export async function fetchDaftarSiswa(): Promise<Siswa[]> {
   let from = 0
 
   while (true) {
-    const { data, error } = await supabase
-      .from('siswa')
-      .select('id_siswa, nama_siswa, kelas, id_pembimbing, unit, nis')
-      .not('kelas', 'ilike', '%Alumni%')
-      .order('nama_siswa', { ascending: true })
-      .range(from, from + pageSize - 1)
-    if (error) {
-      console.error('Gagal mengambil data siswa:', error.message)
+    const urutan = kolomDaftarSiswa ? [kolomDaftarSiswa] : KOLOM_DAFTAR_SISWA
+    let data: Record<string, unknown>[] | null = null
+    let pesan = ''
+    for (const kolom of urutan) {
+      const hasil = await supabase
+        .from('siswa')
+        .select(kolom)
+        .not('kelas', 'ilike', '%Alumni%')
+        .order('nama_siswa', { ascending: true })
+        .range(from, from + pageSize - 1)
+      if (!hasil.error) {
+        kolomDaftarSiswa = kolom
+        data = (hasil.data || []) as unknown as Record<string, unknown>[]
+        break
+      }
+      pesan = hasil.error.message
+      if (!/column|schema cache|does not exist/i.test(pesan)) break
+    }
+    if (!data) {
+      console.error('Gagal mengambil data siswa:', pesan)
       break
     }
-    const rows = excludeAlumniSiswa((data || []) as Siswa[])
+    const rows = excludeAlumniSiswa(data.map(petakanSiswa))
     all.push(...rows)
-    if ((data || []).length < pageSize) break
+    if (data.length < pageSize) break
     from += pageSize
   }
 

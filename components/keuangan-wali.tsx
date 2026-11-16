@@ -5,6 +5,7 @@ import { CircleCheck, CircleAlert, Wallet } from 'lucide-react'
 import { muatAnandaUntukWali } from '@/lib/portal-wali-siswa'
 import type { SantriWali } from '@/lib/portal-wali'
 import { labelPeriodeBerjalan, labelTapel, saringRincianPortalWali } from '@/lib/ampss-urai'
+import { LencanaYatim } from '@/components/lencana-yatim'
 import type { DetailTunggakan } from '@/lib/keuangan-tipe'
 
 function rupiah(nilai: number) {
@@ -30,7 +31,8 @@ export function KeuanganWaliBeranda({
 }) {
   const { data, memuat } = useKeuanganWali(currentUser)
   if (memuat || data.length === 0) return null
-  const menunggak = data.filter((item) => item.tunggakan > 0)
+  const menunggak = data.filter((item) => !item.yatim && item.tunggakan > 0)
+  const yatim = data.filter((item) => item.yatim)
   const total = menunggak.reduce((jumlah, item) => jumlah + item.tunggakan, 0)
 
   const isi = (
@@ -40,6 +42,18 @@ export function KeuanganWaliBeranda({
         <h3 className="text-sm font-extrabold">Keuangan ananda</h3>
       </div>
       <p className="text-[11px] text-slate-500">Tagihan tertunda hanya dihitung sampai {labelPeriodeBerjalan('2627')}.</p>
+      {yatim.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {yatim.map((item) => (
+            <li key={item.nis} className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2">
+              <p className="inline-flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-800">
+                {item.nama} · {item.kelas} <LencanaYatim />
+              </p>
+              <p className="text-[11px] font-semibold text-emerald-900">Ditanggung Yayasan (Gratis) · tagihan aktif {rupiah(0)}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {menunggak.length === 0 ? (
         <p className="mt-2 text-sm font-semibold text-emerald-800">Tidak ada tunggakan pada bulan berjalan dan sebelumnya.</p>
       ) : (
@@ -99,19 +113,30 @@ function KartuTunggakanAnanda({ data }: { data: DetailTunggakan }) {
     <article className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-extrabold text-slate-900">{data.nama}</p>
+          <p className="inline-flex flex-wrap items-center gap-1.5 text-sm font-extrabold text-slate-900">
+            {data.nama}
+            {data.yatim ? <LencanaYatim /> : null}
+          </p>
           <p className="text-[11px] text-slate-500">Kelas {data.kelas} · NIS {data.nis}</p>
         </div>
-        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${lunas ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-          {lunas ? <CircleCheck className="size-3.5" /> : <CircleAlert className="size-3.5" />}
-          {lunas ? 'Lunas' : 'Menunggak'}
-        </span>
+        {data.yatim ? (
+          <LencanaYatim />
+        ) : (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${lunas ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+            {lunas ? <CircleCheck className="size-3.5" /> : <CircleAlert className="size-3.5" />}
+            {lunas ? 'Lunas' : 'Menunggak'}
+          </span>
+        )}
       </div>
-      <p className="mt-2 text-lg font-black text-slate-900">{rupiah(data.tunggakan)}</p>
-      <p className="text-[11px] text-slate-500">Total tagihan tertunda s.d. bulan berjalan</p>
+      <p className="mt-2 text-lg font-black text-slate-900">{rupiah(data.yatim ? 0 : data.tunggakan)}</p>
+      <p className="text-[11px] text-slate-500">
+        {data.yatim ? 'Ditanggung Yayasan (Gratis). Tidak ada tagihan yang perlu dibayar.' : 'Total tagihan tertunda s.d. bulan berjalan'}
+      </p>
 
       {data.rincian.length === 0 ? (
-        <p className="mt-3 text-xs text-slate-500">Tidak ada tagihan jatuh tempo yang belum dibayar.</p>
+        <p className="mt-3 text-xs text-slate-500">
+          {data.yatim ? 'Tagihan aktif bernilai Rp 0 dan ditanggung yayasan.' : 'Tidak ada tagihan jatuh tempo yang belum dibayar.'}
+        </p>
       ) : (
         <ul className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {data.rincian.map((item) => (
@@ -147,9 +172,12 @@ function useKeuanganWali(currentUser?: Record<string, unknown> | null) {
         const json = await respon.json()
         if (!respon.ok) throw new Error(json.pesan || 'Data keuangan belum dapat dimuat.')
         return (json as DetailTunggakan[]).map((item) => {
+          if (item.yatim) {
+            return { ...item, rincian: [], tunggakan: 0, status: 'Ditanggung Yayasan' as const, yatim: true }
+          }
           const rincian = saringRincianPortalWali(item.rincian || [])
           const tunggakan = rincian.reduce((jumlah, baris) => jumlah + baris.jumlah, 0)
-          return { ...item, rincian, tunggakan, status: tunggakan > 0 ? 'Menunggak' : 'Lunas' }
+          return { ...item, rincian, tunggakan, status: tunggakan > 0 ? ('Menunggak' as const) : ('Lunas' as const) }
         })
       })
       .then((hasil) => {
