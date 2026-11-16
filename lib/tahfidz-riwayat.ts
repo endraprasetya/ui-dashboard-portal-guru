@@ -14,6 +14,10 @@ export type RiwayatSetoranTahfidz = {
   keterangan_pesan_hafalan?: string
   tugas_rumah?: string
   surah_tugas?: string
+  ayat_mulai_tugas?: string
+  ayat_selesai_tugas?: string
+  konfirmasi_ortu?: string
+  tipe_tugas?: string
 }
 
 export async function fetchRiwayatSetoranTahfidz(idSiswa: string, limit = 5): Promise<RiwayatSetoranTahfidz[]> {
@@ -23,7 +27,7 @@ export async function fetchRiwayatSetoranTahfidz(idSiswa: string, limit = 5): Pr
   const { data, error } = await supabase
     .from('setoran_tahfidz')
     .select(
-      'id_setoran,tanggal,hafalan_baru,ayat_mulai,ayat_selesai,status,keterangan,keterangan_pesan_hafalan,tugas_rumah,surah_tugas',
+      'id_setoran,tanggal,hafalan_baru,ayat_mulai,ayat_selesai,status,keterangan,keterangan_pesan_hafalan,tugas_rumah,surah_tugas,ayat_mulai_tugas,ayat_selesai_tugas,konfirmasi_ortu,tipe_tugas',
     )
     .eq('id_siswa', id)
     .order('tanggal', { ascending: false })

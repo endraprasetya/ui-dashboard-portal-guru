@@ -7,8 +7,6 @@ import { fetchAllSurah, infoAyatMelebihi, validasiAyatSurat, type InfoBatasAyat,
 import {
   formatLabelAyat,
   formatMurojaahRecord,
-  formatTugasRecord,
-  formatZiyadahRecord,
   kunciHariJakarta,
   parseBagianAyat,
   parseMurojaahTeks,
@@ -17,6 +15,7 @@ import {
 } from '@/lib/tahfidz'
 import { ArrowLeft, Save, Edit3, Trash2, XCircle, Search } from 'lucide-react'
 import { BidangSuaraMandiri } from '@/components/input-suara'
+import { SelTugasRumah } from '@/components/tahfidz-tugas-rumah'
 import { PeringatanPrioritasSetoranDialog } from '@/components/peringatan-prioritas-setoran-dialog'
 import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import {
@@ -382,9 +381,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     }
   }
 
-  const formatZiyadah = (record: any) => formatZiyadahRecord(record)
   const formatMurojaah = (record: any) => formatMurojaahRecord(record)
-  const formatTugasRumah = (record: any) => formatTugasRecord(record)
 
   const resetSetelahSimpan = () => {
     resetInputFields()
@@ -752,7 +749,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                     <th className="border-b border-amber-200 p-2.5">Ziyadah</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Status</th>
                     <th className="border-b border-amber-200 p-2.5">Murojaah</th>
-                    <th className="border-b border-amber-200 p-2.5">Tugas Di Rumah</th>
+                    <th className="border-b border-amber-200 p-2.5 min-w-[12rem]">Tugas Di Rumah</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -775,7 +772,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                         )}
                       </td>
                       <td className="p-2.5 text-slate-600">
-                        {formatTugasRumah(rec)}
+                        <SelTugasRumah record={rec} setoranBerikutnya={index > 0 ? latestRecords[index - 1] : null} />
                       </td>
                       <td className="p-2.5 text-center">
                         <button

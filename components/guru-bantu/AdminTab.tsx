@@ -3,10 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { getDaftarIzin, getMonitoring, putuskanIzin } from "@/lib/guru-bantu/api";
 import type { BarisMonitor, PerizinanDenganNama, RekapHarian } from "@/lib/guru-bantu/types";
 import { formatTanggalID, nowJakarta, potongJam } from "@/lib/guru-bantu/utils";
+import { PanelRekapAbsensiGuruBantu } from "@/components/guru-bantu/RekapMatriksGuruBantu";
 import { Alert, Card, Field, Spinner, StatCard, StatusBadge, btnOutline, inputCls } from "./ui";
 
 export default function AdminTab() {
-  const [sub, setSub] = useState<"monitor" | "izin">("monitor");
+  const [sub, setSub] = useState<"monitor" | "izin" | "rekap">("monitor");
   return (
     <div className="space-y-4">
       <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm">
@@ -14,6 +15,7 @@ export default function AdminTab() {
           [
             ["monitor", "Monitoring harian"],
             ["izin", "Verifikasi izin"],
+            ["rekap", "Rekap bulanan"],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -28,7 +30,9 @@ export default function AdminTab() {
           </button>
         ))}
       </div>
-      {sub === "monitor" ? <Monitoring /> : <VerifikasiIzin />}
+      {sub === "monitor" ? <Monitoring /> : null}
+      {sub === "izin" ? <VerifikasiIzin /> : null}
+      {sub === "rekap" ? <PanelRekapAbsensiGuruBantu /> : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { FOTO_PRESENSI_MAKS_BYTES, LOKASI_SEKOLAH, RADIUS_MAKS_METER, STATUS_HADIR } from "./constants";
+import { BATAS_TERLAMBAT, FOTO_PRESENSI_MAKS_BYTES, LOKASI_SEKOLAH, RADIUS_MAKS_METER, STATUS_HADIR } from "./constants";
 import type { GuruUser, Posisi } from "./types";
 
 /* ---------- Waktu (selalu WIB / Asia/Jakarta) ---------- */
@@ -28,6 +28,31 @@ export function formatTanggalID(iso: string | null | undefined) {
 }
 
 export const potongJam = (j: string | null | undefined) => (j ? j.slice(0, 8) : "-");
+
+export function menitDariJam(jam: string) {
+  const [h = 0, m = 0, s = 0] = jam.split(":").map((n) => Number(n) || 0);
+  return h * 60 + m + Math.floor(s / 60);
+}
+
+/** Menit keterlambatan dibanding batas masuk (default 07:00). 0 jika tepat waktu / kosong. */
+export function hitungMenitTerlambat(jamMasuk: string | null | undefined, batas = BATAS_TERLAMBAT) {
+  if (!jamMasuk) return 0;
+  const selisih = menitDariJam(jamMasuk.slice(0, 8)) - menitDariJam(batas);
+  return selisih > 0 ? Math.round(selisih) : 0;
+}
+
+export function formatDurasiMenit(menit: number) {
+  if (menit <= 0) return "";
+  if (menit < 60) return `${menit} menit`;
+  const jam = Math.floor(menit / 60);
+  const sisa = menit % 60;
+  return sisa ? `${jam} jam ${sisa} menit` : `${jam} jam`;
+}
+
+export function potongJamPendek(j: string | null | undefined) {
+  if (!j) return "";
+  return j.slice(0, 5);
+}
 
 /** Daftar tanggal YYYY-MM-DD dari start s/d end (inklusif), maks 366 hari */
 export function eachDate(start: string, end: string): string[] {

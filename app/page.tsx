@@ -15,6 +15,7 @@ import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
+import { PanelRekapAbsensiGuruBantu } from '@/components/guru-bantu/RekapMatriksGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
 import { PortalGuruNav } from '@/components/portal-guru-nav'
@@ -260,7 +261,7 @@ export default function Home() {
         <PortalGuruNav currentView={currentView} />
       </header>
 
-      <main className={`mx-auto p-4 sm:p-6 space-y-6 ${currentView === 'absensi' ? 'max-w-[96rem]' : currentView === 'jurnal' ? 'max-w-7xl' : 'max-w-6xl'}`}>
+      <main className={`mx-auto p-4 sm:p-6 space-y-6 ${currentView === 'absensi' || currentView === 'rekap_guru_bantu' || currentView === 'absensi_guru_bantu' ? 'max-w-[96rem]' : currentView === 'jurnal' ? 'max-w-7xl' : 'max-w-6xl'}`}>
         {currentView === 'dashboard' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -673,6 +674,15 @@ export default function Home() {
                 <Users className="size-5" /> Absensi Guru Bantu
               </button>
             ) : null}
+
+            {bolehAbsensiGuruBantu && isAdminRole(String(currentUser?.role || '')) ? (
+              <button
+                onClick={() => setCurrentView('rekap_guru_bantu')}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#143d32] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#0f2e26] transition"
+              >
+                <BarChart2 className="size-5" /> Rekap Absensi Guru Bantu Bulanan
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -682,6 +692,25 @@ export default function Home() {
             currentUser={currentUser}
             backLabel="Kembali ke Menu Absensi"
           />
+        )}
+
+        {currentView === 'rekap_guru_bantu' && (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setCurrentView('absensi_menu')}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-300 transition"
+            >
+              <ArrowLeft className="size-4" /> Kembali ke Menu Absensi
+            </button>
+            {!bolehAbsensiGuruBantu || !isAdminRole(String(currentUser?.role || '')) ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Rekap absensi guru bantu hanya untuk admin guru bantu.
+              </p>
+            ) : (
+              <PanelRekapAbsensiGuruBantu />
+            )}
+          </div>
         )}
 
         {currentView === 'absensi_guru_bantu' && (

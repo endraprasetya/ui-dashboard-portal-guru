@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { LogOut, ScrollText, Wallet } from 'lucide-react'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
+import { BendaharaCatatTransaksi } from '@/components/bendahara-catat-transaksi'
 import { BendaharaValidasiKas } from '@/components/bendahara-validasi-kas'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { kanonUnitKeuangan } from '@/lib/kasir'
@@ -92,6 +93,9 @@ export function DashboardBendahara() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <a href="#catat-transaksi" className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold">
+              <Wallet className="size-3.5" /> Catat Transaksi
+            </a>
             <a href="#laporan-keuangan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
               <ScrollText className="size-3.5" /> Laporan
             </a>
@@ -108,6 +112,11 @@ export function DashboardBendahara() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
+        <BendaharaCatatTransaksi
+          user={user}
+          unit={unit}
+          onTersimpan={() => setSegarLaporan((nilai) => nilai + 1)}
+        />
         <BendaharaValidasiKas
           namaBendahara={nama}
           unit={unit}

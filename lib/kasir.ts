@@ -393,7 +393,7 @@ function kelompokkanTransaksi(daftar: Record<string, unknown>[]): TransaksiKas[]
   return urutan.map((nomor) => peta.get(nomor)!).filter(Boolean)
 }
 
-export async function simpanTransaksiDraft(input: InputTransaksiKas) {
+function barisSimpanTransaksi(input: InputTransaksiKas, status: StatusTransaksiKas, divalidasiOleh?: string | null) {
   const items = input.items.filter((item) => item.kode_akun && item.nominal > 0)
   if (items.length === 0) throw new Error('Minimal satu baris kode akun dan nominal harus diisi.')
   if (!KODE_AKUN_KAS.includes(input.akun_kas_bank as (typeof KODE_AKUN_KAS)[number])) {
@@ -404,24 +404,41 @@ export async function simpanTransaksiDraft(input: InputTransaksiKas) {
   const unit = kanonUnitKeuangan(input.unit)
   const nis = teks(input.nis) || angkaIdentitas(input.id_siswa) || ''
   const idSiswa = teks(input.id_siswa) || nis || ''
-  const baris = items.map((item, indeks) => ({
-    nomor_bukti: nomorBukti,
-    tanggal_transaksi: input.tanggal,
-    kode_akun: item.kode_akun,
-    akun_kas_bank: input.akun_kas_bank,
-    jenis_transaksi: input.jenis_transaksi,
-    nominal: item.nominal,
-    id_siswa: nis || idSiswa || null,
-    uraian,
-    status_validasi: STATUS_DRAFT,
-    urutan: indeks + 1,
-    unit: unit || null,
-    nis: nis || null,
-    nama_siswa: input.nama_siswa || null,
-    dicatat_oleh: input.dicatat_oleh,
-    kode_tagihan: item.kode_tagihan || null,
-    tapel_tagihan: item.tapel_tagihan || null,
-  }))
+  const validator = adalahUuid(divalidasiOleh) ? String(divalidasiOleh).trim() : null
+  const baris = items.map((item, indeks) => {
+    const dasar: Record<string, unknown> = {
+      nomor_bukti: nomorBukti,
+      tanggal_transaksi: input.tanggal,
+      kode_akun: item.kode_akun,
+      akun_kas_bank: input.akun_kas_bank,
+      jenis_transaksi: input.jenis_transaksi,
+      nominal: item.nominal,
+      id_siswa: nis || idSiswa || null,
+      uraian,
+      status_validasi: status,
+      urutan: indeks + 1,
+      unit: unit || null,
+      nis: nis || null,
+      nama_siswa: input.nama_siswa || null,
+      dicatat_oleh: input.dicatat_oleh,
+      kode_tagihan: item.kode_tagihan || null,
+      tapel_tagihan: item.tapel_tagihan || null,
+    }
+    if (status === STATUS_DISETUJUI) dasar.divalidasi_oleh = validator
+    return dasar
+  })
+  return { nomorBukti, baris }
+}
+
+export async function simpanTransaksiDraft(input: InputTransaksiKas) {
+  const { nomorBukti, baris } = barisSimpanTransaksi(input, STATUS_DRAFT)
+  await sisipkanTransaksiKas(baris)
+  return nomorBukti
+}
+
+/** Pencatatan langsung Bendahara: sah tanpa tahap Draft. */
+export async function simpanTransaksiDisetujui(input: InputTransaksiKas, divalidasiOleh?: string | null) {
+  const { nomorBukti, baris } = barisSimpanTransaksi(input, STATUS_DISETUJUI, divalidasiOleh)
   await sisipkanTransaksiKas(baris)
   return nomorBukti
 }

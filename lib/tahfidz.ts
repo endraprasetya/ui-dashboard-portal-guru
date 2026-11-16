@@ -137,23 +137,108 @@ export function formatMurojaahRecord(record: any) {
   return teks(record?.keterangan_pesan_murojaah) || '-'
 }
 
-function formatBagianTugas(bagian: string) {
-  const raw = bagian.trim().replace(/^[ZM]\s*:\s*/i, '').trim()
-  if (!raw || raw === '-') return ''
-  if (/\(Ayat\s+\d+/i.test(raw)) return raw
-  return formatLabelAyat(raw, '', '')
+export type RincianTugasRumah = {
+  ada: boolean
+  ziyadah: string
+  murojaah: string
+  catatan: string[]
+  teks: string
 }
 
-export function formatTugasRecord(record: any) {
+function kunciMateri(label: string) {
+  return label
+    .toLowerCase()
+    .replace(/ayat/g, '')
+    .replace(/[^a-z0-9']/g, '')
+}
+
+function materiBertemu(tugas: string, setoran: string) {
+  const a = kunciMateri(tugas)
+  const b = kunciMateri(setoran)
+  if (!a || !b || a === '-' || b === '-') return false
+  return a.includes(b) || b.includes(a)
+}
+
+function formatRentangMurojaah(awal: BagianAyat | null | undefined, akhir: BagianAyat | null | undefined) {
+  if (!awal && !akhir) return ''
+  const kiri = awal ? formatLabelAyat(awal.surah, awal.mulai, awal.selesai) : ''
+  const kanan = akhir ? formatLabelAyat(akhir.surah, akhir.mulai, akhir.selesai) : ''
+  if (kiri && kanan && kiri !== kanan) return `${kiri} s.d ${kanan}`
+  return kiri || kanan
+}
+
+export function adaIsiTugasRumah(nilai: unknown) {
+  const raw = teks(nilai)
+  if (!raw) return false
+  if (/^(\[?\s*(ziyadah|murojaah)\s+aktif\s*\]?\s*)+$/i.test(raw)) return false
+  return true
+}
+
+export function sudahDikonfirmasiTugas(status: unknown) {
+  const nilai = teks(status).toLowerCase()
+  return nilai === 'sudah dikerjakan' || nilai === 'sudah dikonfirmasi'
+}
+
+export function rincianTugasRumah(record: any): RincianTugasRumah {
   const dariKolom = teks(record?.surah_tugas)
     ? formatLabelAyat(teks(record?.surah_tugas), teks(record?.ayat_mulai_tugas), teks(record?.ayat_selesai_tugas))
     : ''
   const tugas = teks(record?.tugas_rumah)
-  if (!tugas) return dariKolom || '-'
-  if (/^(\[?\s*(ziyadah|murojaah)\s+aktif\s*\]?\s*)+$/i.test(tugas)) return dariKolom || '-'
-  const parts = tugas.split('|').map((bagian) => formatBagianTugas(bagian)).filter(Boolean)
-  if (parts.length) return parts.join(' | ')
-  return dariKolom || tugas
+  const placeholder = Boolean(tugas && /^(\[?\s*(ziyadah|murojaah)\s+aktif\s*\]?\s*)+$/i.test(tugas))
+  const parsed = !tugas || placeholder ? { ziyadah: null as BagianAyat | null, murojaah: null as BagianAyat | null } : parseTugasTeks(tugas)
+
+  const zSurah = parsed.ziyadah?.surah || teks(record?.surah_tugas)
+  const zMulai = parsed.ziyadah?.mulai || teks(record?.ayat_mulai_tugas)
+  const zSelesai = parsed.ziyadah?.selesai || teks(record?.ayat_selesai_tugas)
+  const ziyadah = formatLabelAyat(zSurah, zMulai, zSelesai) || dariKolom
+
+  const bagianM = tugas.includes('|')
+    ? tugas.split('|').slice(1).join('|').replace(/^[ZM]\s*:\s*/i, '').trim()
+    : /^M\s*:/i.test(tugas)
+      ? tugas.replace(/^[ZM]\s*:\s*/i, '').trim()
+      : ''
+  const lanjut = bagianM ? parseMurojaahTeks(bagianM) : null
+  let murojaah = formatRentangMurojaah(lanjut?.awal, lanjut?.akhir)
+  if (!murojaah && parsed.murojaah) {
+    murojaah = formatLabelAyat(parsed.murojaah.surah, parsed.murojaah.mulai, parsed.murojaah.selesai)
+  }
+
+  const catatan = [
+    parsed.ziyadah?.catatan,
+    parsed.murojaah?.catatan,
+    lanjut?.awal?.catatan,
+    lanjut?.akhir?.catatan,
+  ]
+    .map((item) => teks(item))
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+
+  const ada = Boolean(ziyadah || murojaah || catatan.length)
+  const teksTampil = [
+    ziyadah && murojaah ? `Ziyadah: ${ziyadah}` : ziyadah,
+    murojaah ? `Murojaah: ${murojaah}` : '',
+    ...catatan,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  return { ada, ziyadah, murojaah, catatan, teks: teksTampil }
+}
+
+export function formatTugasRecord(record: any) {
+  return rincianTugasRumah(record).teks || '-'
+}
+
+export function tugasRumahSudahDikerjakan(record: any, setoranBerikutnya?: any | null) {
+  if (sudahDikonfirmasiTugas(record?.konfirmasi_ortu)) return true
+  if (!setoranBerikutnya) return false
+  const tugas = rincianTugasRumah(record)
+  if (!tugas.ada) return false
+  const ziyadahBerikut = formatZiyadahRecord(setoranBerikutnya)
+  const murojaahBerikut = formatMurojaahRecord(setoranBerikutnya)
+  if (tugas.ziyadah && materiBertemu(tugas.ziyadah, ziyadahBerikut)) return true
+  if (tugas.murojaah && materiBertemu(tugas.murojaah, murojaahBerikut)) return true
+  return false
 }
 
 export function kunciHariJakarta(date = new Date()) {

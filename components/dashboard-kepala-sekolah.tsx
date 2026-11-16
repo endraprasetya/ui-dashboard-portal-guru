@@ -23,6 +23,8 @@ import {
   ModalTidakHadir,
 } from '@/components/kepsek/detail-modals'
 import { AbsensiMatriks } from '@/components/absensi-matriks'
+import { RekapMatriksGuruBantu } from '@/components/guru-bantu/RekapMatriksGuruBantu'
+import { muatRekapBulananGuruBantuKepsek, type RekapBulananGuruBantuKepsek } from '@/lib/kepsek-guru-bantu'
 import { CetakUjianQiroah, type HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
 import {
   KEPALA_SEKOLAH,
@@ -39,7 +41,7 @@ import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin } from '@/lib/bendahara'
 
-type Panel = 'absensi' | 'qiroah' | 'skl' | null
+type Panel = 'absensi' | 'absensi_guru_bantu' | 'qiroah' | 'skl' | null
 type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
 
 const BATAS_TABEL = 6
@@ -92,6 +94,8 @@ export function DashboardKepalaSekolah() {
   const [panel, setPanel] = useState<Panel>(null)
   const [kelasCetak, setKelasCetak] = useState('')
   const [bulanCetak, setBulanCetak] = useState(todayInputValue().slice(0, 7))
+  const [rekapGuruBantu, setRekapGuruBantu] = useState<RekapBulananGuruBantuKepsek | null>(null)
+  const [memuatRekapGuruBantu, setMemuatRekapGuruBantu] = useState(false)
   const [skl, setSkl] = useState<HasilUjianCetak | null>(null)
   const [modalKpi, setModalKpi] = useState<ModalKpi>(null)
   const [rincianAbsen, setRincianAbsen] = useState(false)
@@ -133,6 +137,25 @@ export function DashboardKepalaSekolah() {
       batal = true
     }
   }, [siap])
+
+  useEffect(() => {
+    if (siap !== 'siap' || panel !== 'absensi_guru_bantu') return
+    let batal = false
+    setMemuatRekapGuruBantu(true)
+    muatRekapBulananGuruBantuKepsek(bulanCetak)
+      .then((hasil) => {
+        if (!batal) setRekapGuruBantu(hasil)
+      })
+      .catch(() => {
+        if (!batal) setRekapGuruBantu(null)
+      })
+      .finally(() => {
+        if (!batal) setMemuatRekapGuruBantu(false)
+      })
+    return () => {
+      batal = true
+    }
+  }, [siap, panel, bulanCetak])
 
   const siswaKelas = useMemo(() => {
     if (!laporan || !kelasCetak) return []
@@ -483,6 +506,7 @@ export function DashboardKepalaSekolah() {
               <p className="mt-1 text-xs text-slate-500">Tanda tangan Kepala Sekolah otomatis memakai {KEPALA_SEKOLAH.nama}, NIY {KEPALA_SEKOLAH.niy}.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => setPanel('absensi')} className="rounded-xl bg-[#143d32] px-3 py-2 text-xs font-bold text-white">Rekap Absensi Bulanan (F4)</button>
+                <button type="button" onClick={() => setPanel('absensi_guru_bantu')} className="rounded-xl bg-teal-800 px-3 py-2 text-xs font-bold text-white">Rekap Absensi Guru Bantu</button>
                 <button type="button" onClick={() => setPanel('qiroah')} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-bold text-white">Laporan Rekap Qiroah</button>
                 <button type="button" onClick={() => setPanel('skl')} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white">Pengesahan SKL</button>
               </div>
@@ -513,6 +537,21 @@ export function DashboardKepalaSekolah() {
                   guruNama=""
                   guruNip=""
                   kepsekTetap={KEPALA_SEKOLAH}
+                />
+              </section>
+            )}
+
+            {panel === 'absensi_guru_bantu' && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="no-print mb-3 flex flex-wrap items-end gap-2">
+                  <label className="text-xs font-bold">Bulan
+                    <input type="month" value={bulanCetak} onChange={(event) => setBulanCetak(event.target.value)} className="mt-1 block rounded-lg border px-2 py-1.5" />
+                  </label>
+                </div>
+                <RekapMatriksGuruBantu
+                  rekap={rekapGuruBantu}
+                  loading={memuatRekapGuruBantu}
+                  unit={laporan.unit}
                 />
               </section>
             )}

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ambilBarisSiswa, fetchSiswaBinaan, isKelasAlumni, kunciUserGuru } from '@/lib/siswa'
-import { formatTugasRecord, formatZiyadahRecord } from '@/lib/tahfidz'
+import { formatZiyadahRecord } from '@/lib/tahfidz'
+import { SelTugasRumah } from '@/components/tahfidz-tugas-rumah'
 import { ArrowLeft, Printer, Search, Target, Users, ChevronDown, ChevronUp } from 'lucide-react'
 
 export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
@@ -201,7 +202,7 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
     // Query efisien: hanya ambil field yang diperlukan
     const { data } = await supabase
       .from('setoran_tahfidz')
-      .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah, surah_tugas, ayat_mulai_tugas, ayat_selesai_tugas')
+      .select('id_setoran, tanggal, id_siswa, hafalan_baru, ayat_mulai, ayat_selesai, status, keterangan, keterangan_pesan_hafalan, tugas_rumah, surah_tugas, ayat_mulai_tugas, ayat_selesai_tugas, konfirmasi_ortu, tipe_tugas, murojaah')
       .eq('id_siswa', String(student.id_siswa))
 
     let setoranList = data || []
@@ -503,7 +504,7 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {reportData.map((row) => (
+                      {reportData.map((row, index) => (
                         <tr key={row.id_setoran} className="hover:bg-slate-50">
                           <td className="p-2.5 border font-semibold whitespace-nowrap">
                             {formatDateString(row.tanggal)}
@@ -515,7 +516,10 @@ export function TahfidzRekap({ onBack, currentUser }: { onBack: () => void; curr
                             {row.status}
                           </td>
                           <td className="p-2.5 border text-slate-700">
-                            {formatTugasRecord(row)}
+                            <SelTugasRumah
+                              record={row}
+                              setoranBerikutnya={index > 0 ? reportData[index - 1] : null}
+                            />
                           </td>
                           <td className="p-2.5 border text-slate-600">
                             {row.keterangan_pesan_hafalan || row.keterangan || '-'}

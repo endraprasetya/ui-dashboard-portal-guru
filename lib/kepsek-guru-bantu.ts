@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase'
-import { TABEL_ABSENSI, TABEL_IZIN, TABEL_USERS } from '@/lib/guru-bantu/constants'
+import { BATAS_TERLAMBAT, TABEL_ABSENSI, TABEL_IZIN, TABEL_USERS } from '@/lib/guru-bantu/constants'
 import { UNIT_KEPALA_SEKOLAH } from '@/lib/kepala-sekolah'
 import type { Absensi, Perizinan } from '@/lib/guru-bantu/types'
-import { eachDate } from '@/lib/guru-bantu/utils'
+import { eachDate, formatDurasiMenit, hitungMenitTerlambat, potongJamPendek } from '@/lib/guru-bantu/utils'
 import { monthRange, todayInputValue } from '@/lib/jurnal'
 
 export type BarisAbsensiGuruBantuKepsek = {
@@ -13,6 +13,8 @@ export type BarisAbsensiGuruBantuKepsek = {
   status: string
   foto_masuk: string | null
   foto_pulang: string | null
+  menit_terlambat: number
+  catatan_terlambat: string | null
 }
 
 export type RekapAbsensiGuruBantuKepsek = {
@@ -28,26 +30,47 @@ export type RekapAbsensiGuruBantuKepsek = {
   baris: BarisAbsensiGuruBantuKepsek[]
 }
 
+export type KategoriAbsenGuruBantu = 'hadir' | 'terlambat' | 'izin' | 'sakit' | 'alpa'
+
+export type KategoriSelGuruBantu = KategoriAbsenGuruBantu | 'kosong' | 'libur' | 'belum'
+
+export type SelHariGuruBantu = {
+  hari: number
+  tanggal: string | null
+  jam_masuk: string | null
+  jam_pulang: string | null
+  kategori: KategoriSelGuruBantu
+  status: string
+  menitTerlambat: number
+  catatan: string
+  libur: boolean
+}
+
 export type BarisRekapBulananGuruBantu = {
   id_induk: string
   nama: string
+  role: string
   hadir: number
+  terlambat: number
   izin: number
   sakit: number
   alpa: number
+  kehadiran: number
+  menitTerlambat: number
+  sel: SelHariGuruBantu[]
 }
 
 export type RekapBulananGuruBantuKepsek = {
   bulan: string
   labelBulan: string
   hariKerja: number
+  jumlahHari: number
+  batasMasuk: string
   baris: BarisRekapBulananGuruBantu[]
-  total: { hadir: number; izin: number; sakit: number; alpa: number }
+  total: { hadir: number; terlambat: number; izin: number; sakit: number; alpa: number; menitTerlambat: number }
 }
 
-type GuruBantuUnit = { target_id: string; nama_lengkap: string }
-
-export type KategoriAbsenGuruBantu = 'hadir' | 'terlambat' | 'izin' | 'sakit' | 'alpa'
+type GuruBantuUnit = { target_id: string; nama_lengkap: string; role: string }
 
 function unitSama(nilai?: string) {
   return String(nilai || '').trim().toLowerCase() === UNIT_KEPALA_SEKOLAH.toLowerCase()
@@ -110,6 +133,7 @@ async function daftarGuruBantuUnit(): Promise<GuruBantuUnit[]> {
     .map((row) => ({
       target_id: String(row.target_id || '').trim(),
       nama_lengkap: String(row.nama_lengkap || row.target_id || '').trim(),
+      role: String(row.role || '').trim(),
     }))
     .filter((row) => row.target_id)
 }
@@ -189,6 +213,9 @@ export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue()): P
     else if (kategori === 'izin') izin += 1
     else alpa += 1
 
+    const menit = kategori === 'terlambat' ? hitungMenitTerlambat(row?.jam_masuk) : 0
+    const catatanTerlambat = menit > 0 ? `Terlambat ${formatDurasiMenit(menit)}` : null
+
     return {
       id_induk: g.target_id,
       nama: g.nama_lengkap,
@@ -197,6 +224,8 @@ export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue()): P
       status: labelDariKategori(kategori, status),
       foto_masuk: row?.foto_masuk || null,
       foto_pulang: row?.foto_pulang || null,
+      menit_terlambat: menit,
+      catatan_terlambat: catatanTerlambat,
     }
   })
 
@@ -214,26 +243,44 @@ export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue()): P
   }
 }
 
+function isoHari(bulan: string, hari: number) {
+  const [y, m] = bulan.split('-')
+  return `${y}-${m}-${String(hari).padStart(2, '0')}`
+}
+
+function selKosong(hari: number, extra?: Partial<SelHariGuruBantu>): SelHariGuruBantu {
+  return {
+    hari,
+    tanggal: null,
+    jam_masuk: null,
+    jam_pulang: null,
+    kategori: 'kosong',
+    status: '',
+    menitTerlambat: 0,
+    catatan: '',
+    libur: false,
+    ...extra,
+  }
+}
+
 export async function muatRekapBulananGuruBantuKepsek(bulan: string): Promise<RekapBulananGuruBantuKepsek> {
   const guru = await daftarGuruBantuUnit()
   const { start, end } = monthRange(bulan)
   const hariIni = todayInputValue()
-  const batas = hariIni < end ? hariIni : end
-  const semuaTanggal = eachDate(start, batas)
-  const hariKerja = semuaTanggal.filter(isHariKerja)
+  const jumlahHari = Number(end.slice(8, 10)) || 31
   const ids = guru.map((g) => g.target_id)
 
   let absensi: Absensi[] = []
   let izin: Perizinan[] = []
   if (ids.length) {
     const [absRes, izinRes] = await Promise.all([
-      supabase.from(TABEL_ABSENSI).select('*').gte('tanggal', start).lte('tanggal', batas).in('id_induk', ids),
+      supabase.from(TABEL_ABSENSI).select('*').gte('tanggal', start).lte('tanggal', end).in('id_induk', ids),
       supabase
         .from(TABEL_IZIN)
         .select('*')
         .eq('status', 'Disetujui')
         .in('id_induk', ids)
-        .lte('tgl_mulai', batas)
+        .lte('tgl_mulai', end)
         .gte('tgl_selesai', start),
     ])
     if (absRes.error) throw new Error(absRes.error.message)
@@ -243,10 +290,8 @@ export async function muatRekapBulananGuruBantuKepsek(bulan: string): Promise<Re
   }
 
   const petaAbsen = new Map<string, Absensi>()
-  const tanggalAdaData = new Set<string>()
   for (const row of absensi) {
     petaAbsen.set(`${row.id_induk}|${row.tanggal}`, row)
-    if (row.tanggal) tanggalAdaData.add(row.tanggal)
   }
 
   const izinPerGuru = new Map<string, Perizinan[]>()
@@ -256,59 +301,129 @@ export async function muatRekapBulananGuruBantuKepsek(bulan: string): Promise<Re
     izinPerGuru.set(row.id_induk, list)
   }
 
-  const statusDariIzin = (idInduk: string, tanggal: string) => {
+  const izinPadaTanggal = (idInduk: string, tanggal: string) => {
     const list = izinPerGuru.get(idInduk) || []
-    const cocok = list.find((item) => item.tgl_mulai <= tanggal && item.tgl_selesai >= tanggal)
-    if (!cocok) return null
-    return String(cocok.detail_izin || cocok.jenis_izin || 'Izin')
+    return list.find((item) => item.tgl_mulai <= tanggal && item.tgl_selesai >= tanggal) || null
   }
 
   const baris: BarisRekapBulananGuruBantu[] = guru.map((g) => {
     let hadir = 0
+    let terlambat = 0
     let izinHari = 0
     let sakit = 0
     let alpa = 0
+    let menitTerlambat = 0
+    const sel: SelHariGuruBantu[] = []
 
-    for (const tanggal of semuaTanggal) {
+    for (let hari = 1; hari <= 31; hari += 1) {
+      if (hari > jumlahHari) {
+        sel.push(selKosong(hari))
+        continue
+      }
+
+      const tanggal = isoHari(bulan, hari)
+      const libur = !isHariKerja(tanggal)
+      const masaDepan = tanggal > hariIni
       const row = petaAbsen.get(`${g.target_id}|${tanggal}`)
-      const status = row?.status || statusDariIzin(g.target_id, tanggal)
+      const izinRow = izinPadaTanggal(g.target_id, tanggal)
+      const statusIzin = izinRow ? String(izinRow.detail_izin || izinRow.jenis_izin || 'Izin') : null
+      const status = row?.status || statusIzin
+
       if (status) {
         const kategori = kategoriAbsenGuruBantu(status)
-        if (kategori === 'hadir' || kategori === 'terlambat') hadir += 1
-        else if (kategori === 'sakit') sakit += 1
-        else if (kategori === 'izin') izinHari += 1
-        else alpa += 1
-      } else if (hariKerja.includes(tanggal) && tanggalAdaData.has(tanggal)) {
-        alpa += 1
+        const menit = kategori === 'terlambat' ? hitungMenitTerlambat(row?.jam_masuk) : 0
+        if (!masaDepan) {
+          if (kategori === 'hadir') hadir += 1
+          else if (kategori === 'terlambat') {
+            terlambat += 1
+            menitTerlambat += menit
+          } else if (kategori === 'sakit') sakit += 1
+          else if (kategori === 'izin') izinHari += 1
+          else alpa += 1
+        }
+
+        const label = labelDariKategori(kategori, status)
+        const catatan =
+          kategori === 'terlambat' && menit > 0
+            ? `Terlambat ${formatDurasiMenit(menit)}`
+            : kategori === 'izin' || kategori === 'sakit'
+              ? label
+              : ''
+
+        sel.push({
+          hari,
+          tanggal,
+          jam_masuk: potongJamPendek(row?.jam_masuk) || null,
+          jam_pulang: potongJamPendek(row?.jam_pulang) || null,
+          kategori,
+          status: label,
+          menitTerlambat: menit,
+          catatan,
+          libur,
+        })
+        continue
       }
+
+      if (masaDepan) {
+        sel.push(selKosong(hari, { tanggal, kategori: libur ? 'libur' : 'belum', libur }))
+        continue
+      }
+
+      if (libur) {
+        sel.push(selKosong(hari, { tanggal, kategori: 'libur', libur: true }))
+        continue
+      }
+
+      alpa += 1
+      sel.push({
+        hari,
+        tanggal,
+        jam_masuk: null,
+        jam_pulang: null,
+        kategori: 'alpa',
+        status: 'Tanpa Keterangan',
+        menitTerlambat: 0,
+        catatan: 'Tanpa Keterangan',
+        libur: false,
+      })
     }
 
     return {
       id_induk: g.target_id,
       nama: g.nama_lengkap,
+      role: g.role,
       hadir,
+      terlambat,
       izin: izinHari,
       sakit,
       alpa,
+      kehadiran: hadir + terlambat,
+      menitTerlambat,
+      sel,
     }
   })
 
   const total = baris.reduce(
     (acc, row) => ({
       hadir: acc.hadir + row.hadir,
+      terlambat: acc.terlambat + row.terlambat,
       izin: acc.izin + row.izin,
       sakit: acc.sakit + row.sakit,
       alpa: acc.alpa + row.alpa,
+      menitTerlambat: acc.menitTerlambat + row.menitTerlambat,
     }),
-    { hadir: 0, izin: 0, sakit: 0, alpa: 0 },
+    { hadir: 0, terlambat: 0, izin: 0, sakit: 0, alpa: 0, menitTerlambat: 0 },
   )
 
-  const hariTerpakai = hariKerja.filter((tanggal) => tanggalAdaData.has(tanggal)).length
+  const semuaIso = eachDate(start, end)
+  const hariKerja = semuaIso.filter((tanggal) => isHariKerja(tanggal) && tanggal <= hariIni).length
 
   return {
     bulan,
     labelBulan: labelBulan(bulan),
-    hariKerja: hariTerpakai || hariKerja.length,
+    hariKerja,
+    jumlahHari,
+    batasMasuk: BATAS_TERLAMBAT.slice(0, 5),
     baris,
     total,
   }

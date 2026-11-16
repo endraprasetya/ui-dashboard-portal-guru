@@ -24,7 +24,7 @@ export default function AbsensiGuruBantu({ user, isAdmin }: { user: GuruUser; is
   }, [admin]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
+    <div className={`mx-auto w-full space-y-4 ${admin ? 'max-w-[96rem]' : 'max-w-5xl'}`}>
       <header>
         <p className="text-sm text-slate-500">Assalamu&rsquo;alaikum,</p>
         <h1 className="text-xl font-semibold text-slate-900">{user.nama_lengkap}</h1>
