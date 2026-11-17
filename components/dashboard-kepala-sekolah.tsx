@@ -12,6 +12,7 @@ import {
   Printer,
   ShieldAlert,
   Users,
+  UserCheck,
 } from 'lucide-react'
 import { ModalHasilUjianKepsek } from '@/components/kepsek/modal-hasil-ujian'
 import { ModalGuruBantu, ModalRaporHq } from '@/components/kepsek/modul-rapor-guru-bantu'
@@ -36,6 +37,7 @@ import { normalKelas, pemetaanKenaikanJilid, ujianTanpaTajwid } from '@/lib/qiro
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { MonitoringPiketHariIni } from '@/components/kepsek/monitoring-piket'
+import { MonitoringSidiaAbsensiReguler } from '@/components/kepsek/monitoring-sidia-absensi'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
@@ -48,6 +50,27 @@ const BATAS_TABEL = 6
 
 const kelasKartu =
   'cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'
+
+const ID_PINTASAN = {
+  raporHq: 'pintasan-rapor-hq',
+  sidia: 'pintasan-absensi-sidia',
+  guruBantu: 'pintasan-guru-bantu',
+  jurnal: 'pintasan-jurnal',
+  piket: 'pintasan-monitoring-piket',
+} as const
+
+function lompatKePintasan(id: string) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  window.setTimeout(() => {
+    el.classList.add('ring-2', 'ring-emerald-400/80', 'ring-offset-2')
+    window.setTimeout(() => el.classList.remove('ring-2', 'ring-emerald-400/80', 'ring-offset-2'), 1600)
+  }, 400)
+}
+
+const kelasTombolNav =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-white/10 px-2.5 py-2 text-[11px] font-bold transition hover:bg-white/20 sm:px-3 sm:text-xs'
 
 function batang(nilai: number | null, tertinggi: number) {
   if (nilai == null || tertinggi <= 0) return '0%'
@@ -184,10 +207,14 @@ export function DashboardKepalaSekolah() {
 
   const jurnalKelas = useMemo(() => {
     if (!laporan || !kelasCetak) return []
-    return laporan.jurnalBulan.filter((row) => {
+    const map = new Map<string, (typeof laporan.jurnalBulan)[number]>()
+    for (const row of laporan.jurnalBulan) {
       const tanggal = String(row.tanggal || '').slice(0, 10)
-      return normalKelas(row.kelas) === kelasCetak && tanggal.startsWith(bulanCetak)
-    })
+      if (normalKelas(row.kelas) !== kelasCetak || !tanggal.startsWith(bulanCetak)) continue
+      const kunci = `${tanggal}|${Number(row.jam) || 0}`
+      if (!map.has(kunci)) map.set(kunci, row)
+    }
+    return [...map.values()]
   }, [laporan, kelasCetak, bulanCetak])
 
   const keluar = () => {
@@ -228,35 +255,70 @@ export function DashboardKepalaSekolah() {
   return (
     <div className="min-h-screen bg-[#f4f7f5] text-slate-800">
       <style>{`
+        html { scroll-behavior: smooth; }
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
         }
       `}</style>
       <header className="no-print border-b border-emerald-900/10 bg-[#143d32] text-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Executive Dashboard</p>
-            <h1 className="text-lg font-black">Dashboard Kepala Sekolah</h1>
-            <p className="text-xs text-emerald-50/80">
-              {namaKepsek}
-              {niyKepsek ? ` · NIY ${niyKepsek}` : ''} · Unit {unitTampil || 'belum diatur'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <a href="#laporan-keuangan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
-              Laporan kas
-            </a>
-            <a href="#keuangan-tunggakan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
-              Tunggakan
-            </a>
-            <a href="/data-siswa" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
-              Data Siswa
-            </a>
-            <button type="button" onClick={keluar} className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
+        <div className="mx-auto max-w-7xl space-y-3 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Executive Dashboard</p>
+              <h1 className="text-lg font-black">Dashboard Kepala Sekolah</h1>
+              <p className="text-xs text-emerald-50/80">
+                {namaKepsek}
+                {niyKepsek ? ` · NIY ${niyKepsek}` : ''} · Unit {unitTampil || 'belum diatur'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={keluar}
+              className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold hover:bg-white/20"
+            >
               <LogOut className="size-3.5" /> Keluar
             </button>
           </div>
+          <nav
+            className="flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            aria-label="Pintasan dashboard"
+          >
+            <a href="#laporan-keuangan" className={kelasTombolNav}>
+              Laporan kas
+            </a>
+            <a href="#keuangan-tunggakan" className={kelasTombolNav}>
+              Tunggakan
+            </a>
+            <a href="/data-siswa" className={kelasTombolNav}>
+              Data Siswa
+            </a>
+            {laporan ? (
+              <>
+                <span className="mx-0.5 hidden h-8 w-px shrink-0 bg-white/20 sm:inline" aria-hidden />
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.raporHq)} className={kelasTombolNav}>
+                  <GraduationCap className="size-3.5 shrink-0 opacity-90" />
+                  Rapor HQ
+                </button>
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.sidia)} className={kelasTombolNav}>
+                  <UserCheck className="size-3.5 shrink-0 opacity-90" />
+                  Absensi SIDIA
+                </button>
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.guruBantu)} className={kelasTombolNav}>
+                  <Users className="size-3.5 shrink-0 opacity-90" />
+                  Guru Bantu
+                </button>
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.jurnal)} className={kelasTombolNav}>
+                  <FileText className="size-3.5 shrink-0 opacity-90" />
+                  Jurnal
+                </button>
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.piket)} className={kelasTombolNav}>
+                  <ClipboardCheck className="size-3.5 shrink-0 opacity-90" />
+                  Piket
+                </button>
+              </>
+            ) : null}
+          </nav>
         </div>
       </header>
 
@@ -369,11 +431,16 @@ export function DashboardKepalaSekolah() {
               </article>
             </section>
 
+            <div id={ID_PINTASAN.sidia} className="scroll-mt-28 rounded-2xl transition-shadow">
+              <MonitoringSidiaAbsensiReguler tanggal={laporan.tanggalLaporan} />
+            </div>
+
             <section className="no-print grid gap-3 sm:grid-cols-2">
               <article
+                id={ID_PINTASAN.raporHq}
                 role="button"
                 tabIndex={0}
-                className={kelasKartu}
+                className={`${kelasKartu} scroll-mt-28 transition-shadow`}
                 onClick={() => setModalKpi('rapor_hq')}
                 onKeyDown={(e) => e.key === 'Enter' && setModalKpi('rapor_hq')}
               >
@@ -395,9 +462,10 @@ export function DashboardKepalaSekolah() {
                 <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk filter ASTS 1, ASAS, ASTS 2, ASAT.</p>
               </article>
               <article
+                id={ID_PINTASAN.guruBantu}
                 role="button"
                 tabIndex={0}
-                className={kelasKartu}
+                className={`${kelasKartu} scroll-mt-28 transition-shadow`}
                 onClick={() => setModalKpi('guru_bantu')}
                 onKeyDown={(e) => e.key === 'Enter' && setModalKpi('guru_bantu')}
               >
@@ -419,9 +487,10 @@ export function DashboardKepalaSekolah() {
             </section>
 
             <article
+              id={ID_PINTASAN.jurnal}
               role="button"
               tabIndex={0}
-              className={`${kelasKartu} no-print`}
+              className={`${kelasKartu} scroll-mt-28 transition-shadow no-print`}
               onClick={() => setModalKpi('jurnal')}
               onKeyDown={(e) => e.key === 'Enter' && setModalKpi('jurnal')}
             >
@@ -438,7 +507,9 @@ export function DashboardKepalaSekolah() {
               <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk jurnal lengkap (filter tanggal, kelas, guru).</p>
             </article>
 
-            <MonitoringPiketHariIni unit={unitTampil} />
+            <div id={ID_PINTASAN.piket} className="scroll-mt-28 rounded-2xl transition-shadow">
+              <MonitoringPiketHariIni unit={unitTampil} />
+            </div>
 
             {laporan.catatan.length > 0 && (
               <ul className="no-print space-y-1 text-xs text-amber-800">

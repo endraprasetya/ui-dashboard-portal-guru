@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { LogOut, ScrollText, Wallet } from 'lucide-react'
+import { ClipboardCheck, LogOut, ScrollText, Wallet } from 'lucide-react'
+import { AbsensiPiket } from '@/components/absensi-piket'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { BendaharaCatatTransaksi } from '@/components/bendahara-catat-transaksi'
 import { BendaharaValidasiKas } from '@/components/bendahara-validasi-kas'
@@ -19,6 +20,7 @@ export function DashboardBendahara() {
   const [galat, setGalat] = useState('')
   const [tujuan, setTujuan] = useState('/')
   const [segarLaporan, setSegarLaporan] = useState(0)
+  const [tampilan, setTampilan] = useState<'beranda' | 'absensi-piket'>('beranda')
 
   useEffect(() => {
     let batal = false
@@ -102,6 +104,26 @@ export function DashboardBendahara() {
                 <Wallet className="size-3.5" /> Tunggakan AMPSS
               </a>
             ) : null}
+            {unitKunci ? (
+              <button
+                type="button"
+                onClick={() => setTampilan('absensi-piket')}
+                className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold ${
+                  tampilan === 'absensi-piket' ? 'bg-white/25 ring-1 ring-white/30' : 'bg-white/10'
+                }`}
+              >
+                <ClipboardCheck className="size-3.5" /> Absensi Piket
+              </button>
+            ) : null}
+            {tampilan === 'absensi-piket' ? (
+              <button
+                type="button"
+                onClick={() => setTampilan('beranda')}
+                className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold"
+              >
+                Beranda
+              </button>
+            ) : null}
             <button type="button" onClick={keluar} className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
               <LogOut className="size-3.5" /> Keluar
             </button>
@@ -111,21 +133,36 @@ export function DashboardBendahara() {
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
         {unitKunci ? (
-          <>
-            <BendaharaCatatTransaksi
-              user={user}
-              unit={unitKunci}
-              onTersimpan={() => setSegarLaporan((nilai) => nilai + 1)}
-            />
-            <BendaharaValidasiKas
-              namaBendahara={nama}
-              unit={unitKunci}
-              user={user}
-              onSetelahValidasi={() => setSegarLaporan((nilai) => nilai + 1)}
-            />
-            <LaporanKeuangan unit={unitKunci} judul={`Laporan keuangan unit ${unitKunci}`} segar={segarLaporan} />
-            <ModulKeuangan unit={unitKunci} />
-          </>
+          tampilan === 'absensi-piket' ? (
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <ClipboardCheck className="size-5 text-emerald-800" />
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">Absensi Piket</h2>
+                  <p className="text-xs text-slate-500">
+                    Akun Bendahara yang terjadwal piket dapat mencatat Hadir atau Izin Piket Pagi dan Sore di sini.
+                  </p>
+                </div>
+              </div>
+              <AbsensiPiket onBack={() => setTampilan('beranda')} currentUser={user} tanpaHeader />
+            </section>
+          ) : (
+            <>
+              <BendaharaCatatTransaksi
+                user={user}
+                unit={unitKunci}
+                onTersimpan={() => setSegarLaporan((nilai) => nilai + 1)}
+              />
+              <BendaharaValidasiKas
+                namaBendahara={nama}
+                unit={unitKunci}
+                user={user}
+                onSetelahValidasi={() => setSegarLaporan((nilai) => nilai + 1)}
+              />
+              <LaporanKeuangan unit={unitKunci} judul={`Laporan keuangan unit ${unitKunci}`} segar={segarLaporan} />
+              <ModulKeuangan unit={unitKunci} />
+            </>
+          )
         ) : (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Unit akun belum terbaca dari tabel users. Data tidak dialihkan ke unit Nogosari.

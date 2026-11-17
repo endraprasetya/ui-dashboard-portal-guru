@@ -403,19 +403,31 @@ export function ModalJurnal({ laporan, onTutup }: { laporan: LaporanKepsek; onTu
   const ringkas = useMemo(() => hitungRingkasJurnal(laporan.jurnalBulan, tanggal, laporan.kelas.length), [laporan, tanggal])
 
   const baris = useMemo(() => {
-    return laporan.jurnalBulan
-      .filter((row) => String(row.tanggal || '').slice(0, 10) === tanggal)
-      .filter((row) => !kelas || normalKelas(row.kelas) === kelas)
-      .filter((row) => !guru || String(row.guru || '').trim() === guru)
-      .map((row) => ({
+    type BarisJurnalTabel = {
+      kelas: string
+      jam: number
+      mapel: string
+      materi: string
+      kegiatan: string
+      guru: string
+    }
+    const map = new Map<string, BarisJurnalTabel>()
+    for (const row of laporan.jurnalBulan) {
+      if (String(row.tanggal || '').slice(0, 10) !== tanggal) continue
+      if (kelas && normalKelas(row.kelas) !== kelas) continue
+      if (guru && String(row.guru || '').trim() !== guru) continue
+      const kunci = `${normalKelas(row.kelas)}|${Number(row.jam) || 0}`
+      if (map.has(kunci)) continue
+      map.set(kunci, {
         kelas: normalKelas(row.kelas),
         jam: Number(row.jam) || 0,
         mapel: String(row.mapel || '').trim() || 'Belum diisi',
         materi: String(row.materi || '').trim() || 'Belum diisi',
         kegiatan: String(row.kegiatan || '').trim() || 'Belum diisi',
         guru: String(row.guru || '').trim() || '—',
-      }))
-      .sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.jam - b.jam)
+      })
+    }
+    return [...map.values()].sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.jam - b.jam)
   }, [laporan.jurnalBulan, tanggal, kelas, guru])
 
   return (

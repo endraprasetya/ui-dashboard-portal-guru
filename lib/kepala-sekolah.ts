@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { isKelasAlumni, kanonNamaUnit, unitSama } from '@/lib/siswa'
 import {
+  gabungBarisJurnalPerSlot,
   jenisAbsen,
   monthRange,
   normalizeSiswaTidakHadir,
@@ -453,21 +454,32 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     return { nama: ketemu.nama_siswa, kelas: ketemu.kelas }
   }
 
-  const jurnalUnit = (await saringJurnalUntukUnit(jurnal, unit)).filter((row) => kelasUnit.has(normalKelas(row.kelas)))
+  const jurnalUnit = gabungBarisJurnalPerSlot(await saringJurnalUntukUnit(jurnal, unit), unit).filter((row) =>
+    kelasUnit.has(normalKelas(row.kelas)),
+  )
   const jurnalHari = jurnalUnit.filter((row) => String(row.tanggal || '').slice(0, 10) === hari)
   const rekapHari = rekapAbsen(jurnalHari, jumlahKelas, kenali)
   const kelasJurnal = new Set(jurnalHari.map((row) => normalKelas(row.kelas)).filter(Boolean))
-  const jurnalHariIni: BarisJurnal[] = jurnalHari
-    .map((row) => ({
-      kunci: `${normalKelas(row.kelas)}-${Number(row.jam) || 0}-${row.mapel || ''}`,
-      kelas: normalKelas(row.kelas),
-      jam: Number(row.jam) || 0,
+  const jurnalHariIni: BarisJurnal[] = []
+  const jurnalHariUnik = new Map<string, BarisJurnal>()
+  for (const row of jurnalHari) {
+    const kelasNorm = normalKelas(row.kelas)
+    const jam = Number(row.jam) || 0
+    const kunci = `${kelasNorm}|${jam}`
+    if (jurnalHariUnik.has(kunci)) continue
+    jurnalHariUnik.set(kunci, {
+      kunci: `${kelasNorm}-${jam}`,
+      kelas: kelasNorm,
+      jam,
       mapel: String(row.mapel || '').trim() || 'Belum diisi',
       materi: String(row.materi || '').trim(),
       kegiatan: String(row.kegiatan || '').trim(),
       guru: String(row.guru || '').trim() || undefined,
-    }))
-    .sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.jam - b.jam)
+    })
+  }
+  jurnalHariIni.push(
+    ...[...jurnalHariUnik.values()].sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.jam - b.jam),
+  )
 
   const jurnalRingkas = hitungRingkasJurnal(jurnalUnit, hari, kelasUnit.size)
 

@@ -11,6 +11,7 @@ import {
   muatAbsensiPiket,
   muatJadwalPiket,
   simpanAbsensiPiket,
+  labelStatusSesiPiket,
   slotUntukHari,
   tanggalHariJakarta,
   type BarisJadwalPiket,
@@ -29,9 +30,12 @@ const kelasStatus: Record<StatusPiket, string> = {
 export function AbsensiPiket({
   onBack,
   currentUser,
+  tanpaHeader = false,
 }: {
   onBack: () => void
   currentUser?: IdentitasGuruPiket | null
+  /** Dipakai saat modul disematkan di dashboard Bendahara. */
+  tanpaHeader?: boolean
 }) {
   const hariIni = tanggalHariJakarta()
   const unit = kanonNamaUnit(currentUser?.unit)
@@ -65,11 +69,12 @@ export function AbsensiPiket({
   }, [unit, hariIni.tanggal, hariIni.hari])
 
   const milikSaya = jadwal.filter((item) => cocokGuruPiket(item, currentUser))
-  const statusSesi = (sesi: SesiPiket): StatusSesiPiket => {
-    const ada = milikSaya.find((slot) => (sesi === 'Pagi' ? slot.statusPagi : slot.statusSore) !== 'Belum')
-    const slot = ada || milikSaya[0]
-    if (!slot) return 'Belum'
-    return sesi === 'Pagi' ? slot.statusPagi : slot.statusSore
+  const statusSesi = (sesi: SesiPiket): { status: StatusSesiPiket; waktu?: string } => {
+    const slot = milikSaya[0]
+    if (!slot) return { status: 'Belum' }
+    return sesi === 'Pagi'
+      ? { status: slot.statusPagi, waktu: slot.waktuPagi }
+      : { status: slot.statusSore, waktu: slot.waktuSore }
   }
 
   const catat = async (sesi: SesiPiket, status: StatusPiket) => {
@@ -96,18 +101,20 @@ export function AbsensiPiket({
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <div className="flex items-center justify-between rounded-2xl bg-[#334155] px-6 py-4 text-white shadow-md">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-white/20 px-4 py-2 text-xs font-bold hover:bg-white/30"
-        >
-          <ArrowLeft className="size-4" /> Kembali
-        </button>
-        <h2 className="text-base font-black tracking-wide">Absensi Piket</h2>
-        <div className="w-16" />
-      </div>
+    <div className={`mx-auto space-y-4 ${tanpaHeader ? 'max-w-none' : 'max-w-2xl'}`}>
+      {tanpaHeader ? null : (
+        <div className="flex items-center justify-between rounded-2xl bg-[#334155] px-6 py-4 text-white shadow-md">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-white/20 px-4 py-2 text-xs font-bold hover:bg-white/30"
+          >
+            <ArrowLeft className="size-4" /> Kembali
+          </button>
+          <h2 className="text-base font-black tracking-wide">Absensi Piket</h2>
+          <div className="w-16" />
+        </div>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
@@ -144,10 +151,12 @@ export function AbsensiPiket({
                   return (
                     <div key={sesi} className="rounded-xl border border-white bg-white/80 p-3">
                       <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Piket {sesi}</p>
-                      <p className="mt-1 text-xs text-slate-600">{sekarang === 'Belum' ? 'Belum dicatat' : `Tersimpan: ${sekarang}`}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {sekarang.status === 'Belum' ? 'Belum dicatat' : `Tersimpan: ${labelStatusSesiPiket(sekarang.status, sekarang.waktu)}`}
+                      </p>
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         {STATUS_PIKET.map((status) => {
-                          const aktif = sekarang === status
+                          const aktif = sekarang.status === status
                           const sibuk = menyimpan.startsWith(`${sesi}:`)
                           return (
                             <button
@@ -204,7 +213,8 @@ export function AbsensiPiket({
                         <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-800">
                           <span>{item.nama_guru}</span>
                           <span className="text-xs text-slate-500">
-                            Pagi {item.statusPagi} · Sore {item.statusSore}
+                            Pagi {labelStatusSesiPiket(item.statusPagi, item.waktuPagi)} · Sore{' '}
+                            {labelStatusSesiPiket(item.statusSore, item.waktuSore)}
                           </span>
                         </li>
                       ))}

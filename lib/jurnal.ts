@@ -563,9 +563,10 @@ export async function fetchJurnalHari(kelas: string, tanggal: string, unit?: str
 
   if (!pertama.error) {
     catatKolomGuru(null, (pertama.data || []) as { guru?: unknown }[])
+    const mentah = gabungBarisJurnalPerJam((pertama.data || []) as any[], unit)
     const rows = unit
-      ? await saringJurnalUntukUnit((pertama.data || []) as any[], unit)
-      : ((pertama.data || []) as any[]).map(normalkanKelasJurnal)
+      ? await saringJurnalUntukUnit(mentah, unit)
+      : mentah.map(normalkanKelasJurnal)
     return { rows, error: null }
   }
 
@@ -579,9 +580,10 @@ export async function fetchJurnalHari(kelas: string, tanggal: string, unit?: str
     .eq('tanggal', tanggal)
 
   if (cadangan.error) return { rows: [] as any[], error: cadangan.error }
+  const mentah = gabungBarisJurnalPerJam((cadangan.data || []) as any[], unit)
   const rows = unit
-    ? await saringJurnalUntukUnit((cadangan.data || []) as any[], unit)
-    : ((cadangan.data || []) as any[]).map(normalkanKelasJurnal)
+    ? await saringJurnalUntukUnit(mentah, unit)
+    : mentah.map(normalkanKelasJurnal)
   return { rows, error: null }
 }
 
@@ -634,7 +636,8 @@ export async function fetchJurnalRentang(opts: {
     from += pageSize
   }
 
-  const rows = opts.unit ? await saringJurnalUntukUnit(all, opts.unit) : all.map(normalkanKelasJurnal)
+  const mentah = opts.unit ? await saringJurnalUntukUnit(all, opts.unit) : all.map(normalkanKelasJurnal)
+  const rows = gabungBarisJurnalPerSlot(mentah, opts.unit)
   return { rows, error: null }
 }
 
@@ -681,23 +684,122 @@ export function normalizeSiswaTidakHadir(value: unknown): SiswaTidakHadir[] {
   return []
 }
 
-export function rowsToEntries(rows: any[], totalSiswa = 0, kelasSiswaList?: SiswaKelas[]): Record<number, JurnalJam> {
-  const entries: Record<number, JurnalJam> = {}
+function isiBarisJurnal(row: Record<string, unknown>) {
+  return Boolean(row.mapel || row.materi || row.kegiatan || row.tugas || row.guru || row.nama_guru)
+}
+
+function skorBarisJurnalDb(row: Record<string, unknown>, unit?: string | null) {
+  const links = Array.isArray(row.links) ? row.links.length : 0
+  let poin =
+    (String(row.mapel || '').trim() ? 1 : 0) +
+    (String(row.materi || '').trim() ? 1 : 0) +
+    (String(row.kegiatan || '').trim() ? 1 : 0) +
+    (String(row.tugas || '').trim() ? 1 : 0) +
+    (String(row.guru || row.nama_guru || '').trim() ? 1 : 0) +
+    links
+  const dari = unitDariKelasJurnal(String(row.kelas || ''))
+  const kunci = kanonNamaUnit(unit)
+  if (kunci && dari && unitSama(dari, kunci)) poin += 8
+  else if (kunci && !dari) poin += 1
+  return poin
+}
+
+function barisJurnalLebihBaik(a: Record<string, unknown>, b: Record<string, unknown>, unit?: string | null) {
+  const sa = skorBarisJurnalDb(a, unit)
+  const sb = skorBarisJurnalDb(b, unit)
+  if (sa !== sb) return sa > sb ? a : b
+  const kunci = kanonNamaUnit(unit)
+  const pa = Boolean(kunci && unitDariKelasJurnal(String(a.kelas || '')) && unitSama(unitDariKelasJurnal(String(a.kelas || '')), kunci))
+  const pb = Boolean(kunci && unitDariKelasJurnal(String(b.kelas || '')) && unitSama(unitDariKelasJurnal(String(b.kelas || '')), kunci))
+  if (pa !== pb) return pa ? a : b
+  return isiBarisJurnal(a) ? a : b
+}
+
+function kunciSlotJurnal(row: Record<string, unknown>) {
+  const tanggal = String(row.tanggal || '').slice(0, 10)
+  const kelas = kelasJurnalTampil(String(row.kelas || ''))
+  const jam = Number(row.jam)
+  if (!tanggal || !kelas || !Number.isFinite(jam)) return ''
+  return `${tanggal}|${kelas.toLowerCase()}|${jam}`
+}
+
+/** Satu slot jam = satu baris; hindari ganda 1C + Nogosari::1C. */
+export function gabungBarisJurnalPerJam(rows: Record<string, unknown>[], unit?: string | null) {
+  const map = new Map<number, Record<string, unknown>>()
   for (const row of rows) {
     const jam = Number(row.jam)
     if (!Number.isFinite(jam)) continue
-    const { daftar, hadir, tidakHadir } = rekapBarisJurnal(row, totalSiswa, kelasSiswaList)
+    const ada = map.get(jam)
+    map.set(jam, ada ? barisJurnalLebihBaik(ada, row, unit) : row)
+  }
+  return [...map.values()]
+}
+
+/** Satu tanggal + kelas + jam = satu baris (dashboard Kepsek & rentang bulan). */
+export function gabungBarisJurnalPerSlot<T extends { kelas?: string | null; tanggal?: unknown; jam?: unknown }>(
+  rows: T[],
+  unit?: string | null,
+): T[] {
+  const map = new Map<string, T>()
+  for (const row of rows) {
+    const kunci = kunciSlotJurnal(row as Record<string, unknown>)
+    if (!kunci) continue
+    const ada = map.get(kunci)
+    map.set(
+      kunci,
+      ada ? (barisJurnalLebihBaik(ada as Record<string, unknown>, row as Record<string, unknown>, unit) as T) : row,
+    )
+  }
+  return [...map.values()].map((row) => normalkanKelasJurnal(row))
+}
+
+async function bersihkanDuplikatJurnalSlot(opts: {
+  kelas: string
+  tanggal: string
+  jam: number
+  unit?: string | null
+}) {
+  const variasi = kelasDicari(opts.kelas, opts.unit)
+  const kelasCan = kelasJurnalSimpan(kelasJurnalTampil(opts.kelas), opts.unit)
+  const { data, error } = await supabase
+    .from('jurnal_pembelajaran')
+    .select('id,kelas,mapel,materi,kegiatan,tugas,guru,links')
+    .eq('tanggal', opts.tanggal)
+    .eq('jam', opts.jam)
+    .in('kelas', variasi)
+  if (error || !data?.length) return
+
+  type BarisDuplikat = (typeof data)[number]
+  let pertahankan: BarisDuplikat | undefined = data.find((row) => String(row.kelas || '') === kelasCan)
+  if (!pertahankan) {
+    pertahankan = data.slice(1).reduce<BarisDuplikat>((terbaik, row) => {
+      return barisJurnalLebihBaik(terbaik as Record<string, unknown>, row as Record<string, unknown>, opts.unit) as BarisDuplikat
+    }, data[0])
+  }
+  const idPertahankan = String(pertahankan?.id || '')
+  const hapus = data.filter((row) => String(row.id) !== idPertahankan).map((row) => String(row.id))
+  if (hapus.length === 0) return
+  await supabase.from('jurnal_pembelajaran').delete().in('id', hapus)
+}
+
+export function rowsToEntries(rows: any[], totalSiswa = 0, kelasSiswaList?: SiswaKelas[]): Record<number, JurnalJam> {
+  const entries: Record<number, JurnalJam> = {}
+  for (const row of gabungBarisJurnalPerJam(rows)) {
+    const jam = Number(row.jam)
+    if (!Number.isFinite(jam)) continue
+    const baris = row as any
+    const { daftar, hadir, tidakHadir } = rekapBarisJurnal(baris, totalSiswa, kelasSiswaList)
     entries[jam] = {
-      mapel: row.mapel || '',
-      materi: row.materi || '',
-      kegiatan: row.kegiatan || '',
-      links: normalizeLinks(row.links),
+      mapel: baris.mapel || '',
+      materi: baris.materi || '',
+      kegiatan: baris.kegiatan || '',
+      links: normalizeLinks(baris.links),
       hadir: String(hadir),
       absen: String(tidakHadir),
       siswaTidakHadir: daftar,
-      ttd: row.ttd || null,
-      tugas: row.tugas || '',
-      guru: row.guru || row.nama_guru || '',
+      ttd: baris.ttd || null,
+      tugas: baris.tugas || '',
+      guru: baris.guru || baris.nama_guru || '',
     }
   }
   return entries
@@ -758,7 +860,17 @@ export async function simpanJurnalHari(payload: {
     return { error: ulang.error }
   }
 
-  if (!error) kolomGuruTersedia = kolomGuruTersedia === false ? false : true
+  if (!error) {
+    kolomGuruTersedia = kolomGuruTersedia === false ? false : true
+    for (const jamKey of jamKeys) {
+      await bersihkanDuplikatJurnalSlot({
+        kelas: payload.kelas,
+        tanggal: payload.tanggal,
+        jam: Number(jamKey),
+        unit: payload.unit,
+      })
+    }
+  }
   return { error }
 }
 

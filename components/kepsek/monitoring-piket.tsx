@@ -20,6 +20,7 @@ import {
   type BarisMonitorPiket,
   type JenisPiket,
   type StatusSesiPiket,
+  labelStatusSesiPiketDetail,
 } from '@/lib/piket-guru'
 
 const kelasKartu =
@@ -31,10 +32,11 @@ function lencana(status: StatusSesiPiket) {
   return 'bg-slate-100 text-slate-600'
 }
 
-function LencanaSesi({ label, status }: { label: string; status: StatusSesiPiket }) {
+function LencanaSesi({ sesi, status, waktu }: { sesi: 'Pagi' | 'Sore'; status: StatusSesiPiket; waktu?: string }) {
+  const teks = labelStatusSesiPiketDetail(sesi, status, waktu)
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${lencana(status)}`}>
-      {label} {status === 'Belum' ? 'Belum absen' : status}
+    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold leading-snug ${lencana(status)}`}>
+      {teks}
     </span>
   )
 }
@@ -161,7 +163,8 @@ export function MonitoringPiketHariIni({ unit }: { unit: string }) {
                         <p className="text-[11px] font-bold text-slate-500">{jenis}</p>
                         {daftar.map((item) => (
                           <p key={`${item.jenis}-${item.id_guru}`} className="text-xs text-slate-700">
-                            {item.nama_guru} · Pagi {item.statusPagi} · Sore {item.statusSore}
+                            {item.nama_guru} · {labelStatusSesiPiketDetail('Pagi', item.statusPagi, item.waktuPagi)} ·{' '}
+                            {labelStatusSesiPiketDetail('Sore', item.statusSore, item.waktuSore)}
                           </p>
                         ))}
                       </li>
@@ -217,10 +220,10 @@ export function MonitoringPiketHariIni({ unit }: { unit: string }) {
                       <td className="px-2 py-2 font-semibold text-slate-900">{baris.nama_guru}</td>
                       <td className="px-2 py-2">{baris.jenis}</td>
                       <td className="px-2 py-2">
-                        <LencanaSesi label="Pagi" status={baris.statusPagi} />
+                        <LencanaSesi sesi="Pagi" status={baris.statusPagi} waktu={baris.waktuPagi} />
                       </td>
                       <td className="px-2 py-2">
-                        <LencanaSesi label="Sore" status={baris.statusSore} />
+                        <LencanaSesi sesi="Sore" status={baris.statusSore} waktu={baris.waktuSore} />
                       </td>
                     </tr>
                   ))

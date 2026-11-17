@@ -3,7 +3,7 @@
 --
 -- Kolom yang dibaca dan ditulis portal:
 --   id, unit, jenis_piket, hari, tanggal, id_guru, nama_guru,
---   status_kehadiran, waktu_absen, created_at
+--   status_kehadiran, waktu_absen, waktu_absen_pagi, waktu_absen_sore, created_at
 --
 -- Satu baris = satu petugas pada satu tanggal.
 -- hari berisi nama hari (Ahad–Sabtu), tanggal wajib terisi.
@@ -20,5 +20,10 @@ create table if not exists public.tabel_piket_guru (
   tanggal date not null,
   status_kehadiran text default 'Belum',
   waktu_absen timestamptz,
+  waktu_absen_pagi timestamptz,
+  waktu_absen_sore timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.tabel_piket_guru add column if not exists waktu_absen_pagi timestamptz;
+alter table public.tabel_piket_guru add column if not exists waktu_absen_sore timestamptz;

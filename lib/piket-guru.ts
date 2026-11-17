@@ -28,6 +28,8 @@ export type BarisJadwalPiket = {
   tanggal: string
   statusPagi: StatusSesiPiket
   statusSore: StatusSesiPiket
+  waktuPagi?: string
+  waktuSore?: string
 }
 
 export type BarisAbsensiPiket = {
@@ -39,6 +41,8 @@ export type BarisAbsensiPiket = {
   nama_guru: string
   statusPagi: StatusSesiPiket
   statusSore: StatusSesiPiket
+  waktuPagi?: string
+  waktuSore?: string
 }
 
 export type BarisMonitorPiket = {
@@ -48,6 +52,15 @@ export type BarisMonitorPiket = {
   nama_guru: string
   statusPagi: StatusSesiPiket
   statusSore: StatusSesiPiket
+  waktuPagi?: string
+  waktuSore?: string
+}
+
+export type SesiKehadiranPiket = {
+  pagi: StatusSesiPiket
+  sore: StatusSesiPiket
+  waktuPagi?: string
+  waktuSore?: string
 }
 
 export type IdentitasGuruPiket = {
@@ -128,20 +141,90 @@ function keStatusSesi(nilai: unknown, cadangan: StatusSesiPiket = 'Belum'): Stat
   return cadangan
 }
 
-export function bacaSesiKehadiran(nilai: unknown): { pagi: StatusSesiPiket; sore: StatusSesiPiket } {
+function potongSesiPiket(nilai: string): { status: StatusSesiPiket; waktu?: string } {
+  const bersih = nilai.trim()
+  const batas = bersih.indexOf('#')
+  const statusRaw = batas >= 0 ? bersih.slice(0, batas) : bersih
+  const waktu = batas >= 0 ? bersih.slice(batas + 1).trim() : ''
+  return { status: keStatusSesi(statusRaw, 'Belum'), waktu: waktu || undefined }
+}
+
+function tulisPotongSesi(status: StatusSesiPiket, waktu?: string) {
+  if (status === 'Belum') return 'Belum'
+  if (waktu && (status === 'Hadir' || status === 'Izin')) return `${status}#${waktu}`
+  return status
+}
+
+function msDariCapWaktu(nilai?: string) {
+  if (!nilai) return Number.NaN
+  const ms = /^\d+$/.test(nilai) ? Number(nilai) : Date.parse(nilai)
+  return Number.isFinite(ms) ? ms : Number.NaN
+}
+
+export function formatCapWaktuPiket(nilai?: string) {
+  const jam = formatJamAbsenPiket(nilai)
+  return jam ? `${jam} WIB` : ''
+}
+
+/** Jam:menit:detik WIB untuk label monitoring (contoh 06:31:16). */
+export function formatJamAbsenPiket(nilai?: string) {
+  const ms = msDariCapWaktu(nilai)
+  if (!Number.isFinite(ms)) return ''
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(ms)
+  const ambil = (jenis: string) => parts.find((item) => item.type === jenis)?.value || '00'
+  return `${ambil('hour')}:${ambil('minute')}:${ambil('second')}`
+}
+
+export function labelStatusSesiPiket(status: StatusSesiPiket, waktu?: string) {
+  if (status === 'Belum') return 'Belum absen'
+  const cap = formatCapWaktuPiket(waktu)
+  return cap ? `${status} · ${cap}` : status
+}
+
+/** Format tabel monitoring Kepsek: "Pagi Hadir - 06:31:16". */
+export function labelStatusSesiPiketDetail(sesi: SesiPiket, status: StatusSesiPiket, waktu?: string) {
+  if (status === 'Belum') return `${sesi} belum absen`
+  const jam = formatJamAbsenPiket(waktu)
+  return jam ? `${sesi} ${status} - ${jam}` : `${sesi} ${status}`
+}
+
+function waktuAbsenDariKolom(iso?: string | null, sumber?: string) {
+  const teks = String(iso ?? '').trim()
+  if (teks) return teks
+  return sumber?.trim() || undefined
+}
+
+function kolomWaktuAbsenTidakAda(pesan?: string) {
+  return /waktu_absen_pagi|waktu_absen_sore|schema cache|could not find/i.test(String(pesan || ''))
+}
+
+export function bacaSesiKehadiran(nilai: unknown): SesiKehadiranPiket {
   const teks = String(nilai ?? '').trim()
-  const pagi = teks.match(/pagi\s*:\s*(hadir|izin|belum|sakit)/i)
-  const sore = teks.match(/sore\s*:\s*(hadir|izin|belum|sakit)/i)
+  const pagi = teks.match(/pagi\s*:\s*([^|]+)/i)
+  const sore = teks.match(/sore\s*:\s*([^|]+)/i)
   if (pagi || sore) {
-    return { pagi: keStatusSesi(pagi?.[1], 'Belum'), sore: keStatusSesi(sore?.[1], 'Belum') }
+    const pagiPotong = potongSesiPiket(pagi?.[1] || 'Belum')
+    const sorePotong = potongSesiPiket(sore?.[1] || 'Belum')
+    return {
+      pagi: pagiPotong.status,
+      sore: sorePotong.status,
+      waktuPagi: pagiPotong.waktu,
+      waktuSore: sorePotong.waktu,
+    }
   }
   const tunggal = keStatusSesi(teks, 'Belum')
   if (tunggal === 'Hadir' || tunggal === 'Izin') return { pagi: tunggal, sore: 'Belum' }
   return { pagi: 'Belum', sore: 'Belum' }
 }
 
-export function tulisSesiKehadiran(pagi: StatusSesiPiket, sore: StatusSesiPiket) {
-  return `Pagi:${pagi}|Sore:${sore}`
+export function tulisSesiKehadiran(pagi: StatusSesiPiket, sore: StatusSesiPiket, waktu?: { pagi?: string; sore?: string }) {
+  return `Pagi:${tulisPotongSesi(pagi, waktu?.pagi)}|Sore:${tulisPotongSesi(sore, waktu?.sore)}`
 }
 
 type BarisMentahPiket = {
@@ -153,6 +236,8 @@ type BarisMentahPiket = {
   id_guru?: string | null
   nama_guru?: string | null
   status_kehadiran?: string | null
+  waktu_absen_pagi?: string | null
+  waktu_absen_sore?: string | null
 }
 
 function lempar(error: { message?: string } | null, cadangan: string): never {
@@ -292,7 +377,19 @@ export function ringkasMonitor(baris: BarisMonitorPiket[]) {
 }
 
 export function slotUntukHari(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiPiket[], hari: number) {
-  const dasar = jadwal.filter((item) => item.hari === hari)
+  const dasar = jadwal
+    .filter((item) => item.hari === hari)
+    .map((slot) => {
+      const catat = absensi.find((item) => item.jenis === slot.jenis && item.id_guru === slot.id_guru)
+      if (!catat) return slot
+      return {
+        ...slot,
+        statusPagi: catat.statusPagi,
+        statusSore: catat.statusSore,
+        waktuPagi: catat.waktuPagi,
+        waktuSore: catat.waktuSore,
+      }
+    })
   const tambahan = absensi
     .filter((item) => !dasar.some((slot) => slot.jenis === item.jenis && slot.id_guru === item.id_guru))
     .map(
@@ -308,6 +405,8 @@ export function slotUntukHari(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiP
           tanggal: item.tanggal,
           statusPagi: item.statusPagi,
           statusSore: item.statusSore,
+          waktuPagi: item.waktuPagi,
+          waktuSore: item.waktuSore,
         }) satisfies BarisJadwalPiket,
     )
   return [...dasar, ...tambahan]
@@ -324,6 +423,8 @@ export function susunMonitorPiket(jadwal: BarisJadwalPiket[], absensi: BarisAbse
         nama_guru: slot.nama_guru,
         statusPagi: catat?.statusPagi || slot.statusPagi || 'Belum',
         statusSore: catat?.statusSore || slot.statusSore || 'Belum',
+        waktuPagi: catat?.waktuPagi,
+        waktuSore: catat?.waktuSore,
       } satisfies BarisMonitorPiket
     })
     .sort((a, b) => a.jenis.localeCompare(b.jenis, 'id') || a.nama_guru.localeCompare(b.nama_guru, 'id'))
@@ -346,6 +447,8 @@ function petakanJadwal(row: BarisMentahPiket): BarisJadwalPiket | null {
     tanggal,
     statusPagi: sesi.pagi,
     statusSore: sesi.sore,
+    waktuPagi: waktuAbsenDariKolom(row.waktu_absen_pagi, sesi.waktuPagi),
+    waktuSore: waktuAbsenDariKolom(row.waktu_absen_sore, sesi.waktuSore),
   }
 }
 
@@ -361,23 +464,38 @@ function petakanAbsensi(row: BarisMentahPiket): BarisAbsensiPiket | null {
     nama_guru: String(row.nama_guru || ''),
     statusPagi: sesi.pagi,
     statusSore: sesi.sore,
+    waktuPagi: waktuAbsenDariKolom(row.waktu_absen_pagi, sesi.waktuPagi),
+    waktuSore: waktuAbsenDariKolom(row.waktu_absen_sore, sesi.waktuSore),
   }
 }
+
+const PILIHAN_PIKET = [
+  'id,unit,jenis_piket,hari,tanggal,id_guru,nama_guru,status_kehadiran,waktu_absen_pagi,waktu_absen_sore',
+  'id,unit,jenis_piket,hari,tanggal,id_guru,nama_guru,status_kehadiran',
+] as const
 
 async function muatBarisPiket(unit: string) {
   const kunci = kanonNamaUnit(unit)
   if (!kunci) return [] as BarisMentahPiket[]
   const awal = tanggalPadaHari(0)
   const akhir = tanggalPadaHari(6)
-  const { data, error } = await supabase
-    .from(TABEL_PIKET)
-    .select('id,unit,jenis_piket,hari,tanggal,id_guru,nama_guru,status_kehadiran')
-    .ilike('unit', `%${kunci}%`)
-    .gte('tanggal', awal)
-    .lte('tanggal', akhir)
-    .limit(2000)
+  let data: BarisMentahPiket[] | null = null
+  let error: { message?: string } | null = null
+  for (const kolom of PILIHAN_PIKET) {
+    const hasil = await supabase
+      .from(TABEL_PIKET)
+      .select(kolom)
+      .ilike('unit', `%${kunci}%`)
+      .gte('tanggal', awal)
+      .lte('tanggal', akhir)
+      .limit(2000)
+    data = (hasil.data || []) as BarisMentahPiket[]
+    error = hasil.error
+    if (!error) break
+    if (!kolomWaktuAbsenTidakAda(error.message)) break
+  }
   if (error) lempar(error, 'Jadwal piket belum dapat dimuat.')
-  return ((data || []) as BarisMentahPiket[]).filter((row) => unitSama(String(row.unit || ''), kunci))
+  return (data || []).filter((row) => unitSama(String(row.unit || ''), kunci))
 }
 
 function unikSlot(slot: BarisJadwalPiket[]) {
@@ -505,39 +623,79 @@ export async function simpanAbsensiPiket(input: {
       cocokNamaPiket(row.nama_guru, input.nama_guru) ||
       cocokNamaPiket(row.id_guru, input.nama_guru))
   const sasaran = (ada || []).filter(cocokOrang)
+  const sekarang = new Date().toISOString()
+  const stamp = String(Date.now())
   const gabung = (nilai: unknown) => {
     const sesi = bacaSesiKehadiran(nilai)
-    if (input.sesi === 'Pagi') sesi.pagi = input.status
-    else sesi.sore = input.status
-    return tulisSesiKehadiran(sesi.pagi, sesi.sore)
+    if (input.sesi === 'Pagi') {
+      sesi.pagi = input.status
+      if (input.status === 'Hadir' || input.status === 'Izin') sesi.waktuPagi = stamp
+    } else {
+      sesi.sore = input.status
+      if (input.status === 'Hadir' || input.status === 'Izin') sesi.waktuSore = stamp
+    }
+    return tulisSesiKehadiran(sesi.pagi, sesi.sore, { pagi: sesi.waktuPagi, sore: sesi.waktuSore })
+  }
+  const muatPayloadAbsen = (status_kehadiran: string) => {
+    const dasar: Record<string, unknown> = {
+      status_kehadiran,
+      waktu_absen: sekarang,
+      nama_guru: input.nama_guru,
+    }
+    if (input.status === 'Hadir' || input.status === 'Izin') {
+      if (input.sesi === 'Pagi') dasar.waktu_absen_pagi = sekarang
+      else dasar.waktu_absen_sore = sekarang
+    }
+    return dasar
+  }
+  const simpanBaris = async (id: string | undefined, status_kehadiran: string, nama_guru?: string | null) => {
+    const dasar = muatPayloadAbsen(status_kehadiran)
+    if (nama_guru) dasar.nama_guru = nama_guru
+    let { error } = await supabase.from(TABEL_PIKET).update(dasar).eq('id', id)
+    if (error && kolomWaktuAbsenTidakAda(error.message)) {
+      const ringkas: Record<string, unknown> = {
+        status_kehadiran,
+        waktu_absen: sekarang,
+        nama_guru: dasar.nama_guru,
+      }
+      error = (await supabase.from(TABEL_PIKET).update(ringkas).eq('id', id)).error
+    }
+    if (error) lempar(error, 'Absensi piket belum dapat disimpan.')
   }
   if (sasaran.length > 0) {
     for (const row of sasaran) {
-      const { error } = await supabase
-        .from(TABEL_PIKET)
-        .update({
-          status_kehadiran: gabung(row.status_kehadiran),
-          waktu_absen: new Date().toISOString(),
-          nama_guru: row.nama_guru || input.nama_guru,
-        })
-        .eq('id', row.id)
-      if (error) lempar(error, 'Absensi piket belum dapat disimpan.')
+      await simpanBaris(row.id, gabung(row.status_kehadiran), row.nama_guru || input.nama_guru)
     }
     return
   }
-  const kosong = { pagi: 'Belum' as StatusSesiPiket, sore: 'Belum' as StatusSesiPiket }
-  if (input.sesi === 'Pagi') kosong.pagi = input.status
-  else kosong.sore = input.status
-  const { error } = await supabase.from(TABEL_PIKET).insert({
+  const kosong: SesiKehadiranPiket = { pagi: 'Belum', sore: 'Belum' }
+  if (input.sesi === 'Pagi') {
+    kosong.pagi = input.status
+    if (input.status === 'Hadir' || input.status === 'Izin') kosong.waktuPagi = stamp
+  } else {
+    kosong.sore = input.status
+    if (input.status === 'Hadir' || input.status === 'Izin') kosong.waktuSore = stamp
+  }
+  const status_kehadiran = tulisSesiKehadiran(kosong.pagi, kosong.sore, { pagi: kosong.waktuPagi, sore: kosong.waktuSore })
+  const insert: Record<string, unknown> = {
     unit,
     jenis_piket: input.jenis,
     hari,
     tanggal: input.tanggal,
     id_guru: input.id_guru,
     nama_guru: input.nama_guru,
-    status_kehadiran: tulisSesiKehadiran(kosong.pagi, kosong.sore),
-    waktu_absen: new Date().toISOString(),
-  })
+    status_kehadiran,
+    waktu_absen: sekarang,
+  }
+  if (input.status === 'Hadir' || input.status === 'Izin') {
+    if (input.sesi === 'Pagi') insert.waktu_absen_pagi = sekarang
+    else insert.waktu_absen_sore = sekarang
+  }
+  let { error } = await supabase.from(TABEL_PIKET).insert(insert)
+  if (error && kolomWaktuAbsenTidakAda(error.message)) {
+    const { waktu_absen_pagi: _p, waktu_absen_sore: _s, ...tanpa } = insert
+    error = (await supabase.from(TABEL_PIKET).insert(tanpa)).error
+  }
   if (error) lempar(error, 'Absensi piket belum dapat disimpan.')
 }
 
