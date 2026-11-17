@@ -17,7 +17,8 @@ import type { DetailTunggakan, SiswaTunggakan } from '@/lib/keuangan-tipe'
 const TEMPAT_TEMU = 'Ruang Kepala Sekolah SDIP Al Madinah Putra Jengglong'
 const JAM_TEMU = '09.00 - 10.00 WIB'
 const KOP = '/surat/kop-surat.jpg'
-const TTD_STEMPEL = '/surat/ttd-stempel.jpg'
+const STEMPEL = '/surat/stempel.png'
+const TANDA_TANGAN = '/surat/tanda-tangan.png'
 const SALAM_BUKA = "Assalamu'alaikum Warahmatullahi Wabarakatuh."
 const SALAM_TUTUP = "Wassalamu'alaikum Warahmatullahi Wabarakatuh."
 
@@ -170,32 +171,44 @@ export function SuratTunggakan({
         .halaman-surat .rincian td { border: 1px solid #111; padding: 4px 6px; font-size: 10.5pt; }
         .halaman-surat { background: #fff; isolation: isolate; }
         .pengesahan-surat {
-          width: 54mm;
-          margin: 7mm 14mm 0 auto;
+          width: 76mm;
+          margin: 7mm 2mm 0 auto;
           text-align: center;
-          line-height: 1.1;
+          line-height: 1.15;
           position: relative;
-          isolation: isolate;
-          background: #fff;
         }
         .pengesahan-surat p { margin: 0; }
         .pengesahan-surat .area-ttd { position: relative; }
-        .pengesahan-surat .baris-jabatan { margin-bottom: 9mm; }
         .pengesahan-surat .baris-tempat,
         .pengesahan-surat .baris-jabatan { position: relative; z-index: 1; }
-        .pengesahan-surat .gambar-ttd {
+        .pengesahan-surat .ruang-ttd {
+          position: relative;
+          height: 30mm;
+        }
+        .pengesahan-surat .gambar-ttd,
+        .pengesahan-surat .gambar-stempel {
           position: absolute;
-          left: 50%;
-          top: 50%;
-          width: 44mm;
           height: auto;
-          transform: translate(-50%, -64%);
-          z-index: 2;
+          max-width: none;
           pointer-events: none;
           mix-blend-mode: multiply;
         }
+        .pengesahan-surat .gambar-ttd {
+          left: 50%;
+          bottom: 0;
+          width: 42mm;
+          transform: translate(-50%, 0);
+          z-index: 3;
+        }
+        .pengesahan-surat .gambar-stempel {
+          left: 40%;
+          bottom: 0;
+          width: 26mm;
+          transform: translate(-100%, 0);
+          z-index: 2;
+        }
         .pengesahan-surat .nama-kepsek,
-        .pengesahan-surat .niy-kepsek { position: relative; z-index: 3; }
+        .pengesahan-surat .niy-kepsek { position: relative; z-index: 4; }
         .halaman-inti { break-after: page; page-break-after: always; }
         .halaman-lampiran { break-before: page; page-break-before: always; }
         .halaman-surat:last-child { break-after: auto; page-break-after: auto; }
@@ -333,8 +346,11 @@ export function SuratTunggakan({
             <p className="baris-tempat">Nogosari, {tanggalSurat}</p>
             <div className="area-ttd">
               <p className="baris-jabatan">Kepala Sekolah</p>
+              <div className="ruang-ttd">
+                <img className="gambar-stempel" src={STEMPEL} alt="" />
+                <img className="gambar-ttd" src={TANDA_TANGAN} alt="Tanda tangan Kepala Sekolah" />
+              </div>
               <p className="nama-kepsek font-bold underline">{KEPALA_SEKOLAH.nama}</p>
-              <img className="gambar-ttd" src={TTD_STEMPEL} alt="Stempel resmi dan tanda tangan Kepala Sekolah" />
             </div>
             <p className="niy-kepsek">NIY. {KEPALA_SEKOLAH.niy}</p>
           </div>

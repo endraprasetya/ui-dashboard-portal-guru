@@ -27,6 +27,7 @@ import {
 import { kunciHariJakarta, tanggalTermasukHariIni } from '@/lib/tahfidz'
 import { fetchAllSurah, infoAyatMelebihiDariTeks, validasiTeksHalamanQiroah, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { TombolLihatNilaiUjian } from '@/components/qiroah-lihat-nilai'
+import { SelTugasRumahQiroah } from '@/components/qiroah-tugas-rumah'
 import { muatRekapanUntukSiswa } from '@/lib/rekapan-qiroah'
 import { rekapKeTampilanNilai } from '@/lib/ujian-nilai-tampilan'
 import {
@@ -705,7 +706,7 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                     <th className="border-b border-amber-200 p-2.5">Tgl</th>
                     <th className="border-b border-amber-200 p-2.5">Capaian</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Status</th>
-                    <th className="border-b border-amber-200 p-2.5">Tugas Di Rumah</th>
+                    <th className="border-b border-amber-200 p-2.5 min-w-[12rem]">Tugas Di Rumah</th>
                     <th className="border-b border-amber-200 p-2.5 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -722,7 +723,10 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                         {rec.status || '-'}
                       </td>
                       <td className="p-2.5 text-slate-600">
-                        {rec.tugas_rumah && rec.tugas_rumah !== '-' ? rec.tugas_rumah : '-'}
+                        <SelTugasRumahQiroah
+                          record={rec}
+                          setoranBerikutnya={index > 0 ? latestRecords[index - 1] : null}
+                        />
                       </td>
                       <td className="p-2.5 text-center">
                         {milikSetoran(rec) ? (

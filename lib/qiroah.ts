@@ -62,6 +62,63 @@ export function formatCapaianQiroah(record: { jilid?: string; halaman?: string }
   return `${jilid} · ${halaman}`
 }
 
+function teksQiroah(nilai: unknown) {
+  return String(nilai ?? '').trim()
+}
+
+export function adaTugasRumahQiroah(nilai: unknown) {
+  const raw = teksQiroah(nilai)
+  return Boolean(raw && raw !== '-')
+}
+
+function angkaMateri(nilai: string): string[] {
+  return nilai.match(/\d+/g) ?? []
+}
+
+function tokenMateri(nilai: string) {
+  const abaikan = new Set([
+    'halaman',
+    'hal',
+    'rumah',
+    'lancarkan',
+    'lancar',
+    'tugas',
+    'target',
+    'mandiri',
+    'jilid',
+    'surah',
+    'ayat',
+    'baca',
+    'bacalah',
+    'ulangi',
+    'tartil',
+    'quran',
+    'qur',
+  ])
+  return nilai
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((token) => token.length >= 4 && !abaikan.has(token))
+}
+
+export function tugasRumahQiroahSudahDikerjakan(
+  record: { tugas_rumah?: unknown; status_setoran?: unknown } | null | undefined,
+  setoranBerikutnya?: { jilid?: unknown; halaman?: unknown } | null,
+) {
+  const status = teksQiroah(record?.status_setoran).toLowerCase()
+  if (status.includes('sudah')) return true
+  if (!setoranBerikutnya || !adaTugasRumahQiroah(record?.tugas_rumah)) return false
+  const tugas = teksQiroah(record?.tugas_rumah)
+  const halaman = teksQiroah(setoranBerikutnya.halaman)
+  const jilid = teksQiroah(setoranBerikutnya.jilid)
+  const angkaTugas = angkaMateri(tugas)
+  const angkaHalaman = angkaMateri(halaman)
+  if (angkaTugas.length > 0 && angkaTugas.some((angka) => angkaHalaman.includes(angka))) return true
+  const capaian = new Set(tokenMateri(`${jilid} ${halaman}`))
+  return tokenMateri(tugas).some((token) => capaian.has(token))
+}
+
 export function cekTargetQiroahSiswa(kelas: string, capaianStr: string) {
   if (!capaianStr || !kelas) return false
 
