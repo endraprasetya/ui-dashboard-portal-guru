@@ -54,6 +54,7 @@ export type RekapKeuangan = {
   siswa: SiswaTunggakan[]
   periodeTagihan: string
   rekapan: BarisRekapan[]
+  catatan?: string
   /** Rekap internal subsidi silang. Tidak masuk arus kas, LRA, atau neraca. */
   subsidiYatim?: {
     siswa: number

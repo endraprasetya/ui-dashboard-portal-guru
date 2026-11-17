@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Printer, Search, X } from 'lucide-react'
-import { UNIT_KEPALA_SEKOLAH } from '@/lib/kepala-sekolah'
 import { formatDurasiMenit, formatTanggalID, nowJakarta } from '@/lib/guru-bantu/utils'
 import {
   muatRekapBulananGuruBantuKepsek,
@@ -50,7 +49,7 @@ function judulSel(sel: SelHariGuruBantu) {
 export function RekapMatriksGuruBantu({
   rekap,
   loading,
-  unit = UNIT_KEPALA_SEKOLAH,
+  unit = '',
 }: {
   rekap: RekapBulananGuruBantuKepsek | null
   loading?: boolean
@@ -326,7 +325,7 @@ function TabelCatatanKeterlambatan({ rekap }: { rekap: RekapBulananGuruBantuKeps
 }
 
 export function PanelRekapAbsensiGuruBantu({
-  unit = UNIT_KEPALA_SEKOLAH,
+  unit = '',
   bulanAwal,
 }: {
   unit?: string
@@ -339,9 +338,15 @@ export function PanelRekapAbsensiGuruBantu({
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (!unit) {
+      setRekap(null)
+      setError('Unit akun belum terbaca dari tabel users.')
+      setLoading(false)
+      return
+    }
     let batal = false
     setLoading(true)
-    muatRekapBulananGuruBantuKepsek(bulan)
+    muatRekapBulananGuruBantuKepsek(bulan, unit)
       .then((hasil) => {
         if (!batal) {
           setRekap(hasil)
@@ -357,7 +362,7 @@ export function PanelRekapAbsensiGuruBantu({
     return () => {
       batal = true
     }
-  }, [bulan])
+  }, [bulan, unit])
 
   return (
     <div className="space-y-4">

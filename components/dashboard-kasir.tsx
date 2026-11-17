@@ -85,7 +85,7 @@ export function DashboardKasir() {
   }
 
   const nama = String(user.nama_lengkap || user.nama || user.username || 'Kasir')
-  const unit = String(user.unit || '').trim()
+  const unit = kanonUnitKeuangan(String(user.unit || '')) || String(user.unit || '').trim()
   const peran = String(user.role || 'Kasir').trim()
 
   return (
@@ -106,7 +106,13 @@ export function DashboardKasir() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-        <FormTransaksiKasir user={user} unit={unit} />
+        {kanonUnitKeuangan(unit) ? (
+          <FormTransaksiKasir user={user} unit={kanonUnitKeuangan(unit)} />
+        ) : (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Unit akun belum terbaca dari tabel users. Transaksi tidak dialihkan ke unit Nogosari.
+          </p>
+        )}
       </main>
     </div>
   )
@@ -212,7 +218,8 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
     let batal = false
     setMemuatTagihan(true)
     setGalatTagihan('')
-    fetch(`/api/kasir/tagihan?nis=${encodeURIComponent(nis)}`)
+    const params = new URLSearchParams({ nis, unit })
+    fetch(`/api/kasir/tagihan?${params}`)
       .then(async (respon) => {
         const json = await respon.json()
         if (!respon.ok) throw new Error(json.pesan || 'Tagihan siswa belum dapat dimuat.')
@@ -233,7 +240,7 @@ function FormTransaksiKasir({ user, unit }: { user: AkunSesi; unit: string }) {
     return () => {
       batal = true
     }
-  }, [jenis, siswaTerpilih])
+  }, [jenis, siswaTerpilih, unit])
 
   const ubahItem = (kunci: string, patch: Partial<BarisItemKasir>) => {
     setItem((sekarang) => sekarang.map((baris) => (baris.kunci === kunci ? { ...baris, ...patch } : baris)))

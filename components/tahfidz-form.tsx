@@ -117,7 +117,10 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
   // State Riwayat Terakhir & Mode Edit
   const [latestRecords, setLatestRecords] = useState<any[]>([])
+  const [riwayatKunci, setRiwayatKunci] = useState(0)
+  const [memuatRiwayat, setMemuatRiwayat] = useState(false)
   const [editIdSetoran, setEditIdSetoran] = useState('')
+  const pilihSentuh = useRef(false)
   const latestRecord = latestRecords[0] || null
 
   // State Form Utama
@@ -308,6 +311,8 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
     setPeringatanKemarin(null)
 
     if (!selectedId) return
+    setMemuatRiwayat(true)
+    setRiwayatKunci((n) => n + 1)
 
     const siswa =
       kelas !== undefined
@@ -342,20 +347,31 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       }
     })
 
-    // Jangan order by kolom tanggal di Supabase: nilainya teks DD/MM/YYYY,
-    // sehingga 31/08 terurut di atas 10/10. Ambil semua setoran siswa, lalu
-    // urutkan di klien berdasarkan tanggal yang sudah di-parse.
-    const { data, error } = await fetchSetoranSiswa(selectedId)
+  }, [resetInputFields, students])
 
-    if (error) {
-      console.error('Gagal mengambil riwayat setoran:', error.message)
+  useEffect(() => {
+    if (!idSiswa) {
+      setLatestRecords([])
+      setMemuatRiwayat(false)
       return
     }
-
-    if (data.length > 0) {
-      setLatestRecords(pickLatestSetoran(data, 5))
+    let batal = false
+    setMemuatRiwayat(true)
+    ;(async () => {
+      const { data, error } = await fetchSetoranSiswa(idSiswa)
+      if (batal) return
+      if (error) {
+        console.error('Gagal mengambil riwayat setoran:', error.message)
+        setLatestRecords([])
+      } else {
+        setLatestRecords(pickLatestSetoran(data, 5))
+      }
+      setMemuatRiwayat(false)
+    })()
+    return () => {
+      batal = true
     }
-  }, [resetInputFields, students])
+  }, [idSiswa, riwayatKunci])
 
   const filteredStudents = students.filter((s) => {
     const sudah = siswaSudahSetor.has(String(s.id_siswa))
@@ -616,7 +632,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   }
 
   return (
-    <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       {/* Datalist Global untuk Pencarian Surah Canggih dari Supabase */}
       <datalist id="listSurah">
         {surahs.map((s) => (
@@ -686,8 +702,20 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                   <button
                     key={student.id_siswa}
                     type="button"
-                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)}
-                    className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-blue-50"
+                    onTouchStart={(e) => {
+                      e.preventDefault()
+                      pilihSentuh.current = true
+                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (pilihSentuh.current) {
+                        pilihSentuh.current = false
+                        return
+                      }
+                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
+                    }}
+                    className="flex w-full touch-manipulation items-center justify-between border-b border-slate-50 px-3 py-3 text-left text-sm transition hover:bg-blue-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
                     <span className="flex items-center gap-1">
@@ -723,26 +751,37 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
           </div>
         )}
 
-        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
-
-        {/* Tabel Riwayat Terakhir */}
-        {latestRecords.length > 0 && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
+        {/* Tabel Riwayat Terakhir — tampil di HP dan desktop, tidak disembunyikan */}
+        {(idSiswa || latestRecords.length > 0) && (
+          <div className="w-full max-w-full rounded-xl border border-amber-300 bg-amber-50/60 p-3 shadow-sm sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
                 Riwayat Setoran Terakhir Santri:
               </span>
-              <button
-                type="button"
-                onClick={handleLoadEdit}
-                className="inline-flex items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
-              >
-                <Edit3 className="size-3" /> Edit Teratas
-              </button>
+              {latestRecords.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleLoadEdit}
+                  className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
+                >
+                  <Edit3 className="size-3" /> Edit Teratas
+                </button>
+              )}
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white">
-              <table className="w-full border-collapse text-left text-xs">
+            {memuatRiwayat && latestRecords.length === 0 && (
+              <p className="text-xs font-semibold text-amber-800">Memuat riwayat setoran...</p>
+            )}
+            {!memuatRiwayat && latestRecords.length === 0 && (
+              <p className="text-xs font-semibold text-amber-800">Belum ada riwayat setoran untuk siswa ini.</p>
+            )}
+
+            {latestRecords.length > 0 && (
+            <div className="w-full max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-amber-200 bg-white">
+              <p className="border-b border-amber-100 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 md:hidden">
+                Geser tabel ke samping untuk melihat seluruh kolom.
+              </p>
+              <table className="w-max min-w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-amber-100/70 font-bold text-amber-900">
                     <th className="border-b border-amber-200 p-2.5">Tgl</th>
@@ -789,8 +828,11 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
+
+        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
 
         {/* KODE ZIYADAH */}
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-3 mb-3">

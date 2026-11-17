@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { BATAS_TERLAMBAT, TABEL_ABSENSI, TABEL_IZIN, TABEL_USERS } from '@/lib/guru-bantu/constants'
-import { UNIT_KEPALA_SEKOLAH } from '@/lib/kepala-sekolah'
+import { kanonNamaUnit, unitSama } from '@/lib/siswa'
 import type { Absensi, Perizinan } from '@/lib/guru-bantu/types'
 import { eachDate, formatDurasiMenit, hitungMenitTerlambat, potongJamPendek } from '@/lib/guru-bantu/utils'
 import { monthRange, todayInputValue } from '@/lib/jurnal'
@@ -72,8 +72,10 @@ export type RekapBulananGuruBantuKepsek = {
 
 type GuruBantuUnit = { target_id: string; nama_lengkap: string; role: string }
 
-function unitSama(nilai?: string) {
-  return String(nilai || '').trim().toLowerCase() === UNIT_KEPALA_SEKOLAH.toLowerCase()
+function unitDiminta(unit?: string) {
+  const kunci = kanonNamaUnit(unit) || String(unit || '').trim()
+  if (!kunci) throw new Error('Unit akun belum terbaca dari tabel users.')
+  return kunci
 }
 
 function peranGuruBantu(role?: string) {
@@ -119,17 +121,18 @@ function labelBulan(bulan: string) {
   return new Date(y, m - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
 }
 
-async function daftarGuruBantuUnit(): Promise<GuruBantuUnit[]> {
+async function daftarGuruBantuUnit(unit: string): Promise<GuruBantuUnit[]> {
+  const kunci = unitDiminta(unit)
   const { data: users, error: galatUser } = await supabase
     .from(TABEL_USERS)
     .select('target_id,nama_lengkap,unit,role')
-    .eq('unit', UNIT_KEPALA_SEKOLAH)
+    .ilike('unit', `%${kunci}%`)
     .or('role.ilike.%guru bantu%,role.ilike.%guru_bantu%,role.ilike.%gurubantu%')
     .order('nama_lengkap')
   if (galatUser) throw new Error(galatUser.message)
 
   return (users || [])
-    .filter((row) => unitSama(row.unit) && peranGuruBantu(row.role))
+    .filter((row) => unitSama(row.unit, kunci) && peranGuruBantu(row.role))
     .map((row) => ({
       target_id: String(row.target_id || '').trim(),
       nama_lengkap: String(row.nama_lengkap || row.target_id || '').trim(),
@@ -165,8 +168,8 @@ export function rekapAbsensiGuruBantuKosong(tanggal = todayInputValue()): RekapA
   }
 }
 
-export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue()): Promise<RekapAbsensiGuruBantuKepsek> {
-  const guru = await daftarGuruBantuUnit()
+export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue(), unit?: string): Promise<RekapAbsensiGuruBantuKepsek> {
+  const guru = await daftarGuruBantuUnit(unit || '')
   const ids = guru.map((g) => g.target_id)
   let absensi: Absensi[] = []
   let izinHari: Pick<Perizinan, 'id_induk' | 'jenis_izin' | 'detail_izin'>[] = []
@@ -263,8 +266,8 @@ function selKosong(hari: number, extra?: Partial<SelHariGuruBantu>): SelHariGuru
   }
 }
 
-export async function muatRekapBulananGuruBantuKepsek(bulan: string): Promise<RekapBulananGuruBantuKepsek> {
-  const guru = await daftarGuruBantuUnit()
+export async function muatRekapBulananGuruBantuKepsek(bulan: string, unit?: string): Promise<RekapBulananGuruBantuKepsek> {
+  const guru = await daftarGuruBantuUnit(unit || '')
   const { start, end } = monthRange(bulan)
   const hariIni = todayInputValue()
   const jumlahHari = Number(end.slice(8, 10)) || 31

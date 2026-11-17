@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import { TABEL_HEADER_RAPOR, periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
-import { UNIT_KEPALA_SEKOLAH, adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { normalKelas, teacherDisplayName } from '@/lib/qiroah'
+import { kanonNamaUnit, unitSama } from '@/lib/siswa'
 
 export const PILIHAN_ASESMEN_RAPOR_HQ = [
   { kode: 'ASTS I', label: 'ASTS 1' },
@@ -36,10 +37,6 @@ export type SiswaBinaanUnit = {
   id_siswa: string
   kelas: string
   id_pembimbing?: string | null
-}
-
-function unitSama(nilai?: string) {
-  return String(nilai || '').trim().toLowerCase() === UNIT_KEPALA_SEKOLAH.toLowerCase()
 }
 
 function normalAsesmen(teks: string) {
@@ -88,7 +85,9 @@ export function ringkasPemantauanRaporHq(baris: BarisPemantauanRaporHq[], asesme
 
 export async function muatDataRaporHqKepsek(
   siswaUnit: SiswaBinaanUnit[],
+  unit?: string,
 ): Promise<{ mentah: DataMentahRaporHq; catatan: string[] }> {
+  const kunciUnit = kanonNamaUnit(unit) || String(unit || '').trim()
   const catatan: string[] = []
   const { tahunAjaran, semester } = periodeAjaranSekarang()
   const ids = siswaUnit.map((s) => s.id_siswa)
@@ -118,11 +117,9 @@ export async function muatDataRaporHqKepsek(
     }
   }
 
-  const { data: guru, error: galatGuru } = await supabase
-    .from('users')
-    .select('target_id,username,nama_lengkap,unit,role')
-    .eq('unit', UNIT_KEPALA_SEKOLAH)
-    .limit(500)
+  let permintaanGuru = supabase.from('users').select('target_id,username,nama_lengkap,unit,role').limit(500)
+  if (kunciUnit) permintaanGuru = permintaanGuru.ilike('unit', `%${kunciUnit}%`)
+  const { data: guru, error: galatGuru } = await permintaanGuru
   if (galatGuru) {
     catatan.push('Daftar guru untuk Rapor HQ belum dapat dimuat.')
     return { mentah: { tahunAjaran, semester, guruKelas: [], headerNilai }, catatan }
@@ -150,7 +147,7 @@ export async function muatDataRaporHqKepsek(
 
   const guruKelas: DataMentahRaporHq['guruKelas'] = []
   for (const row of guru || []) {
-    if (!unitSama(row.unit) || adalahKepalaSekolah(row)) continue
+    if ((kunciUnit && !unitSama(row.unit, kunciUnit)) || adalahKepalaSekolah(row)) continue
     const guruId = String(row.target_id || row.username || '').trim().toUpperCase()
     if (!guruId) continue
     const namaGuru = teacherDisplayName(row)

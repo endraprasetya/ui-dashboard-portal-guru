@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
+import { unitDariAkun } from '@/lib/siswa'
 import { Lock, User, LogIn, ShieldAlert, Eye, EyeOff } from 'lucide-react'
 
 export function Login({
@@ -67,7 +68,7 @@ export function Login({
         ...tanpaSandi,
         target_id: baris.target_id || baris.id_user || baris.username,
         nama_lengkap: baris.nama_lengkap || baris.nama || baris.username,
-        unit: baris.unit || 'Semua Unit',
+        unit: unitDariAkun(tanpaSandi),
         role: String(baris.role || 'Ustadz').trim(),
       }
 

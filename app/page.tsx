@@ -23,6 +23,7 @@ import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
+import { unitDariAkun } from '@/lib/siswa'
 import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
   keteranganJadwal,
@@ -708,7 +709,7 @@ export default function Home() {
                 Rekap absensi guru bantu hanya untuk admin guru bantu.
               </p>
             ) : (
-              <PanelRekapAbsensiGuruBantu />
+              <PanelRekapAbsensiGuruBantu unit={unitDariAkun(currentUser)} />
             )}
           </div>
         )}

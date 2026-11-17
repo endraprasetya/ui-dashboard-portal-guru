@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { adalahKasir, type AkunSesi } from '@/lib/bendahara'
-import type { Siswa } from '@/lib/siswa'
+import { kanonNamaUnit, unitDariAkun, type Siswa } from '@/lib/siswa'
 
 export const KODE_AKUN_KAS = ['3101', '3102', '3103'] as const
 export const STATUS_DRAFT = 'Draft'
@@ -98,9 +98,12 @@ export async function validasiSesiKasir(sesi?: AkunSesi | null): Promise<HasilVa
 
   const username = String(sesi.username || '').trim()
   const target = String(sesi.target_id || sesi.id_user || '').trim()
-  if (!username && !target) return { status: 'kosong' }
+  if (!username && !target) {
+    localStorage.removeItem('user_session')
+    return { status: 'kosong' }
+  }
 
-  let permintaan = supabase.from('users').select('username,role,nama_lengkap,unit,target_id').limit(1)
+  let permintaan = supabase.from('users').select('*').limit(1)
   permintaan = username ? permintaan.eq('username', username) : permintaan.eq('target_id', target)
 
   const { data, error } = await permintaan
@@ -112,12 +115,13 @@ export async function validasiSesiKasir(sesi?: AkunSesi | null): Promise<HasilVa
     return { status: 'kosong' }
   }
 
+  const { password: _sandiKasir, ...barisAman } = baris
   const user: AkunSesi = {
     ...sesi,
-    ...baris,
+    ...barisAman,
     target_id: baris.target_id || sesi.target_id || baris.username,
     nama_lengkap: baris.nama_lengkap || sesi.nama_lengkap || baris.username,
-    unit: baris.unit || sesi.unit || 'Semua Unit',
+    unit: unitDariAkun(baris) || unitDariAkun(sesi),
     role: String(baris.role || '').trim(),
   }
   simpanSesi(user)
@@ -134,12 +138,7 @@ export function generateNomorBuktiKas(waktu = new Date()) {
 }
 
 export function kanonUnitKeuangan(unit?: string | null) {
-  const k = String(unit || '').trim().toLowerCase()
-  if (!k || k.includes('semua')) return ''
-  if (k.includes('kartasura')) return 'Kartasura'
-  if (k.includes('cepogo')) return 'Cepogo'
-  if (k.includes('nogosari')) return 'Nogosari'
-  return String(unit || '').trim()
+  return kanonNamaUnit(unit)
 }
 
 export function unitKeuanganCocok(unitUser?: string | null, unitBaris?: string | null) {
@@ -150,7 +149,7 @@ export function unitKeuanganCocok(unitUser?: string | null, unitBaris?: string |
 }
 
 export function identitasSekolahUnit(unit?: string | null) {
-  const kunci = kanonUnitKeuangan(unit) || 'Nogosari'
+  const kunci = kanonUnitKeuangan(unit)
   const peta: Record<string, { yayasan: string; sekolah: string; kota: string }> = {
     Nogosari: {
       yayasan: 'Yayasan Islam Al Madinah',
@@ -168,7 +167,14 @@ export function identitasSekolahUnit(unit?: string | null) {
       kota: 'Boyolali',
     },
   }
-  return { unit: kunci, ...(peta[kunci] || peta.Nogosari) }
+  if (kunci && peta[kunci]) return { unit: kunci, ...peta[kunci] }
+  const nama = String(unit || '').trim()
+  return {
+    unit: nama || 'Unit',
+    yayasan: 'Yayasan Islam Al Madinah',
+    sekolah: nama ? `SD Islam Terpadu Al Madinah ${nama}` : 'SD Islam Terpadu Al Madinah',
+    kota: '',
+  }
 }
 
 function statusDariBaris(baris: Record<string, unknown>): StatusTransaksiKas {
@@ -455,9 +461,11 @@ export async function muatTransaksiKas(status?: StatusTransaksiKas, unit?: strin
   ]
   let data: unknown[] | null = null
   let error: { message?: string; code?: string; details?: string; hint?: string } | null = null
+  let saringUnitDiKueri = Boolean(unitKunci)
   for (const opsi of percobaan) {
     let permintaan = supabase.from('tabel_transaksi_kas').select('*')
     if (opsi.statusKolom && status) permintaan = permintaan.eq(opsi.statusKolom, status)
+    if (saringUnitDiKueri && unitKunci) permintaan = permintaan.ilike('unit', `%${unitKunci}%`)
     if (opsi.urut) permintaan = permintaan.order(opsi.urut, { ascending: false })
     const hasil = await permintaan.limit(2000)
     error = hasil.error
@@ -473,6 +481,10 @@ export async function muatTransaksiKas(status?: StatusTransaksiKas, unit?: strin
       filter: opsi,
     })
     const pesan = error.message || ''
+    if (saringUnitDiKueri && /unit/i.test(pesan) && /column|schema cache|does not exist|Could not find/i.test(pesan)) {
+      saringUnitDiKueri = false
+      continue
+    }
     const bisaDiulang = /column|schema cache|does not exist|404|PGRST|Could not find/i.test(pesan) || error.code === 'PGRST204' || error.code === 'PGRST205'
     if (!bisaDiulang) break
   }
@@ -484,7 +496,7 @@ export async function muatTransaksiKas(status?: StatusTransaksiKas, unit?: strin
   daftar = await lengkapiIdentitasTransaksi(daftar)
   if (status) daftar = daftar.filter((item) => item.status === status)
   if (unitKunci) {
-    daftar = daftar.filter((item) => unitKeuanganCocok(unitKunci, item.unit) || !item.unit)
+    daftar = daftar.filter((item) => unitKeuanganCocok(unitKunci, item.unit))
   }
   return daftar
 }

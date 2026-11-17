@@ -46,13 +46,50 @@ import {
 const SETORAN_FIELDS =
   'id_qiroah, tanggal, unit, id_siswa, nama_siswa, ustadz, jilid, halaman, status, catatan, tugas_rumah, status_setoran, nilai, catatan_audio, murojaah_di_rumah, membaca_di_sekolah, murojaah_bersama_teman'
 
+function waktuQiroah(record: { tanggal?: unknown; id_qiroah?: unknown }) {
+  const raw = String(record?.tanggal || '').trim()
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/)
+  if (slash) {
+    const [, dd, mm, yyyy, hh = '0', min = '0', ss = '0'] = slash
+    const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss))
+    if (!Number.isNaN(parsed.getTime())) return parsed.getTime()
+  }
+  const iso = Date.parse(raw)
+  if (Number.isFinite(iso)) return iso
+  const angka = Number(String(record?.id_qiroah || '').replace(/\D/g, ''))
+  return Number.isFinite(angka) ? angka : 0
+}
+
+async function fetchRiwayatQiroah(idSiswa: string) {
+  const pageSize = 1000
+  const all: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('setoran_qiroah')
+      .select(SETORAN_FIELDS)
+      .eq('id_siswa', idSiswa)
+      .range(from, from + pageSize - 1)
+    if (error) return { data: all, error }
+    const rows = data || []
+    all.push(...rows)
+    if (rows.length < pageSize) break
+    from += pageSize
+  }
+  const terbaru = [...all].sort((a, b) => waktuQiroah(b) - waktuQiroah(a)).slice(0, 5)
+  return { data: terbaru, error: null }
+}
+
 export function QiroahForm({ onBack, currentUser }: { onBack: () => void; currentUser?: any }) {
   const [students, setStudents] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
   const [latestRecords, setLatestRecords] = useState<any[]>([])
+  const [riwayatKunci, setRiwayatKunci] = useState(0)
+  const [memuatRiwayat, setMemuatRiwayat] = useState(false)
   const [editIdQiroah, setEditIdQiroah] = useState('')
+  const pilihSentuh = useRef(false)
 
   const [idSiswa, setIdSiswa] = useState('')
   const [studentSearchQuery, setStudentSearchQuery] = useState('')
@@ -158,6 +195,8 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     setAbsenHariIni(null)
     setPeringatanKemarin(null)
     if (!selectedId) return
+    setMemuatRiwayat(true)
+    setRiwayatKunci((n) => n + 1)
 
     const siswa =
       kelas !== undefined
@@ -192,20 +231,32 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
       }
     })
 
-    const { data, error } = await supabase
-      .from('setoran_qiroah')
-      .select(SETORAN_FIELDS)
-      .eq('id_siswa', selectedId)
-      .order('tanggal', { ascending: false, nullsFirst: false })
-      .limit(5)
-
-    if (!error && data && data.length > 0) {
-      setLatestRecords(data)
-      if (data[0].jilid) setJilid(data[0].jilid)
-    } else if (error) {
-      console.error('Gagal mengambil riwayat setoran qiroah:', error.message)
-    }
   }, [resetFormFields, students])
+
+  useEffect(() => {
+    if (!idSiswa) {
+      setLatestRecords([])
+      setMemuatRiwayat(false)
+      return
+    }
+    let batal = false
+    setMemuatRiwayat(true)
+    ;(async () => {
+      const { data, error } = await fetchRiwayatQiroah(idSiswa)
+      if (batal) return
+      if (error) {
+        console.error('Gagal mengambil riwayat setoran qiroah:', error.message)
+        setLatestRecords([])
+      } else {
+        setLatestRecords(data)
+        if (data[0]?.jilid) setJilid(data[0].jilid)
+      }
+      setMemuatRiwayat(false)
+    })()
+    return () => {
+      batal = true
+    }
+  }, [idSiswa, riwayatKunci])
 
   const filteredStudents = students
     .filter((s) => {
@@ -485,14 +536,14 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
     alert(
       penguji
         ? `Pengajuan tersimpan dengan status menunggu jadwal. Guru penguji: ${penguji}.`
-        : 'Pengajuan tersimpan dengan status menunggu jadwal. Kelas ini belum memiliki guru penguji pada pemetaan Unit Nogosari.',
+        : `Pengajuan tersimpan dengan status menunggu jadwal. Kelas ini belum memiliki guru penguji pada pemetaan unit ${unitSiswa}.`,
     )
     setShowPengajuan(false)
     setJilidDiuji('')
   }
 
   return (
-    <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <button
         type="button"
         onClick={onBack}
@@ -552,8 +603,20 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                   <button
                     key={student.id_siswa}
                     type="button"
-                    onClick={() => handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)}
-                    className="flex w-full items-center justify-between border-b border-slate-50 px-3 py-2.5 text-left text-sm transition hover:bg-sky-50"
+                    onTouchStart={(e) => {
+                      e.preventDefault()
+                      pilihSentuh.current = true
+                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (pilihSentuh.current) {
+                        pilihSentuh.current = false
+                        return
+                      }
+                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
+                    }}
+                    className="flex w-full touch-manipulation items-center justify-between border-b border-slate-50 px-3 py-3 text-left text-sm transition hover:bg-sky-50"
                   >
                     <span className="font-bold text-slate-800">{student.nama_siswa}</span>
                     <span className="flex items-center gap-1">
@@ -589,30 +652,38 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
           </div>
         )}
 
-        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
-
-        {/* 5 RIWAYAT SETORAN TERAKHIR DALAM BENTUK JADUAL */}
-        {latestRecords.length > 0 && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
+        {(idSiswa || latestRecords.length > 0) && (
+          <div className="w-full max-w-full rounded-xl border border-amber-300 bg-amber-50/60 p-3 shadow-sm sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
-                5 Riwayat Setoran Terakhir Santri:
+                Riwayat Setoran Terakhir Qiroah:
               </span>
-              {milikSetoran(latestRecords[0]) && (
+              {latestRecords.length > 0 && milikSetoran(latestRecords[0]) && (
                 <button
                   type="button"
                   onClick={() => {
                     if (latestRecords[0]) handleLoadEdit(latestRecords[0])
                   }}
-                  className="inline-flex items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
+                  className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow hover:bg-amber-700"
                 >
                   <Edit3 className="size-3" /> Edit Teratas
                 </button>
               )}
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white">
-              <table className="w-full border-collapse text-left text-xs">
+            {memuatRiwayat && latestRecords.length === 0 && (
+              <p className="text-xs font-semibold text-amber-800">Memuat riwayat setoran qiroah...</p>
+            )}
+            {!memuatRiwayat && latestRecords.length === 0 && (
+              <p className="text-xs font-semibold text-amber-800">Belum ada riwayat setoran qiroah untuk siswa ini.</p>
+            )}
+
+            {latestRecords.length > 0 && (
+            <div className="w-full max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-amber-200 bg-white">
+              <p className="border-b border-amber-100 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 md:hidden">
+                Geser tabel ke samping untuk melihat seluruh kolom.
+              </p>
+              <table className="w-max min-w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-amber-100/70 font-bold text-amber-900">
                     <th className="border-b border-amber-200 p-2.5">Tgl</th>
@@ -666,8 +737,11 @@ export function QiroahForm({ onBack, currentUser }: { onBack: () => void; curren
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
+
+        <fieldset disabled={inputSetoranDiblokir} className="space-y-4 disabled:opacity-60">
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button

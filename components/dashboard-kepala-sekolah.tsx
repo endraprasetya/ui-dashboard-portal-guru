@@ -28,8 +28,6 @@ import { muatRekapBulananGuruBantuKepsek, type RekapBulananGuruBantuKepsek } fro
 import { CetakUjianQiroah, type HasilUjianCetak } from '@/components/cetak-ujian-qiroah'
 import {
   KEPALA_SEKOLAH,
-  UNIT_KEPALA_SEKOLAH,
-  adalahKepalaSekolah,
   muatLaporanKepsek,
   type LaporanKepsek,
   type RekapLulus,
@@ -39,7 +37,8 @@ import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
-import { tujuanSetelahLogin } from '@/lib/bendahara'
+import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
+import { kanonNamaUnit } from '@/lib/siswa'
 
 type Panel = 'absensi' | 'absensi_guru_bantu' | 'qiroah' | 'skl' | null
 type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
@@ -88,6 +87,7 @@ function keHasil(row: RekapLulus): HasilUjianCetak {
 
 export function DashboardKepalaSekolah() {
   const [siap, setSiap] = useState<'memuat' | 'siap' | 'tolak'>('memuat')
+  const [user, setUser] = useState<AkunSesi | null>(null)
   const [tujuan, setTujuan] = useState('/')
   const [laporan, setLaporan] = useState<LaporanKepsek | null>(null)
   const [galat, setGalat] = useState('')
@@ -103,17 +103,32 @@ export function DashboardKepalaSekolah() {
   const [ujianLengkap, setUjianLengkap] = useState(false)
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('user_session')
-      const user = raw ? JSON.parse(raw) : null
-      if (!adalahKepalaSekolah(user)) {
-        setTujuan(tujuanSetelahLogin(user))
-        setSiap('tolak')
-        return
+    let batal = false
+    ;(async () => {
+      try {
+        const raw = localStorage.getItem('user_session')
+        const sesi = raw ? (JSON.parse(raw) as AkunSesi) : null
+        const hasil = await validasiSesiKepalaSekolah(sesi)
+        if (batal) return
+        if (hasil.status !== 'ok') {
+          setTujuan(hasil.status === 'bukan' ? tujuanSetelahLogin(hasil.user) : '/')
+          setSiap('tolak')
+          return
+        }
+        const unitAkun = kanonNamaUnit(String(hasil.user.unit || '')) || String(hasil.user.unit || '').trim()
+        setUser(hasil.user)
+        if (!unitAkun) {
+          setGalat('Unit akun belum terbaca dari tabel users. Data tidak dialihkan ke unit Nogosari.')
+        }
+        setSiap('siap')
+      } catch (error) {
+        if (batal) return
+        setGalat(error instanceof Error ? error.message : 'Tidak dapat memvalidasi sesi Kepala Sekolah.')
+        setSiap('siap')
       }
-      setSiap('siap')
-    } catch {
-      setSiap('tolak')
+    })()
+    return () => {
+      batal = true
     }
   }, [])
 
@@ -122,9 +137,11 @@ export function DashboardKepalaSekolah() {
   }, [siap, tujuan])
 
   useEffect(() => {
-    if (siap !== 'siap') return
+    if (siap !== 'siap' || !user) return
+    const unitAkun = kanonNamaUnit(String(user.unit || '')) || String(user.unit || '').trim()
+    if (!unitAkun) return
     let batal = false
-    muatLaporanKepsek()
+    muatLaporanKepsek(new Date(), unitAkun)
       .then((hasil) => {
         if (batal) return
         setLaporan(hasil)
@@ -136,13 +153,15 @@ export function DashboardKepalaSekolah() {
     return () => {
       batal = true
     }
-  }, [siap])
+  }, [siap, user])
 
   useEffect(() => {
-    if (siap !== 'siap' || panel !== 'absensi_guru_bantu') return
+    if (siap !== 'siap' || panel !== 'absensi_guru_bantu' || !user) return
+    const unitAkun = kanonNamaUnit(String(user.unit || '')) || String(user.unit || '').trim()
+    if (!unitAkun) return
     let batal = false
     setMemuatRekapGuruBantu(true)
-    muatRekapBulananGuruBantuKepsek(bulanCetak)
+    muatRekapBulananGuruBantuKepsek(bulanCetak, unitAkun)
       .then((hasil) => {
         if (!batal) setRekapGuruBantu(hasil)
       })
@@ -155,7 +174,7 @@ export function DashboardKepalaSekolah() {
     return () => {
       batal = true
     }
-  }, [siap, panel, bulanCetak])
+  }, [siap, panel, bulanCetak, user])
 
   const siswaKelas = useMemo(() => {
     if (!laporan || !kelasCetak) return []
@@ -175,9 +194,27 @@ export function DashboardKepalaSekolah() {
     window.location.assign('/')
   }
 
-  if (siap !== 'siap') {
+  if (galat && !user) {
+    return (
+      <main className="grid min-h-screen place-items-center px-4">
+        <div className="max-w-md space-y-3 text-center">
+          <p className="text-sm font-semibold text-red-700">{galat}</p>
+          <button type="button" onClick={keluar} className="text-xs font-bold text-emerald-800 underline">
+            Kembali ke halaman masuk
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  if (siap !== 'siap' || !user) {
     return <main className="grid min-h-screen place-items-center text-sm text-slate-500">Memeriksa sesi Kepala Sekolah...</main>
   }
+
+  const unitTampil = kanonNamaUnit(String(user.unit || '')) || String(user.unit || '').trim()
+  const namaKepsek = String(user.nama_lengkap || user.nama || user.username || 'Kepala Sekolah')
+  const niyKepsek = String(user.niy || user.nip || (unitTampil === 'Nogosari' ? KEPALA_SEKOLAH.niy : ''))
+  const kepsekTetap = { nama: namaKepsek, niy: niyKepsek }
 
   const angka = laporan?.kehadiran
   const tidakHadirTotal = (angka?.sakit || 0) + (angka?.izin || 0) + (angka?.alpa || 0)
@@ -200,7 +237,10 @@ export function DashboardKepalaSekolah() {
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Executive Dashboard</p>
             <h1 className="text-lg font-black">Dashboard Kepala Sekolah</h1>
-            <p className="text-xs text-emerald-50/80">{KEPALA_SEKOLAH.nama} · NIY {KEPALA_SEKOLAH.niy} · Unit {UNIT_KEPALA_SEKOLAH}</p>
+            <p className="text-xs text-emerald-50/80">
+              {namaKepsek}
+              {niyKepsek ? ` · NIY ${niyKepsek}` : ''} · Unit {unitTampil || 'belum diatur'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <a href="#laporan-keuangan" className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">
@@ -221,8 +261,10 @@ export function DashboardKepalaSekolah() {
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
         {galat && <p className="no-print rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{galat}</p>}
-        <LaporanKeuangan unit={UNIT_KEPALA_SEKOLAH} judul="Laporan keuangan unit Nogosari" />
-        <ModulKeuangan />
+        {unitTampil ? (
+          <LaporanKeuangan unit={unitTampil} judul={`Laporan keuangan unit ${unitTampil}`} />
+        ) : null}
+        {unitTampil ? <ModulKeuangan unit={unitTampil} /> : null}
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>
@@ -386,7 +428,7 @@ export function DashboardKepalaSekolah() {
                 <h2 className="text-sm font-extrabold text-slate-900">Pantauan jurnal hari ini</h2>
                 <ChevronRight className="size-4 text-slate-400" />
               </div>
-              <p className="mt-1 text-xs text-slate-500">Unit {UNIT_KEPALA_SEKOLAH}</p>
+              <p className="mt-1 text-xs text-slate-500">Unit {unitTampil}</p>
               <p className="mt-3 text-sm text-slate-800">
                 <span className="font-bold">{laporan.jurnalRingkas.tanggal}</span> ·{' '}
                 <strong className="text-emerald-800">{laporan.jurnalRingkas.terisi}</strong> sesi terisi ·{' '}
@@ -420,7 +462,7 @@ export function DashboardKepalaSekolah() {
 
             <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-extrabold text-slate-900">Monitoring kepatuhan guru</h2>
-              <p className="mt-1 text-xs text-slate-500">Hanya guru Unit {UNIT_KEPALA_SEKOLAH}. Jurnal mengikuti kelas binaan di unit ini. Setoran qiroah mengikuti nama guru yang mencatat hari ini.</p>
+              <p className="mt-1 text-xs text-slate-500">Hanya guru Unit {unitTampil}. Jurnal mengikuti kelas binaan di unit ini. Setoran qiroah mengikuti nama guru yang mencatat hari ini.</p>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[720px] border-collapse text-left text-xs">
                   <thead>
@@ -459,7 +501,7 @@ export function DashboardKepalaSekolah() {
             </section>
 
             <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-extrabold text-slate-900">Ujian kenaikan jilid · Unit {UNIT_KEPALA_SEKOLAH}</h2>
+              <h2 className="text-sm font-extrabold text-slate-900">Ujian kenaikan jilid · Unit {unitTampil}</h2>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[860px] border-collapse text-left text-xs">
                   <thead>
@@ -503,7 +545,10 @@ export function DashboardKepalaSekolah() {
 
             <section className="no-print rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-emerald-900"><FileText className="size-4" /><h2 className="text-sm font-extrabold">Cetak laporan resmi</h2></div>
-              <p className="mt-1 text-xs text-slate-500">Tanda tangan Kepala Sekolah otomatis memakai {KEPALA_SEKOLAH.nama}, NIY {KEPALA_SEKOLAH.niy}.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Tanda tangan Kepala Sekolah memakai {namaKepsek}
+                {niyKepsek ? `, NIY ${niyKepsek}` : ''}.
+              </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => setPanel('absensi')} className="rounded-xl bg-[#143d32] px-3 py-2 text-xs font-bold text-white">Rekap Absensi Bulanan (F4)</button>
                 <button type="button" onClick={() => setPanel('absensi_guru_bantu')} className="rounded-xl bg-teal-800 px-3 py-2 text-xs font-bold text-white">Rekap Absensi Guru Bantu</button>
@@ -536,7 +581,7 @@ export function DashboardKepalaSekolah() {
                   loading={false}
                   guruNama=""
                   guruNip=""
-                  kepsekTetap={KEPALA_SEKOLAH}
+                  kepsekTetap={kepsekTetap}
                 />
               </section>
             )}
@@ -580,8 +625,8 @@ export function DashboardKepalaSekolah() {
                 <div className="mt-10 text-center text-sm">
                   <p>Kepala Sekolah</p>
                   <div className="h-16" />
-                  <p className="font-bold underline">{KEPALA_SEKOLAH.nama}</p>
-                  <p>NIY. {KEPALA_SEKOLAH.niy}</p>
+                  <p className="font-bold underline">{namaKepsek}</p>
+                  {niyKepsek ? <p>NIY. {niyKepsek}</p> : null}
                 </div>
               </section>
             )}
@@ -618,7 +663,7 @@ export function DashboardKepalaSekolah() {
         <ModalHasilUjianKepsek baris={laporan.hasilUjian} unit={laporan.unit} onTutup={() => setModalKpi(null)} />
       )}
       {skl && (
-        <CetakUjianQiroah jenis="skl" data={skl} onClose={() => setSkl(null)} kepsekTetap={KEPALA_SEKOLAH} />
+        <CetakUjianQiroah jenis="skl" data={skl} onClose={() => setSkl(null)} kepsekTetap={kepsekTetap} />
       )}
     </div>
   )

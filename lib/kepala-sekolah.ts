@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { isKelasAlumni } from '@/lib/siswa'
+import { isKelasAlumni, kanonNamaUnit, unitSama } from '@/lib/siswa'
 import {
   jenisAbsen,
   monthRange,
@@ -196,11 +196,16 @@ export type LaporanKepsek = {
 }
 
 const PREDIKAT = ['Mumtaz', 'Jayyid Jiddan', 'Jayyid', 'Mengulang']
+/** Dipakai hanya sebagai label bawaan tampilan lama. Kueri dashboard memakai unit akun yang login. */
 export const UNIT_KEPALA_SEKOLAH = 'Nogosari'
 const SIMBOL_ABSEN = { sakit: 'S', izin: 'I', alpa: 'A' } as const
 
-function unitKepalaSekolah(nilai?: string) {
-  return String(nilai || '').trim().toLowerCase() === UNIT_KEPALA_SEKOLAH.toLowerCase()
+function unitAkunAktif(unitMentah?: string) {
+  const unit = kanonNamaUnit(unitMentah) || String(unitMentah || '').trim()
+  if (!unit) {
+    throw new Error('Unit akun belum terbaca dari tabel users. Isi kolom unit pada akun yang login, misalnya Kartasura.')
+  }
+  return unit
 }
 
 async function halaman<T>(buat: (dari: number, sampai: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
@@ -322,7 +327,8 @@ function namaGuru(row: any) {
   return teacherDisplayName(row)
 }
 
-export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanKepsek> {
+export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: string): Promise<LaporanKepsek> {
+  const unit = unitAkunAktif(unitMentah)
   const hari = todayInputValue(sekarang)
   const mulai = new Date(sekarang)
   mulai.setHours(0, 0, 0, 0)
@@ -334,7 +340,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       supabase
         .from('siswa')
         .select('id_siswa,nama_siswa,kelas,unit,id_pembimbing')
-        .eq('unit', UNIT_KEPALA_SEKOLAH)
+        .ilike('unit', `%${unit}%`)
         .not('kelas', 'ilike', '%Alumni%')
         .range(dari, sampai),
     ).catch((error: Error) => {
@@ -371,7 +377,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
         'id_qiroah,tanggal,ustadz,unit,id_siswa,jilid,halaman,status,catatan,tugas_rumah',
         'id_qiroah,tanggal,ustadz,unit,id_siswa',
       ],
-      (kueri) => kueri.eq('unit', UNIT_KEPALA_SEKOLAH).gte('tanggal', start).order('tanggal', { ascending: true }),
+      (kueri) => kueri.ilike('unit', `%${unit}%`).gte('tanggal', start).order('tanggal', { ascending: true }),
     ).catch((error: Error) => {
       catatan.push('Setoran qiroah belum dapat dimuat.')
       console.error(error.message)
@@ -396,7 +402,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
         .select(
           'id_pengajuan,id_siswa,nama_siswa,kelas,unit,jilid_diujikan,diajukan_oleh,nama_penguji,status,tanggal_pelaksanaan,tanggal_diajukan',
         )
-        .eq('unit', UNIT_KEPALA_SEKOLAH)
+        .ilike('unit', `%${unit}%`)
         .order('tanggal_diajukan', { ascending: false })
         .range(dari, sampai),
     ).catch((error: Error) => {
@@ -407,7 +413,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
     supabase
       .from('tertib_point')
       .select('id_tertib_point,created_at,guru,unit,pts,label,id_siswa')
-      .eq('unit', UNIT_KEPALA_SEKOLAH)
+      .ilike('unit', `%${unit}%`)
       .gte('created_at', `${start}T00:00:00+07:00`)
       .limit(2000),
     halaman<any>((dari, sampai) =>
@@ -421,10 +427,10 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       console.error(error.message)
       return []
     }),
-    muatPengguna(catatan),
+    muatPengguna(catatan, unit),
   ])
 
-  const daftarSiswa = (siswa || []).filter((row) => unitKepalaSekolah(row.unit) && !isKelasAlumni(row.kelas))
+  const daftarSiswa = (siswa || []).filter((row) => unitSama(row.unit, unit) && !isKelasAlumni(row.kelas))
   const jumlahKelas = new Map<string, number>()
   const kelasUnit = new Set<string>()
   const siswaById = new Map(daftarSiswa.map((row) => [String(row.id_siswa), row]))
@@ -501,7 +507,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       .filter((row) => siswaById.has(String(row.id_siswa)))
       .map(petakanTahfidz),
     qiroah: (Array.isArray(qiroah) ? qiroah : [])
-      .filter((row) => unitKepalaSekolah(row.unit) && row.id_siswa && siswaById.has(String(row.id_siswa)))
+      .filter((row) => unitSama(row.unit, unit) && row.id_siswa && siswaById.has(String(row.id_siswa)))
       .map(petakanQiroah),
   }
   const setoranTahfidz = setoranBulan.tahfidz.filter((row) => row.tanggal === hari)
@@ -511,7 +517,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   if (tertib.error) catatan.push('Tertib point belum dapat dimuat.')
 
   const tertibBulan: BarisTertib[] = (tertib.data || [])
-    .filter((row) => unitKepalaSekolah(row.unit))
+    .filter((row) => unitSama(row.unit, unit))
     .map((row) => {
       const siswa = row.id_siswa ? siswaById.get(String(row.id_siswa)) : undefined
       return {
@@ -532,7 +538,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   const labelBulan = new Date(`${hari}T12:00:00`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
   const pengajuanBulan = (pengajuan || []).filter(
     (row) =>
-      unitKepalaSekolah(row.unit) && String(row.tanggal_diajukan || row.tanggal_pelaksanaan || '').slice(0, 7) === bulanKunci,
+      unitSama(row.unit, unit) && String(row.tanggal_diajukan || row.tanggal_pelaksanaan || '').slice(0, 7) === bulanKunci,
   )
   const rekapanBulan = (rekapan || []).filter(
     (row) => siswaById.has(String(row.id_siswa)) && String(row.tanggal_ujian || '').slice(0, 7) === bulanKunci,
@@ -555,7 +561,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   const ujian = (pengajuan || [])
     .filter(
       (row) =>
-        unitKepalaSekolah(row.unit) &&
+        unitSama(row.unit, unit) &&
         (menungguJadwal(row.status) || sudahTerjadwal(row.status)) &&
         !cariRekapan(row, rekapan || []),
     )
@@ -563,7 +569,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       id: String(row.id_pengajuan),
       nama: row.nama_siswa || 'Siswa',
       kelas: row.kelas || '-',
-      unit: row.unit || UNIT_KEPALA_SEKOLAH,
+      unit: row.unit || unit,
       jilid: labelRentangKenaikanJilid(row.jilid_diujikan),
       pengampu: row.diajukan_oleh || '-',
       penguji: row.nama_penguji || pengujiUntukKelas(row.kelas, row.unit) || '-',
@@ -587,7 +593,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       id_siswa: String(row.id_siswa || ''),
       nama: row.nama || 'Siswa',
       kelas: row.kelas || '-',
-      unit: UNIT_KEPALA_SEKOLAH,
+      unit,
       guru_pengampu: row.guru_pengampu || '',
       jilid_asal: row.jilid_asal || '',
       jilid_tujuan: row.jilid_tujuan || '',
@@ -625,7 +631,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   }
 
   const barisGuru: BarisGuru[] = guru
-    .filter((row) => unitKepalaSekolah(row.unit) && !adalahKepalaSekolah(row))
+    .filter((row) => unitSama(row.unit, unit) && !adalahKepalaSekolah(row))
     .map((row) => {
       const nama = namaGuru(row)
       const kelas = kelasBinaan(row)
@@ -633,7 +639,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
       const qiroahSudah = setoranQiroah.some((item) => namaPengujiCocok(nama, item.ustadz))
       return {
         nama,
-        unit: UNIT_KEPALA_SEKOLAH,
+        unit,
         jurnal: jurnalSudah ? 'Sudah' : 'Belum',
         qiroah: qiroahSudah ? 'Sudah' : 'Belum',
         tahfidz: 'Tidak tercatat',
@@ -692,7 +698,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   }))
 
   const [raporHqHasil, guruBantu] = await Promise.all([
-    muatDataRaporHqKepsek(siswaLaporan).catch((error: Error) => {
+    muatDataRaporHqKepsek(siswaLaporan, unit).catch((error: Error) => {
       catatan.push('Pemantauan Rapor HQ belum dapat dimuat.')
       console.error(error.message)
       return {
@@ -704,7 +710,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
         catatan: [] as string[],
       }
     }),
-    muatAbsensiGuruBantuKepsek(hari).catch((error: Error) => {
+    muatAbsensiGuruBantuKepsek(hari, unit).catch((error: Error) => {
       catatan.push('Absensi guru bantu belum dapat dimuat.')
       console.error(error.message)
       return rekapAbsensiGuruBantuKosong(hari)
@@ -717,7 +723,7 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   const raporHqRingkas = ringkasPemantauanRaporHq(barisRaporHq, asesmenAwal)
 
   return {
-    unit: UNIT_KEPALA_SEKOLAH,
+    unit,
     tanggalLaporan: hari,
     kehadiran: {
       hadir: rekapHari.hadir,
@@ -754,10 +760,10 @@ export async function muatLaporanKepsek(sekarang = new Date()): Promise<LaporanK
   }
 }
 
-async function muatPengguna(catatan: string[]) {
+async function muatPengguna(catatan: string[], unit: string) {
   const pilihan = ['nama_lengkap,username,unit,role,target_id', 'nama_lengkap,username,unit,role']
   for (const kolom of pilihan) {
-    const { data, error } = await supabase.from('users').select(kolom).eq('unit', UNIT_KEPALA_SEKOLAH).limit(500)
+    const { data, error } = await supabase.from('users').select(kolom).ilike('unit', `%${unit}%`).limit(500)
     if (!error) return (data || []) as { nama_lengkap?: string; username?: string; unit?: string; role?: string; target_id?: string }[]
   }
   catatan.push('Daftar guru belum dapat dimuat.')

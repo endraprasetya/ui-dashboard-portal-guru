@@ -219,7 +219,7 @@ export function ModalGuruBantu({
       return
     }
     setMemuatHarian(true)
-    muatAbsensiGuruBantuKepsek(tanggal)
+    muatAbsensiGuruBantuKepsek(tanggal, unit)
       .then((hasil) => {
         if (!batal) {
           setHarian(hasil)
@@ -235,13 +235,13 @@ export function ModalGuruBantu({
     return () => {
       batal = true
     }
-  }, [tanggal, rekap])
+  }, [tanggal, rekap, unit])
 
   useEffect(() => {
     if (tab !== 'bulanan') return
     let batal = false
     setMemuatBulanan(true)
-    muatRekapBulananGuruBantuKepsek(bulan)
+    muatRekapBulananGuruBantuKepsek(bulan, unit)
       .then((hasil) => {
         if (!batal) {
           setBulanan(hasil)
@@ -257,7 +257,7 @@ export function ModalGuruBantu({
     return () => {
       batal = true
     }
-  }, [bulan, tab])
+  }, [bulan, tab, unit])
 
   const pilihTanggal = (nilai: string) => {
     setTanggal(nilai)

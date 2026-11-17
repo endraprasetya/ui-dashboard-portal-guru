@@ -75,7 +75,7 @@ async function muatAnggaran(unit: string, tahun: string) {
   if (error) return peta
   for (const baris of data || []) {
     const row = baris as { kode_akun?: string; nominal?: number; unit?: string; tahun?: string }
-    if (unit && row.unit && kanonUnitKeuangan(row.unit) !== unit) continue
+    if (unit && kanonUnitKeuangan(row.unit) !== unit) continue
     if (tahun && row.tahun && String(row.tahun) !== tahun) continue
     peta.set(String(row.kode_akun || ''), Number(row.nominal) || 0)
   }

@@ -5,6 +5,7 @@ import {
   jenisItem,
   namaItem,
   rincianDariTagihan,
+  ID_SEKOLAH_AMPSS_UNIT,
   SEKOLAH_AMPSS,
   gabungTagihanPsb,
   saringPsbSekolah,
@@ -20,6 +21,7 @@ import {
 } from './ampss-urai'
 import type { DetailTunggakan, RekapKeuangan, RekapKelas, RincianTagihan, SiswaTunggakan } from './keuangan-tipe'
 import { overlayDaftarTunggakan, overlayDetailTunggakan, overlayRekapKeuangan } from './kasir-tagihan'
+import { kanonNamaUnit } from './siswa'
 
 const UMUR_CACHE_MS = 5 * 60 * 1000
 const BATAS_MS = 45_000
@@ -28,9 +30,10 @@ type Sesi = Map<string, string>
 
 let sesi: Sesi | null = null
 let antrianMasuk: Promise<Sesi> | null = null
-let cache: { at: number; data: RekapKeuangan } | null = null
-let rincian = new Map<string, RincianTagihan[]>()
-let tugas: Promise<RekapKeuangan> | null = null
+
+type SimpananRekap = { at: number; data: RekapKeuangan; rincian: Map<string, RincianTagihan[]> }
+const simpanan = new Map<string, SimpananRekap>()
+const tugas = new Map<string, Promise<RekapKeuangan>>()
 
 function wajibEnv(nama: string): string {
   const nilai = process.env[nama]?.trim()
@@ -46,6 +49,16 @@ function sekolahAktif(): { id: string; nama: string } {
   const id = (process.env.AMPSS_SCHOOL_ID || '23').trim()
   const nama = SEKOLAH_AMPSS[id]
   if (!nama) throw new Error('Kode sekolah AMPSS tidak dikenali.')
+  return { id, nama }
+}
+
+function sekolahDariUnit(unit: string | undefined): { id: string; nama: string } | null {
+  if (unit == null) return sekolahAktif()
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci) return null
+  const id = ID_SEKOLAH_AMPSS_UNIT[kunci]
+  const nama = id ? SEKOLAH_AMPSS[id] : ''
+  if (!id || !nama) return null
   return { id, nama }
 }
 
@@ -303,8 +316,30 @@ function rekapKelas(siswa: SiswaTunggakan[]): RekapKelas[] {
   return [...peta.values()].sort((a, b) => b.piutang - a.piutang || a.kelas.localeCompare(b.kelas, 'id', { numeric: true }))
 }
 
-async function bangun(): Promise<RekapKeuangan> {
-  const sekolah = sekolahAktif()
+function rekapKosong(nama: string, catatan: string): RekapKeuangan {
+  return {
+    sekolah: nama,
+    sekolahId: '',
+    tapel: (process.env.AMPSS_TAPEL || '').trim(),
+    diambilPada: new Date().toISOString(),
+    piutang: 0,
+    penerimaanHariIni: 0,
+    siswaAktif: 0,
+    siswaLunas: 0,
+    siswaMenunggak: 0,
+    diLuarRombel: 0,
+    penerimaanPerItem: [],
+    piutangPerJenis: [],
+    piutangPerTapel: [],
+    perKelas: [],
+    siswa: [],
+    periodeTagihan: '',
+    rekapan: [],
+    catatan,
+  }
+}
+
+async function bangun(sekolah: { id: string; nama: string }): Promise<RekapKeuangan> {
   const tapelDiminta = (process.env.AMPSS_TAPEL || '2627').trim()
   const [rombelHtml, belumHtml, siswaHtml, laporanHtml, psbHtml] = await Promise.all([
     ambilHtml(`/rombongan_belajar?r_tapel=${encodeURIComponent(tapelDiminta)}&r_school=${encodeURIComponent(sekolah.id)}&r_kelas=`),
@@ -329,12 +364,11 @@ async function bangun(): Promise<RekapKeuangan> {
   }
   const penerimaan = laporanHtml ? uraiPenerimaan(laporanHtml, sekolah.nama) : { total: 0, perItem: [] }
   const susunan = susunSiswa(rombel.siswa, direktori, tagihan)
-  rincian = susunan.rincian
 
   const siswaAktif = susunan.siswa.filter((baris) => baris.aktif)
   const menunggak = susunan.siswa.filter((baris) => baris.status === 'Menunggak')
 
-  return {
+  const hasil: RekapKeuangan = {
     sekolah: sekolah.nama,
     sekolahId: sekolah.id,
     tapel,
@@ -357,30 +391,48 @@ async function bangun(): Promise<RekapKeuangan> {
     periodeTagihan: labelPeriodeBerjalan(tapel, sekarang),
     rekapan: susunRekapanTagihan(rombel.siswa, direktori, tagihan, tapel, sekarang),
   }
+  simpanan.set(sekolah.id, { at: Date.now(), data: hasil, rincian: susunan.rincian })
+  return hasil
 }
 
-export async function muatRekapKeuangan(segar = false): Promise<RekapKeuangan> {
-  if (!segar && cache && Date.now() - cache.at < UMUR_CACHE_MS) {
-    return overlayRekapKeuangan(cache.data, rincian)
+async function muatRekapSekolah(sekolah: { id: string; nama: string }, segar: boolean, unit?: string) {
+  const ada = simpanan.get(sekolah.id)
+  if (!segar && ada && Date.now() - ada.at < UMUR_CACHE_MS) {
+    return overlayRekapKeuangan(ada.data, ada.rincian, unit)
   }
-  if (tugas) return tugas.then((data) => overlayRekapKeuangan(data, rincian))
-  tugas = bangun()
-    .then((data) => {
-      cache = { at: Date.now(), data }
-      return data
+  let jalan = tugas.get(sekolah.id)
+  if (!jalan) {
+    jalan = bangun(sekolah).finally(() => {
+      tugas.delete(sekolah.id)
     })
-    .finally(() => {
-      tugas = null
-    })
-  return tugas.then((data) => overlayRekapKeuangan(data, rincian))
+    tugas.set(sekolah.id, jalan)
+  }
+  const data = await jalan
+  const tersimpan = simpanan.get(sekolah.id)
+  return overlayRekapKeuangan(data, tersimpan?.rincian || new Map(), unit)
 }
 
-export async function muatDetailTunggakan(nis: string): Promise<DetailTunggakan | null> {
+export async function muatRekapKeuangan(segar = false, unit?: string): Promise<RekapKeuangan> {
+  const sekolah = sekolahDariUnit(unit)
+  if (!sekolah) {
+    const nama = kanonNamaUnit(unit) || String(unit || '').trim() || 'unit ini'
+    return rekapKosong(
+      nama,
+      `Data tagihan AMPSS untuk unit ${nama} belum tersedia. Angka di bawah tidak mengambil data unit lain.`,
+    )
+  }
+  return muatRekapSekolah(sekolah, segar, unit)
+}
+
+export async function muatDetailTunggakan(nis: string, unit?: string): Promise<DetailTunggakan | null> {
   if (!/^\d{3,12}$/.test(nis)) return null
-  const rekap = await muatRekapKeuangan(false)
+  const sekolah = sekolahDariUnit(unit)
+  if (!sekolah) return null
+  const rekap = await muatRekapSekolah(sekolah, false, unit)
   const siswa = rekap.siswa.find((baris) => baris.nis === nis || cocokNisKeuangan(nis, baris.nis))
   if (!siswa) return null
-  return overlayDetailTunggakan(susunDetailTunggakan(siswa))
+  const peta = simpanan.get(sekolah.id)?.rincian || new Map<string, RincianTagihan[]>()
+  return overlayDetailTunggakan(susunDetailTunggakan(siswa, false, peta), unit)
 }
 
 function angkaNis(nilai?: string) {
@@ -394,8 +446,12 @@ function cocokNisKeuangan(kandidat: string, nisAmpss: string) {
   return a === b || b.endsWith(a) || a.endsWith(b)
 }
 
-function susunDetailTunggakan(siswa: SiswaTunggakan, ketatWali = false): DetailTunggakan {
-  const sumber = rincian.get(siswa.nis) || []
+function susunDetailTunggakan(
+  siswa: SiswaTunggakan,
+  ketatWali = false,
+  peta: Map<string, RincianTagihan[]> = new Map(),
+): DetailTunggakan {
+  const sumber = peta.get(siswa.nis) || []
   const aktif = ketatWali ? saringRincianPortalWali(sumber) : sumber
   const tunggakan = aktif.reduce((jumlah, item) => jumlah + item.jumlah, 0)
   return {
@@ -409,17 +465,19 @@ function susunDetailTunggakan(siswa: SiswaTunggakan, ketatWali = false): DetailT
 }
 
 /** Rincian tunggakan ananda untuk Portal Wali: SPP/katering hanya s.d. bulan berjalan. */
-export async function muatTunggakanWali(kunciNis: string[]): Promise<DetailTunggakan[]> {
+export async function muatTunggakanWali(kunciNis: string[], unit?: string): Promise<DetailTunggakan[]> {
   const unik = [...new Set(kunciNis.map(angkaNis).filter((nilai) => nilai.length >= 3))]
   if (unik.length === 0) return []
-  const rekap = await muatRekapKeuangan(false)
+  const rekap = await muatRekapKeuangan(false, unit)
+  const sekolah = sekolahDariUnit(unit)
+  const peta = sekolah ? simpanan.get(sekolah.id)?.rincian : undefined
   const hasil: DetailTunggakan[] = []
   const sudah = new Set<string>()
   for (const siswa of rekap.siswa) {
     if (!unik.some((kunci) => cocokNisKeuangan(kunci, siswa.nis))) continue
     if (sudah.has(siswa.nis)) continue
     sudah.add(siswa.nis)
-    hasil.push(susunDetailTunggakan(siswa, true))
+    hasil.push(susunDetailTunggakan(siswa, true, peta))
   }
-  return overlayDaftarTunggakan(hasil)
+  return overlayDaftarTunggakan(hasil, unit)
 }

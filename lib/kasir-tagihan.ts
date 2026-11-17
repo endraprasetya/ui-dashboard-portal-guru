@@ -106,9 +106,13 @@ function bebaskanDetail(detail: DetailTunggakan, kunci: Set<string>): DetailTung
   }
 }
 
-export async function overlayRekapKeuangan(rekap: RekapKeuangan, rincian: Map<string, RincianTagihan[]>): Promise<RekapKeuangan> {
-  const daftar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+export async function overlayRekapKeuangan(
+  rekap: RekapKeuangan,
+  rincian: Map<string, RincianTagihan[]>,
+  unit?: string,
+): Promise<RekapKeuangan> {
+  const daftar = await muatPembayaranKasTerverifikasi(unit).catch(() => [] as PembayaranKas[])
+  const kunci = await muatKunciYatim(unit).catch(() => new Set<string>())
   const overlay = daftar.length === 0 ? { siswa: rekap.siswa, rincian } : overlaySiswaDanRincian(rekap.siswa, rincian, daftar)
   const adaYatim = overlay.siswa.some((baris) => nisTermasukYatim(kunci, baris.nis))
   if (!adaYatim && daftar.length === 0) return rekap
@@ -171,16 +175,16 @@ export async function overlayRekapKeuangan(rekap: RekapKeuangan, rincian: Map<st
   }
 }
 
-export async function overlayDetailTunggakan(detail: DetailTunggakan): Promise<DetailTunggakan> {
-  const daftar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+export async function overlayDetailTunggakan(detail: DetailTunggakan, unit?: string): Promise<DetailTunggakan> {
+  const daftar = await muatPembayaranKasTerverifikasi(unit).catch(() => [] as PembayaranKas[])
+  const kunci = await muatKunciYatim(unit).catch(() => new Set<string>())
   const dasar = daftar.length === 0 ? detail : terapkanPembayaranKeDetail(detail, daftar)
   return bebaskanDetail(dasar, kunci)
 }
 
-export async function overlayDaftarTunggakan(daftar: DetailTunggakan[]): Promise<DetailTunggakan[]> {
-  const bayar = await muatPembayaranKasTerverifikasi().catch(() => [] as PembayaranKas[])
-  const kunci = await muatKunciYatim().catch(() => new Set<string>())
+export async function overlayDaftarTunggakan(daftar: DetailTunggakan[], unit?: string): Promise<DetailTunggakan[]> {
+  const bayar = await muatPembayaranKasTerverifikasi(unit).catch(() => [] as PembayaranKas[])
+  const kunci = await muatKunciYatim(unit).catch(() => new Set<string>())
   return daftar.map((item) => bebaskanDetail(bayar.length === 0 ? item : terapkanPembayaranKeDetail(item, bayar), kunci))
 }
 

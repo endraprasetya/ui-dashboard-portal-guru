@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { adalahKepalaSekolah, teksPeran } from '@/lib/kepala-sekolah'
 import { isPortalWali } from '@/lib/portal-wali'
+import { unitDariAkun } from '@/lib/siswa'
 
 export type AkunSesi = Record<string, unknown> & {
   username?: string
@@ -55,12 +56,12 @@ export async function validasiSesiBendahara(sesi?: AkunSesi | null): Promise<Has
 
   const username = String(sesi.username || '').trim()
   const target = String(sesi.target_id || sesi.id_user || '').trim()
-  if (!username && !target) return { status: 'kosong' }
+  if (!username && !target) {
+    localStorage.removeItem('user_session')
+    return { status: 'kosong' }
+  }
 
-  let permintaan = supabase
-    .from('users')
-    .select('username,role,nama_lengkap,unit,target_id')
-    .limit(1)
+  let permintaan = supabase.from('users').select('*').limit(1)
 
   permintaan = username ? permintaan.eq('username', username) : permintaan.eq('target_id', target)
 
@@ -75,16 +76,55 @@ export async function validasiSesiBendahara(sesi?: AkunSesi | null): Promise<Has
     return { status: 'kosong' }
   }
 
+  const { password: _sandi, ...barisAman } = baris
   const user: AkunSesi = {
     ...sesi,
-    ...baris,
+    ...barisAman,
     target_id: baris.target_id || sesi.target_id || baris.username,
     nama_lengkap: baris.nama_lengkap || sesi.nama_lengkap || baris.username,
-    unit: baris.unit || sesi.unit || 'Semua Unit',
+    unit: unitDariAkun(baris) || unitDariAkun(sesi),
     role: String(baris.role || '').trim(),
   }
   simpanSesi(user)
 
   if (!adalahPeranBendahara(user.role)) return { status: 'bukan', user }
+  return { status: 'ok', user }
+}
+
+/** Memastikan sesi lokal masih Kepala Sekolah dan unit-nya mengikuti tabel `users`. */
+export async function validasiSesiKepalaSekolah(sesi?: AkunSesi | null): Promise<HasilValidasiBendahara> {
+  if (!sesi) return { status: 'kosong' }
+  if (!adalahKepalaSekolah(sesi)) return { status: 'bukan', user: sesi }
+
+  const username = String(sesi.username || '').trim()
+  const target = String(sesi.target_id || sesi.id_user || '').trim()
+  if (!username && !target) {
+    localStorage.removeItem('user_session')
+    return { status: 'kosong' }
+  }
+
+  let permintaan = supabase.from('users').select('*').limit(1)
+  permintaan = username ? permintaan.eq('username', username) : permintaan.eq('target_id', target)
+
+  const { data, error } = await permintaan
+  if (error) throw new Error(error.message || 'Tidak dapat memvalidasi sesi Kepala Sekolah.')
+
+  const baris = (Array.isArray(data) ? data[0] : data) as AkunSesi | undefined
+  if (!baris || !String(baris.username || baris.target_id || '').trim()) {
+    localStorage.removeItem('user_session')
+    return { status: 'kosong' }
+  }
+
+  const { password: _sandi, ...barisAman } = baris
+  const user: AkunSesi = {
+    ...sesi,
+    ...barisAman,
+    target_id: baris.target_id || sesi.target_id || baris.username,
+    nama_lengkap: baris.nama_lengkap || sesi.nama_lengkap || baris.username,
+    unit: unitDariAkun(baris) || unitDariAkun(sesi),
+    role: String(baris.role || '').trim(),
+  }
+  simpanSesi(user)
+  if (!adalahKepalaSekolah(user)) return { status: 'bukan', user }
   return { status: 'ok', user }
 }

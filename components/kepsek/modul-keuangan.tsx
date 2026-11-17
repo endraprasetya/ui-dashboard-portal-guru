@@ -32,7 +32,7 @@ function LencanaStatus({ status, yatim }: { status: StatusBayar; yatim?: boolean
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${kelas}`}>{status}</span>
 }
 
-export function ModulKeuangan() {
+export function ModulKeuangan({ unit }: { unit: string }) {
   const [data, setData] = useState<RekapKeuangan | null>(null)
   const [galat, setGalat] = useState('')
   const [memuat, setMemuat] = useState(true)
@@ -50,7 +50,9 @@ export function ModulKeuangan() {
   const muat = (segar = false) => {
     setMemuat(true)
     setGalat('')
-    fetch(segar ? '/api/kepsek/keuangan?segar=1' : '/api/kepsek/keuangan')
+    const params = new URLSearchParams({ unit })
+    if (segar) params.set('segar', '1')
+    fetch(`/api/kepsek/keuangan?${params}`)
       .then(async (respon) => {
         const json = await respon.json()
         if (!respon.ok) throw new Error(json.pesan || 'Data keuangan belum dapat dimuat.')
@@ -62,7 +64,9 @@ export function ModulKeuangan() {
 
   useEffect(() => {
     muat(false)
-  }, [])
+    // unit menentukan sekolah AMPSS yang dimuat
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit])
 
   const kelasPilihan = useMemo(() => {
     const daftar = new Set((data?.siswa || []).map((baris) => baris.kelas))
@@ -103,7 +107,8 @@ export function ModulKeuangan() {
     setDetail(null)
     setDetailGalat('')
     setDetailMuat(true)
-    fetch(`/api/kepsek/keuangan/${nis}`)
+    const params = new URLSearchParams({ unit })
+    fetch(`/api/kepsek/keuangan/${encodeURIComponent(nis)}?${params}`)
       .then(async (respon) => {
         const json = await respon.json()
         if (!respon.ok) throw new Error(json.pesan || 'Rincian tagihan belum dapat dimuat.')
@@ -128,9 +133,10 @@ export function ModulKeuangan() {
           </div>
           <p className="mt-1 text-xs text-slate-500">
             {data
-              ? `${data.sekolah} · tahun pelajaran ${data.tapel} · tunggakan ${data.periodeTagihan} · diperbarui ${waktuLokal(data.diambilPada)}`
-              : 'Sumber data admin AMPSS'}
+              ? `${data.sekolah} · tahun pelajaran ${data.tapel || '—'} · tunggakan ${data.periodeTagihan || '—'} · diperbarui ${waktuLokal(data.diambilPada)} · unit ${unit}`
+              : `Sumber data admin AMPSS · unit ${unit}`}
           </p>
+          {data?.catatan ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{data.catatan}</p> : null}
         </div>
         <button
           type="button"

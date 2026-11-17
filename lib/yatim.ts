@@ -3,7 +3,21 @@ import { supabase } from '@/lib/supabase'
 const UMUR_CACHE = 5 * 60 * 1000
 const KOLOM_PENANDA = ['is_yatim', 'yatim', 'status_yatim'] as const
 
-let cacheKunci: { waktu: number; kunci: Set<string> } | null = null
+type EntriYatim = { angka: string; unit: string }
+
+let cacheKunci: { waktu: number; entri: EntriYatim[] } | null = null
+
+function namaUnit(nilai: unknown) {
+  const k = String(nilai ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^unit\s+/, '')
+  if (!k || k.includes('semua')) return ''
+  if (k.includes('kartasura')) return 'kartasura'
+  if (k.includes('cepogo')) return 'cepogo'
+  if (k.includes('nogosari')) return 'nogosari'
+  return k
+}
 
 export function bacaYatim(nilai: unknown) {
   if (nilai === true || nilai === 1) return true
@@ -35,13 +49,20 @@ async function unduhPenanda(kolom: (typeof KOLOM_PENANDA)[number]) {
   const pageSize = 1000
   const baris: Record<string, unknown>[] = []
   let from = 0
+  let denganUnit = true
   while (true) {
-    const { data, error } = await supabase
-      .from('siswa')
-      .select(`nis, id_siswa, ${kolom}`)
-      .range(from, from + pageSize - 1)
-    if (error) return { error: error.message, baris, kolom }
-    const halaman = (data || []) as Record<string, unknown>[]
+    const pilih = denganUnit ? `nis, id_siswa, unit, ${kolom}` : `nis, id_siswa, ${kolom}`
+    const { data, error } = await supabase.from('siswa').select(pilih).range(from, from + pageSize - 1)
+    if (error) {
+      if (denganUnit && kolomHilang(error.message, 'unit')) {
+        denganUnit = false
+        from = 0
+        baris.length = 0
+        continue
+      }
+      return { error: error.message, baris, kolom }
+    }
+    const halaman = (data || []) as unknown as Record<string, unknown>[]
     baris.push(...halaman)
     if (halaman.length < pageSize) break
     from += pageSize
@@ -49,11 +70,34 @@ async function unduhPenanda(kolom: (typeof KOLOM_PENANDA)[number]) {
   return { error: '', baris, kolom }
 }
 
-export async function muatKunciYatim() {
-  const sekarang = Date.now()
-  if (cacheKunci && sekarang - cacheKunci.waktu < UMUR_CACHE) return cacheKunci.kunci
+function kumpulkanYatim(baris: Record<string, unknown>[], kolom: string): EntriYatim[] {
+  const entri: EntriYatim[] = []
+  for (const row of baris) {
+    if (!bacaYatim(row[kolom])) continue
+    const unit = namaUnit(row.unit)
+    for (const identitas of [row.nis, row.id_siswa]) {
+      const angka = angkaIdentitas(identitas)
+      if (angka.length >= 3) entri.push({ angka, unit })
+    }
+  }
+  return entri
+}
 
+function saringKunciYatim(entri: EntriYatim[], unit?: string) {
+  const sasaran = unit == null ? '' : namaUnit(unit)
+  if (unit != null && !sasaran) return new Set<string>()
   const kunci = new Set<string>()
+  for (const item of entri) {
+    if (sasaran && item.unit !== sasaran) continue
+    kunci.add(item.angka)
+  }
+  return kunci
+}
+
+export async function muatKunciYatim(unit?: string) {
+  const sekarang = Date.now()
+  if (cacheKunci && sekarang - cacheKunci.waktu < UMUR_CACHE) return saringKunciYatim(cacheKunci.entri, unit)
+
   for (const kolom of KOLOM_PENANDA) {
     const hasil = await unduhPenanda(kolom)
     if (hasil.error) {
@@ -61,17 +105,11 @@ export async function muatKunciYatim() {
       console.error('Gagal membaca status yatim:', hasil.error)
       break
     }
-    for (const row of hasil.baris) {
-      if (!bacaYatim(row[kolom])) continue
-      for (const identitas of [row.nis, row.id_siswa]) {
-        const angka = angkaIdentitas(identitas)
-        if (angka.length >= 3) kunci.add(angka)
-      }
-    }
-    cacheKunci = { waktu: sekarang, kunci }
-    return kunci
+    const entri = kumpulkanYatim(hasil.baris, kolom)
+    cacheKunci = { waktu: sekarang, entri }
+    return saringKunciYatim(entri, unit)
   }
 
-  cacheKunci = { waktu: sekarang, kunci }
-  return kunci
+  cacheKunci = { waktu: sekarang, entri: [] }
+  return new Set<string>()
 }

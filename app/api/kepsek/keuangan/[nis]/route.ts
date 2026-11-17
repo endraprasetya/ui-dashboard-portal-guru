@@ -6,10 +6,12 @@ export const runtime = 'nodejs'
 
 type Konteks = { params: Promise<{ nis: string }> }
 
-export async function GET(_request: Request, konteks: Konteks) {
+export async function GET(request: Request, konteks: Konteks) {
   const { nis } = await konteks.params
+  const params = new URL(request.url).searchParams
+  const unit = params.has('unit') ? params.get('unit') || '' : undefined
   try {
-    const data = await muatDetailTunggakan(decodeURIComponent(nis))
+    const data = await muatDetailTunggakan(decodeURIComponent(nis), unit)
     if (!data) return NextResponse.json({ pesan: 'Siswa tidak ditemukan pada rekap tunggakan.' }, { status: 404 })
     return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

@@ -93,10 +93,38 @@ export function unitKanonik(nilai?: string | null) {
     .toLowerCase()
 }
 
+const KUNCI_UNIT_AKUN = ['unit', 'nama_unit', 'unit_sekolah', 'unit_kerja', 'sekolah', 'nama_sekolah', 'cabang'] as const
+
+/** Nama unit yang dipakai sesi dan filter. Tidak pernah mengganti unit lain menjadi Nogosari. */
+export function kanonNamaUnit(nilai?: string | null) {
+  const mentah = String(nilai ?? '').trim()
+  const k = mentah.toLowerCase()
+  if (!k || k.includes('semua')) return ''
+  if (k.includes('kartasura')) return 'Kartasura'
+  if (k.includes('cepogo')) return 'Cepogo'
+  if (k.includes('nogosari')) return 'Nogosari'
+  return mentah
+}
+
+/** Unit dari baris tabel `users` (atau sesi yang sudah disimpan dari baris itu). */
+export function unitDariAkun(baris?: { unit?: string | null; sekolah?: string | null } | null) {
+  if (!baris) return ''
+  const sumber = baris as Record<string, unknown>
+  for (const kunci of KUNCI_UNIT_AKUN) {
+    const teks = String(sumber[kunci] ?? '').trim()
+    if (!teks || /^semua\s*unit$/i.test(teks)) continue
+    return kanonNamaUnit(teks) || teks
+  }
+  return ''
+}
+
 export function unitSama(a?: string | null, b?: string | null) {
-  const ka = unitKanonik(a)
-  const kb = unitKanonik(b)
-  return Boolean(ka && kb && ka === kb)
+  const ka = kanonNamaUnit(a)
+  const kb = kanonNamaUnit(b)
+  if (ka && kb) return ka.toLowerCase() === kb.toLowerCase()
+  const mentahA = unitKanonik(a)
+  const mentahB = unitKanonik(b)
+  return Boolean(mentahA && mentahB && mentahA === mentahB)
 }
 
 /** Cocok unit login vs baris siswa (ketat; tanpa lintas unit). */
@@ -108,9 +136,7 @@ export function unitCocok(unitUser?: string | null, unitBaris?: string | null) {
 }
 
 export function unitLogin(user?: { unit?: string; sekolah?: string } | null) {
-  const bersih = String(user?.unit || user?.sekolah || '').trim()
-  if (!bersih || /^semua\s*unit$/i.test(bersih)) return ''
-  return bersih
+  return unitDariAkun(user)
 }
 
 function filterSiswaByUnit(siswaList: Siswa[], currentUser?: { unit?: string; sekolah?: string } | null) {

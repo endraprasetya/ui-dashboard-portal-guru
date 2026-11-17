@@ -47,6 +47,12 @@ export const SEKOLAH_AMPSS: Record<string, string> = {
   '26': 'Tahfizh Al Madinah Nogosari',
 }
 
+/** SD pada AMPSS untuk tiap unit portal. Cepogo belum punya sekolah di AMPSS. */
+export const ID_SEKOLAH_AMPSS_UNIT: Record<string, string> = {
+  Nogosari: '23',
+  Kartasura: '13',
+}
+
 export function angkaAmpss(mentah: string): number {
   const teks = mentah.replace(/\s/g, '').replace(/[^\d,.-]/g, '')
   if (!teks || teks === '-' || teks === '.') return 0
