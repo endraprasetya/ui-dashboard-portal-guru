@@ -163,7 +163,7 @@ export function SuratTunggakan({
   return createPortal(
     <div className="overlay-surat-tunggakan fixed inset-0 z-[120] overflow-auto bg-slate-200/90 p-4 print:bg-white print:p-0">
       <style>{`
-        @page { size: F4 portrait; margin: 0; }
+        @page { size: 210mm 330mm; margin: 0; }
         .berkas-surat { font-family: "Times New Roman", Times, serif; color: #111; }
         .halaman-surat table { width: 100%; border-collapse: collapse; }
         .halaman-surat .meta td { vertical-align: top; padding: 1px 0; }
@@ -209,9 +209,8 @@ export function SuratTunggakan({
         }
         .pengesahan-surat .nama-kepsek,
         .pengesahan-surat .niy-kepsek { position: relative; z-index: 4; }
-        .halaman-inti { break-after: page; page-break-after: always; }
+        .halaman-inti { break-after: auto; page-break-after: auto; }
         .halaman-lampiran { break-before: page; page-break-before: always; }
-        .halaman-surat:last-child { break-after: auto; page-break-after: auto; }
         @media print {
           html, body {
             background: #fff !important;
@@ -232,12 +231,21 @@ export function SuratTunggakan({
           .berkas-surat { max-width: none; margin: 0; }
           .halaman-surat {
             box-shadow: none !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             max-width: none;
             width: 210mm;
-            min-height: 330mm !important;
-            padding: 15mm !important;
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 12mm 15mm !important;
             box-sizing: border-box;
+            break-after: auto;
+            page-break-after: auto;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          .halaman-lampiran {
+            break-before: page;
+            page-break-before: always;
           }
         }
       `}</style>
