@@ -1,3 +1,4 @@
+import { KRITERIA_TARGET_HQ } from '@/lib/kriteria-target-rapor-hq'
 import { cariSurah, type Surah } from '@/lib/surah'
 
 export type PosisiHafalan = {
@@ -20,102 +21,22 @@ type AmbangTarget = {
   kurang?: boolean
 }
 
-const TARGET_KURIKULUM: Record<number, string> = {
-  1: "Al-'Ashr",
-  2: 'Al-Infithar',
-  3: 'Al-Haqqah',
-  4: 'Al-Insan',
-  5: 'Al-Hasyr',
-  6: "Al-Jumu'ah",
-}
+const TARGET_KURIKULUM: Record<number, string> = Object.fromEntries(
+  KRITERIA_TARGET_HQ.map((item) => [item.kelas, item.judul.replace(/^Target kelas /, '')]),
+)
 
-/** Tabel ASTS 1 / target kelas (lembar Target*_bawah Excel rapor HQ). */
-const TABEL_TARGET: Record<number, AmbangTarget[]> = {
-  1: [
-    { poin: 100, nomor: 103 },
-    { poin: 90, nomor: 104 },
-    { poin: 80, nomor: 105 },
-    { poin: 70, nomor: 106 },
-    { poin: 60, nomor: 107 },
-    { poin: 50, nomor: 108 },
-    { poin: 40, nomor: 108, kurang: true },
-  ],
-  2: [
-    { poin: 100, nomor: 82 },
-    { poin: 95, nomor: 83 },
-    { poin: 90, nomor: 84 },
-    { poin: 85, nomor: 85 },
-    { poin: 80, nomor: 86 },
-    { poin: 75, nomor: 87 },
-    { poin: 70, nomor: 88 },
-    { poin: 65, nomor: 89 },
-    { poin: 60, nomor: 90 },
-    { poin: 55, nomor: 91 },
-    { poin: 50, nomor: 92 },
-    { poin: 45, nomor: 93 },
-    { poin: 40, nomor: 93, kurang: true },
-  ],
-  3: [
-    { poin: 100, nomor: 69 },
-    { poin: 95, nomor: 68 },
-    { poin: 90, nomor: 68, ayat: 15 },
-    { poin: 85, nomor: 67, ayat: 16 },
-    { poin: 80, nomor: 78 },
-    { poin: 75, nomor: 79 },
-    { poin: 70, nomor: 80 },
-    { poin: 65, nomor: 81 },
-    { poin: 60, nomor: 82 },
-    { poin: 55, nomor: 83 },
-    { poin: 50, nomor: 84 },
-    { poin: 45, nomor: 85 },
-    { poin: 40, nomor: 85, kurang: true },
-  ],
-  4: [
-    { poin: 100, nomor: 76 },
-    { poin: 95, nomor: 75 },
-    { poin: 90, nomor: 74 },
-    { poin: 85, nomor: 73 },
-    { poin: 80, nomor: 72 },
-    { poin: 75, nomor: 71 },
-    { poin: 70, nomor: 70 },
-    { poin: 65, nomor: 69 },
-    { poin: 60, nomor: 68 },
-    { poin: 55, nomor: 68, ayat: 15 },
-    { poin: 50, nomor: 67, ayat: 16 },
-    { poin: 45, nomor: 78 },
-    { poin: 40, nomor: 78, kurang: true },
-  ],
-  5: [
-    { poin: 100, nomor: 59 },
-    { poin: 95, nomor: 59, ayat: 3 },
-    { poin: 90, nomor: 58, ayat: 15 },
-    { poin: 85, nomor: 58, ayat: 6 },
-    { poin: 80, nomor: 77 },
-    { poin: 75, nomor: 76 },
-    { poin: 70, nomor: 75 },
-    { poin: 65, nomor: 74 },
-    { poin: 60, nomor: 73 },
-    { poin: 55, nomor: 72 },
-    { poin: 50, nomor: 71 },
-    { poin: 45, nomor: 70 },
-    { poin: 40, nomor: 70, kurang: true },
-  ],
-  6: [
-    { poin: 100, nomor: 62 },
-    { poin: 95, nomor: 61 },
-    { poin: 90, nomor: 60 },
-    { poin: 85, nomor: 59 },
-    { poin: 80, nomor: 58 },
-    { poin: 75, nomor: 77 },
-    { poin: 70, nomor: 76 },
-    { poin: 65, nomor: 75 },
-    { poin: 60, nomor: 74 },
-    { poin: 55, nomor: 73 },
-    { poin: 50, nomor: 72 },
-    { poin: 45, nomor: 71 },
-    { poin: 40, nomor: 71, kurang: true },
-  ],
-}
+/** Ambang capaian mengikuti kriteria target hafalan Rapor HQ per jenjang. */
+const TABEL_TARGET: Record<number, AmbangTarget[]> = Object.fromEntries(
+  KRITERIA_TARGET_HQ.map((item) => [
+    item.kelas,
+    item.baris.map((baris) => ({
+      poin: baris.poin,
+      nomor: baris.nomor,
+      ayat: baris.ayat,
+      kurang: baris.kurang,
+    })),
+  ]),
+)
 
 export function angkaKelas(kelas?: string | null) {
   const n = parseInt(String(kelas || '').replace(/\D/g, ''), 10)

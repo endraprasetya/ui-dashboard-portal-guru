@@ -13,6 +13,7 @@ import { PusatNotifikasi, RingkasanQiroah, usePusatNotifikasi } from '@/componen
 import TertibPoint from '@/components/tertib-point'
 import { DaftarPengumuman } from '@/components/daftar-pengumuman'
 import { JurnalPembelajaran } from '@/components/jurnal-pembelajaran'
+import { AbsensiPiket } from '@/components/absensi-piket'
 import { AbsensiRekap } from '@/components/absensi-rekap'
 import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { PanelRekapAbsensiGuruBantu } from '@/components/guru-bantu/RekapMatriksGuruBantu'
@@ -323,7 +324,7 @@ export default function Home() {
                   <ArrowRight className="size-4 opacity-75" />
                 </div>
                 <h3 className="text-sm font-extrabold">Absensi</h3>
-                <p className="mt-1 text-[11px] opacity-80">Absensi siswa dan absensi guru bantu</p>
+                <p className="mt-1 text-[11px] opacity-80">Absensi siswa, piket guru, dan absensi guru bantu</p>
               </button>
 
               {/* CARD TERTIB POINT WARNA MERAH CERAH */}
@@ -667,6 +668,13 @@ export default function Home() {
               <ClipboardCheck className="size-5" /> Absensi Siswa
             </button>
 
+            <button
+              onClick={() => setCurrentView('absensi_piket')}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1d4ed8] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#1e40af] transition"
+            >
+              <ClipboardCheck className="size-5" /> Absensi Piket
+            </button>
+
             {bolehAbsensiGuruBantu ? (
               <button
                 onClick={() => setCurrentView('absensi_guru_bantu')}
@@ -685,6 +693,10 @@ export default function Home() {
               </button>
             ) : null}
           </div>
+        )}
+
+        {currentView === 'absensi_piket' && (
+          <AbsensiPiket onBack={() => setCurrentView('absensi_menu')} currentUser={currentUser} />
         )}
 
         {currentView === 'absensi' && (

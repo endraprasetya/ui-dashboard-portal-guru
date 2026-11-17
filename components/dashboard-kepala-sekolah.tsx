@@ -35,6 +35,7 @@ import {
 import { normalKelas, pemetaanKenaikanJilid, ujianTanpaTajwid } from '@/lib/qiroah'
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
+import { MonitoringPiketHariIni } from '@/components/kepsek/monitoring-piket'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
@@ -436,6 +437,8 @@ export function DashboardKepalaSekolah() {
               </p>
               <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk jurnal lengkap (filter tanggal, kelas, guru).</p>
             </article>
+
+            <MonitoringPiketHariIni unit={unitTampil} />
 
             {laporan.catatan.length > 0 && (
               <ul className="no-print space-y-1 text-xs text-amber-800">

@@ -30,7 +30,10 @@ import {
   type MateriNilaiUjian,
   type NilaiSurahUjian,
 } from '@/lib/rapor-tahfidz-nilai'
+import { ModalHitungTargetRapor } from '@/components/hitung-target-rapor-hq'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
+import { kriteriaTargetKelas } from '@/lib/kriteria-target-rapor-hq'
+import { angkaKelas } from '@/lib/target-tahfidz'
 
 export type TargetNilaiUjian = {
   idSiswa: string
@@ -66,7 +69,7 @@ export function NilaiUjianTahfidz({
   const [menyimpan, setMenyimpan] = useState(false)
   const [pesan, setPesan] = useState('')
   const [galat, setGalat] = useState(false)
-  const [menghitungTarget, setMenghitungTarget] = useState(false)
+  const [modalTarget, setModalTarget] = useState(false)
 
   useEffect(() => {
     let batal = false
@@ -103,20 +106,15 @@ export function NilaiUjianTahfidz({
     }
   }, [target, targetTahfidzAktif])
 
-  const terapkanTargetManual = async () => {
-    setMenghitungTarget(true)
-    const saran = await hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs)
-    setMenghitungTarget(false)
-    if (!saran) {
-      setPesan('Capaian setoran belum cukup untuk menghitung target otomatis.')
-      setGalat(true)
-      return
-    }
-    setNilaiTarget(saran.nilaiTarget)
-    setCapaianTarget(saran.capaianTarget)
-    setMotivasi(saran.motivasi)
+  const pakaiPoinTarget = (poin: number, capaian: string, kelas: number) => {
+    const kriteria = kriteriaTargetKelas(kelas)
+    setNilaiTarget(poin)
+    setCapaianTarget(
+      `${kriteria.judul}. Capaian yang dipakai: ${capaian}. Nilai target ${poin} poin.`,
+    )
+    setModalTarget(false)
     setGalat(false)
-    setPesan('Target tahfidz diperbarui dari capaian setoran.')
+    setPesan(`Nilai target ${poin} poin dipakai pada rumus rapor.`)
   }
 
   const ringkasan = useMemo(() => {
@@ -346,11 +344,10 @@ export function NilaiUjianTahfidz({
                   <p className="text-[11px] font-bold text-emerald-900">Target tahfidz aktif</p>
                   <button
                     type="button"
-                    onClick={terapkanTargetManual}
-                    disabled={menghitungTarget}
-                    className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                    onClick={() => setModalTarget(true)}
+                    className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-800"
                   >
-                    {menghitungTarget ? 'Menghitung…' : 'Hitung ulang target'}
+                    Hitung Target
                   </button>
                 </div>
                 <label className="block text-[11px] font-bold text-slate-600">
@@ -448,6 +445,13 @@ export function NilaiUjianTahfidz({
           </div>
         </div>
       </div>
+      {modalTarget ? (
+        <ModalHitungTargetRapor
+          kelasSiswa={angkaKelas(target.kelas)}
+          onTutup={() => setModalTarget(false)}
+          onPakai={pakaiPoinTarget}
+        />
+      ) : null}
     </div>
   )
 }

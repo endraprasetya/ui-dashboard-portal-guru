@@ -58,7 +58,14 @@ export default function QiroahKoordinator({
   currentUser,
 }: {
   onBack: () => void
-  currentUser?: { role?: string; unit?: string; nama_lengkap?: string } | null
+  currentUser?: {
+    role?: string
+    unit?: string
+    nama_lengkap?: string
+    nama?: string
+    username?: string
+    target_id?: string
+  } | null
 }) {
   const boleh = hasKoordinatorQQRole(currentUser)
   const [tab, setTab] = useState<TabKey>('overview')
@@ -148,7 +155,11 @@ export default function QiroahKoordinator({
         </button>
         <div className="text-center">
           <h2 className="text-sm font-black tracking-wide sm:text-base">Koordinator QQ</h2>
-          <p className="text-[10px] text-white/75 sm:text-xs">Pemantauan kualitas & progres (read-only)</p>
+          <p className="text-[10px] text-white/75 sm:text-xs">
+            {payload?.lingkup
+              ? `${payload.lingkup.nama} · ${payload.lingkup.jenis} · kelas ${payload.lingkup.kelas.join(', ')}`
+              : 'Pemantauan kualitas & progres (read-only)'}
+          </p>
         </div>
         <button
           type="button"
@@ -249,7 +260,7 @@ export default function QiroahKoordinator({
                   value={filterKelas}
                   onChange={(e) => setFilterKelas(e.target.value)}
                 >
-                  <option value="">Semua kelas</option>
+                  <option value="">{payload?.lingkup ? `Semua kelas ${payload.lingkup.jenis.toLowerCase()}` : 'Semua kelas'}</option>
                   {kelasOpsi.map((k) => (
                     <option key={k} value={k}>{k}</option>
                   ))}

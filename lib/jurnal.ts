@@ -342,6 +342,51 @@ function kunciEntriAbsenSiswa(item: SiswaTidakHadir) {
   return `nama:${item.nama.trim().toLowerCase()}`
 }
 
+export function guruJurnalSama(a?: string | null, b?: string | null) {
+  const rapikan = (nilai?: string | null) =>
+    normNamaOrang(nilai)
+      .replace(/\bs\s*pd\s*i?\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const kiri = rapikan(a)
+  const kanan = rapikan(b)
+  if (!kiri || !kanan) return false
+  if (kiri === kanan) return true
+  const pendek = kiri.length <= kanan.length ? kiri : kanan
+  const panjang = kiri.length <= kanan.length ? kanan : kiri
+  return pendek.length >= 8 && panjang.includes(pendek)
+}
+
+function jurnalJamAdaIsi(entry?: JurnalJam | null) {
+  if (!entry) return false
+  return Boolean(
+    entry.mapel?.trim() ||
+      entry.materi?.trim() ||
+      entry.kegiatan?.trim() ||
+      entry.tugas?.trim() ||
+      entry.ttd ||
+      (entry.links || []).some((link) => link.url?.trim()),
+  )
+}
+
+/** Jam tanpa isi sendiri, yang hanya menyalin absen Jam ke-1, tetap terbuka untuk guru lain. */
+export function slotJurnalTerbuka(entry: JurnalJam | undefined, jam: number, entries: Record<number, JurnalJam>) {
+  if (!entry || !String(entry.guru || '').trim()) return true
+  if (jurnalJamAdaIsi(entry)) return false
+  if (jam !== 1) {
+    const sumber = entries[1]
+    if (
+      sumber &&
+      guruJurnalSama(sumber.guru, entry.guru) &&
+      daftarAbsenSetara(sumber.siswaTidakHadir || [], entry.siswaTidakHadir || [])
+    ) {
+      return true
+    }
+  }
+  if ((entry.siswaTidakHadir || []).length > 0) return false
+  return jam !== 1
+}
+
 export function daftarAbsenSetara(a: SiswaTidakHadir[], b: SiswaTidakHadir[]): boolean {
   const keMap = (list: SiswaTidakHadir[]) => {
     const map = new Map<string, string>()
