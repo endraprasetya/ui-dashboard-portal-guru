@@ -482,8 +482,7 @@ export async function muatTransaksiKas(status?: StatusTransaksiKas, unit?: strin
     })
     const pesan = error.message || ''
     if (saringUnitDiKueri && /unit/i.test(pesan) && /column|schema cache|does not exist|Could not find/i.test(pesan)) {
-      saringUnitDiKueri = false
-      continue
+      return []
     }
     const bisaDiulang = /column|schema cache|does not exist|404|PGRST|Could not find/i.test(pesan) || error.code === 'PGRST204' || error.code === 'PGRST205'
     if (!bisaDiulang) break

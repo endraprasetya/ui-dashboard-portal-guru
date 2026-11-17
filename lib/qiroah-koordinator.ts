@@ -13,7 +13,7 @@ import {
   type SetoranRingkas,
 } from '@/lib/qiroah-koordinator-setoran'
 import { catatanPenguji, cariRekapan, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
-import { fetchDaftarSiswa, unitCocok } from '@/lib/siswa'
+import { fetchDaftarSiswa, kanonNamaUnit, unitCocok } from '@/lib/siswa'
 
 export type PengajuanKoordinator = {
   id_pengajuan: string
@@ -62,8 +62,10 @@ export function tindakLanjutKoordinator(rekap: RekapanKoordinator) {
 }
 
 function filterUnit<T extends { unit?: string }>(rows: T[], currentUser?: { unit?: string } | null) {
-  if (!currentUser?.unit) return rows
-  return rows.filter((r) => unitCocok(currentUser.unit, r.unit))
+  const mentah = String(currentUser?.unit || '').trim()
+  if (/^semua\s*unit$/i.test(mentah)) return rows
+  if (!kanonNamaUnit(mentah)) return []
+  return rows.filter((r) => unitCocok(mentah, r.unit))
 }
 
 export async function muatDataKoordinatorQQ(
@@ -72,10 +74,11 @@ export async function muatDataKoordinatorQQ(
 ) {
   const semuaSiswa = await fetchDaftarSiswa()
   const unitUser = String(currentUser?.unit || '').trim()
-  const siswa =
-    unitUser && unitUser.toLowerCase() !== 'semua unit'
+  const siswa = /^semua\s*unit$/i.test(unitUser)
+    ? semuaSiswa
+    : kanonNamaUnit(unitUser)
       ? semuaSiswa.filter((s) => unitCocok(unitUser, s.unit))
-      : semuaSiswa
+      : []
 
   const [{ data: pengajuanRaw, error: errPengajuan }, { data: rekapanRaw, error: errRekapan }] = await Promise.all([
     supabase.from('pengajuan').select('*').order('tanggal_diajukan', { ascending: false }),
@@ -91,7 +94,8 @@ export async function muatDataKoordinatorQQ(
   if (errRekapan) throw new Error(errRekapan.message)
 
   const pengajuan = filterUnit((pengajuanRaw || []) as PengajuanKoordinator[], currentUser)
-  const rekapan = (rekapanRaw || []) as RekapanKoordinator[]
+  const idSiswaUnit = new Set(siswa.map((item) => String(item.id_siswa)))
+  const rekapan = ((rekapanRaw || []) as RekapanKoordinator[]).filter((row) => idSiswaUnit.has(String(row.id_siswa || '')))
 
   const bulanAktif = /^\d{4}-\d{2}$/.test(bulan) ? bulan : bulanSekarangJakarta()
   const setoran = await muatSetoranQiroah(siswa, { bulan: bulanAktif })

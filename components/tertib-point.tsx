@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { isKelasAlumni } from "@/lib/siswa";
+import { isKelasAlumni, kanonNamaUnit, unitSama } from "@/lib/siswa";
 import { KeteranganTertibForm } from "@/components/keterangan-tertib-form";
 import { PeringatanTertibDialog } from "@/components/peringatan-tertib-dialog";
 import { PanduanTertibGuruModal } from "@/components/panduan-tertib-guru-modal";
@@ -251,9 +251,15 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const [modalType, setModalType] = useState<"give" | "report" | null>(null);
 
   const currentTeacherName = currentUser?.nama_lengkap || currentUser?.username || "Ustadz/Ustadzah";
-  const currentUnit = String(currentUser?.unit || currentUser?.sekolah || "").trim() || "Semua Unit";
+  const unitMentah = String(currentUser?.unit || currentUser?.sekolah || "").trim();
+  const lihatSemuaUnit = /^semua\s*unit$/i.test(unitMentah);
+  const currentUnit = lihatSemuaUnit ? "Semua Unit" : kanonNamaUnit(unitMentah);
 
   const fetchStudents = useCallback(async () => {
+    if (!currentUnit) {
+      setStudents([]);
+      return;
+    }
     const { data, error } = await fetchAllPages((from, to) => {
       let query = supabase
         .from("siswa")
@@ -303,6 +309,10 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   }, []);
 
   const fetchLogs = useCallback(async (monthValue: string, unitValue: string) => {
+    if (!unitValue) {
+      setLogs([]);
+      return;
+    }
     const { data, error } = await fetchAllPages((from, to) => {
       let query = supabase
         .from("tertib_point")
@@ -336,8 +346,7 @@ export default function TertibPoint({ currentUser }: { currentUser?: any }) {
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       if (isKelasAlumni(s.kelas)) return false
-      const matchUnit =
-        currentUnit === "Semua Unit" || !s.unit || s.unit.toLowerCase() === currentUnit.toLowerCase();
+      const matchUnit = currentUnit === "Semua Unit" || unitSama(s.unit, currentUnit);
       const query = searchQuery.toLowerCase().trim();
       const matchQuery = !query || s.name.toLowerCase().includes(query) || s.kelas.toLowerCase().includes(query);
       return matchUnit && matchQuery;

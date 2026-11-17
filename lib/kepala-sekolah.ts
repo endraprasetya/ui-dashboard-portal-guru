@@ -4,6 +4,7 @@ import {
   jenisAbsen,
   monthRange,
   normalizeSiswaTidakHadir,
+  saringJurnalUntukUnit,
   todayInputValue,
 } from '@/lib/jurnal'
 import {
@@ -452,7 +453,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     return { nama: ketemu.nama_siswa, kelas: ketemu.kelas }
   }
 
-  const jurnalUnit = jurnal.filter((row) => kelasUnit.has(normalKelas(row.kelas)))
+  const jurnalUnit = (await saringJurnalUntukUnit(jurnal, unit)).filter((row) => kelasUnit.has(normalKelas(row.kelas)))
   const jurnalHari = jurnalUnit.filter((row) => String(row.tanggal || '').slice(0, 10) === hari)
   const rekapHari = rekapAbsen(jurnalHari, jumlahKelas, kenali)
   const kelasJurnal = new Set(jurnalHari.map((row) => normalKelas(row.kelas)).filter(Boolean))

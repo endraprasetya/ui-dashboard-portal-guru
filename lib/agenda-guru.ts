@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { JADWAL_PELAJARAN, jamHariIni, todayInputValue } from '@/lib/jurnal'
+import { fetchJurnalRentang, JADWAL_PELAJARAN, jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { fetchAllSiswa } from '@/lib/siswa'
 
 export type BarisJadwalHari = {
@@ -97,7 +97,7 @@ export function keteranganJadwal(item: Pick<BarisJadwalHari, 'subject' | 'classN
   return `${item.subject} - ${labelKelas(item.className)} - Materi Pokok: ${materi}`
 }
 
-export async function muatAgendaGuru(currentUser?: { target_id?: string; nama_lengkap?: string; nama?: string; username?: string } | null, sekarang = new Date()) {
+export async function muatAgendaGuru(currentUser?: { target_id?: string; nama_lengkap?: string; nama?: string; username?: string; unit?: string } | null, sekarang = new Date()) {
   const kosong = { jadwal: [] as BarisJadwalHari[], tugas: [] as TugasGuru[] }
   if (!currentUser) return kosong
 
@@ -111,14 +111,10 @@ export async function muatAgendaGuru(currentUser?: { target_id?: string; nama_le
   batasQiroah.setDate(batasQiroah.getDate() - 14)
 
   const jurnal = kelas.length
-    ? await supabase
-        .from('jurnal_pembelajaran')
-        .select('kelas,jam,mapel,materi')
-        .eq('tanggal', hariIni)
-        .in('kelas', kelas)
-    : { data: [], error: null }
+    ? await fetchJurnalRentang({ start: hariIni, end: hariIni, unit: teacherUnit(currentUser) })
+    : { rows: [] as { kelas?: string; jam?: number | string; mapel?: string; materi?: string }[], error: null }
 
-  const barisJurnal = jurnal.error ? [] : jurnal.data || []
+  const barisJurnal = jurnal.error ? [] : (jurnal.rows || []).filter((row) => kelas.includes(String(row.kelas || '').trim()))
   const terisi = new Map<string, { mapel: string; materi: string }>()
   for (const row of barisJurnal) {
     const jam = Number(row.jam)

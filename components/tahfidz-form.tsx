@@ -23,6 +23,7 @@ import {
   tanggalKemarinJakarta,
   type HasilCekAbsenSiswa,
 } from '@/lib/absensi-siswa-hari'
+import { batalSentuhPilih, geserSentuhPilih, lepasSentuhPilih, mulaiSentuhPilih, type JejakSentuh } from '@/lib/sentuh-pilih'
 
 function parseSetoranDate(dateStr: unknown): Date | null {
   if (!dateStr) return null
@@ -120,7 +121,8 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
   const [riwayatKunci, setRiwayatKunci] = useState(0)
   const [memuatRiwayat, setMemuatRiwayat] = useState(false)
   const [editIdSetoran, setEditIdSetoran] = useState('')
-  const pilihSentuh = useRef(false)
+  const jejakSentuh = useRef<JejakSentuh | null>(null)
+  const klikSetelahSentuh = useRef(false)
   const latestRecord = latestRecords[0] || null
 
   // State Form Utama
@@ -301,7 +303,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
   // Fungsi saat Siswa Dipilih (Menampilkan Riwayat Terakhir)
   // Menggunakan useCallback untuk mencegah re-creation function pada setiap render
-  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string, kelas?: string) => {
+  const handleStudentChange = useCallback(async (selectedId: string, studentName?: string, kelas?: string, unitSiswa?: string) => {
     setIdSiswa(selectedId)
     if (studentName) setStudentSearchQuery(studentName)
     resetInputFields()
@@ -319,8 +321,13 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
         ? { kelas, nama: studentName || '' }
         : (() => {
             const baris = students.find((s) => String(s.id_siswa) === String(selectedId))
-            return { kelas: String(baris?.kelas || ''), nama: String(baris?.nama_siswa || studentName || '') }
+            return {
+              kelas: String(baris?.kelas || ''),
+              nama: String(baris?.nama_siswa || studentName || ''),
+              unit: String(baris?.unit || ''),
+            }
           })()
+    const unitAbsen = unitSiswa || ('unit' in siswa ? siswa.unit : '') || currentUser?.unit || ''
 
     const hari = kunciHariJakarta()
     const kemarin = tanggalKemarinJakarta(hari)
@@ -330,12 +337,14 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
         namaSiswa: siswa.nama,
         kelas: siswa.kelas,
         tanggal: hari,
+        unit: unitAbsen,
       }),
       cekAbsenSiswaPadaTanggal({
         idSiswa: selectedId,
         namaSiswa: siswa.nama,
         kelas: siswa.kelas,
         tanggal: kemarin,
+        unit: unitAbsen,
       }),
     ]).then(([hariIni, kemarinAbsen]) => {
       setAbsenHariIni(hariIni)
@@ -347,7 +356,7 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
       }
     })
 
-  }, [resetInputFields, students])
+  }, [currentUser?.unit, resetInputFields, students])
 
   useEffect(() => {
     if (!idSiswa) {
@@ -696,24 +705,31 @@ export function TahfidzForm({ onBack, currentUser }: { onBack: () => void; curre
 
           {/* Dropdown Hasil Pencarian Siswa */}
           {isStudentSearchOpen && (
-            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 touch-pan-y overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white shadow-xl">
               {filteredStudents.length > 0 ? (
                 filteredStudents.map((student) => (
                   <button
                     key={student.id_siswa}
                     type="button"
-                    onTouchStart={(e) => {
+                    onPointerDown={(e) => mulaiSentuhPilih(jejakSentuh, klikSetelahSentuh, e, String(student.id_siswa))}
+                    onPointerMove={(e) => geserSentuhPilih(jejakSentuh, e)}
+                    onPointerUp={(e) =>
+                      lepasSentuhPilih(jejakSentuh, klikSetelahSentuh, e, String(student.id_siswa), () => {
+                        void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas, student.unit)
+                      })
+                    }
+                    onPointerCancel={() => batalSentuhPilih(jejakSentuh)}
+                    onMouseDown={(e) => {
+                      const jenis = (e.nativeEvent as PointerEvent).pointerType
+                      if (jenis && jenis !== 'mouse') return
                       e.preventDefault()
-                      pilihSentuh.current = true
-                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
                     }}
-                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      if (pilihSentuh.current) {
-                        pilihSentuh.current = false
+                      if (klikSetelahSentuh.current) {
+                        klikSetelahSentuh.current = false
                         return
                       }
-                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas)
+                      void handleStudentChange(student.id_siswa, student.nama_siswa, student.kelas, student.unit)
                     }}
                     className="flex w-full touch-manipulation items-center justify-between border-b border-slate-50 px-3 py-3 text-left text-sm transition hover:bg-blue-50"
                   >

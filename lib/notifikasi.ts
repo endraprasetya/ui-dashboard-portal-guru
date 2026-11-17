@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { educationCalendar } from '@/lib/teacher-data'
-import { jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
+import { fetchJurnalRentang, jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { barisUntukPenguji, labelRentangKenaikanJilid, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
 import { guruPenerimaRevisi, kunciKirimRaporHq, muatKirimRaporHq } from '@/lib/rapor-hq-kirim'
@@ -130,12 +130,13 @@ async function namaSiswa(ids: string[]) {
   return peta
 }
 
-function unitCocok(unitBaris: string, unitGuru: string) {
-  if (!unitGuru) return true
+function unitCocok(unitBaris: string, unitGuru: string, semuaUnit = false) {
+  if (semuaUnit) return true
+  if (!unitGuru) return false
   const baris = unitBaris.trim().toLowerCase()
   const guru = unitGuru.trim().toLowerCase()
   if (!baris) return false
-  return baris.includes(guru) || guru.includes(baris)
+  return baris === guru || baris.includes(guru) || guru.includes(baris)
 }
 
 export async function muatNotifikasi(currentUser?: any) {
@@ -144,7 +145,9 @@ export async function muatNotifikasi(currentUser?: any) {
   const lain: NotifikasiItem[] = []
   if (!currentUser) return { semua: pengumuman, qiroah }
 
-  const unit = teacherUnit(currentUser)
+  const unitMentah = String(currentUser?.unit || '').trim()
+  const semuaUnit = /^semua\s*unit$/i.test(unitMentah)
+  const unit = semuaUnit ? '' : teacherUnit(currentUser)
   const hariIni = todayInputValue()
   const awalHari = new Date()
   awalHari.setHours(0, 0, 0, 0)
@@ -163,9 +166,9 @@ export async function muatNotifikasi(currentUser?: any) {
       .gte('tanggal', awalHari.toISOString())
       .order('tanggal', { ascending: false })
       .limit(12),
-    jamHariIni(new Date())
-      ? supabase.from('jurnal_pembelajaran').select('id', { count: 'exact', head: true }).eq('tanggal', hariIni)
-      : Promise.resolve({ count: 1, error: null }),
+    jamHariIni(new Date()) && unit
+      ? fetchJurnalRentang({ start: hariIni, end: hariIni, unit })
+      : Promise.resolve({ rows: unit ? [] : [{ id: 'lewati' }], error: null }),
     supabase
       .from('tertib_point')
       .select('id_tertib_point,id_siswa,label,pts,created_at,unit')
@@ -318,7 +321,7 @@ export async function muatNotifikasi(currentUser?: any) {
     const peta = await namaSiswa((tahfidz.data || []).map((row) => String(row.id_siswa || '')))
     const setoran = (tahfidz.data || []).filter((row) => {
       const siswa = peta.get(String(row.id_siswa || ''))
-      return siswa ? unitCocok(siswa.unit, unit) : !unit
+      return siswa ? unitCocok(siswa.unit, unit, semuaUnit) : false
     })
     setoran.slice(0, BATAS).forEach((row) => {
       const siswa = peta.get(String(row.id_siswa || ''))
@@ -341,7 +344,7 @@ export async function muatNotifikasi(currentUser?: any) {
     }
   }
 
-  if (!jurnal.error && jurnal.count === 0) {
+  if (!jurnal.error && unit && jurnal.rows.length === 0) {
     lain.push({
       id: `jurnal:${hariIni}`,
       kategori: 'jurnal',
@@ -355,7 +358,7 @@ export async function muatNotifikasi(currentUser?: any) {
     const baris = (tertib.data || []).filter((row) => {
       const dibuat = row.created_at ? Date.parse(row.created_at) : NaN
       const baru = !Number.isFinite(dibuat) || dibuat >= tujuhHari.getTime()
-      return baru && unitCocok(String(row.unit || ''), unit)
+      return baru && unitCocok(String(row.unit || ''), unit, semuaUnit)
     })
     const peta = await namaSiswa(baris.map((row) => String(row.id_siswa || '')))
     baris.slice(0, BATAS).forEach((row) => {

@@ -347,7 +347,7 @@ export function JurnalPembelajaran({
 
       const roster = siswaKelasRef.current
       const total = roster.length || jumlahSiswaRef.current[kelasMuat] || 0
-      const { rows, error } = await fetchJurnalHari(kelasMuat, tanggalMuat)
+      const { rows, error } = await fetchJurnalHari(kelasMuat, tanggalMuat, unit)
       if (batal) return
 
       const tanggalHari = tanggalMuat ? new Date(`${tanggalMuat}T00:00:00`) : null
@@ -425,6 +425,7 @@ export function JurnalPembelajaran({
       totalSiswa: jumlahKelas,
       entries: payload,
       guru,
+      unit,
       roster: siswaKelas,
     })
 

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { excludeAlumniSiswa, isKelasAlumni, unitLogin, unitSama } from '@/lib/siswa'
+import { excludeAlumniSiswa, isKelasAlumni, kanonNamaUnit, unitLogin, unitSama } from '@/lib/siswa'
 
 export type JurnalLink = {
   tipe: string
@@ -163,6 +163,126 @@ export function teacherUnit(currentUser?: any) {
   const unit = String(currentUser?.unit || '').trim()
   if (!unit || unit === 'Semua Unit') return ''
   return unit
+}
+
+const PEMISAH_KELAS_UNIT = '::'
+const UMUR_KONTEKS_JURNAL = 5 * 60 * 1000
+
+type KonteksJurnal = { idSiswa: Set<string>; namaGuru: Set<string> }
+const cacheKonteksJurnal = new Map<string, { at: number; data: KonteksJurnal }>()
+
+/** Nama kelas yang tampil di layar. Awalan unit hanya dipakai di penyimpanan. */
+export function kelasJurnalTampil(kelas?: string | null) {
+  const teks = String(kelas || '').trim()
+  const batas = teks.indexOf(PEMISAH_KELAS_UNIT)
+  if (batas <= 0) return teks
+  return teks.slice(batas + PEMISAH_KELAS_UNIT.length).trim()
+}
+
+/** Kelas disimpan bersama unit agar 1A Kartasura tidak menimpa 1A unit lain. */
+export function kelasJurnalSimpan(kelas: string, unit?: string | null) {
+  const tampil = kelasJurnalTampil(kelas)
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci || !tampil) return tampil
+  return `${kunci}${PEMISAH_KELAS_UNIT}${tampil}`
+}
+
+function unitDariKelasJurnal(kelas?: string | null) {
+  const teks = String(kelas || '').trim()
+  const batas = teks.indexOf(PEMISAH_KELAS_UNIT)
+  if (batas <= 0) return ''
+  return kanonNamaUnit(teks.slice(0, batas))
+}
+
+function normNamaOrang(nilai: unknown) {
+  return String(nilai ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function idAbsenPadaBaris(row: { siswa_tidak_hadir?: unknown }) {
+  return normalizeSiswaTidakHadir(row.siswa_tidak_hadir)
+    .map((item) => String(item.id_siswa || '').trim())
+    .filter(Boolean)
+}
+
+export function barisJurnalMilikUnit(
+  row: { kelas?: string | null; guru?: string | null; siswa_tidak_hadir?: unknown },
+  unit: string,
+  konteks: KonteksJurnal,
+) {
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci) return false
+  const tertanda = unitDariKelasJurnal(row.kelas)
+  if (tertanda) return unitSama(tertanda, kunci)
+  const ids = idAbsenPadaBaris(row)
+  if (ids.length > 0) {
+    return ids.every((id) => konteks.idSiswa.has(id))
+  }
+  const guru = normNamaOrang(row.guru)
+  return Boolean(guru && konteks.namaGuru.has(guru))
+}
+
+function normalkanKelasJurnal<T extends { kelas?: string | null }>(row: T): T {
+  return { ...row, kelas: kelasJurnalTampil(row.kelas) }
+}
+
+async function konteksJurnalUnit(unit: string): Promise<KonteksJurnal | null> {
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci) return null
+  const ada = cacheKonteksJurnal.get(kunci)
+  if (ada && Date.now() - ada.at < UMUR_KONTEKS_JURNAL) return ada.data
+
+  const idSiswa = new Set<string>()
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase.from('siswa').select('id_siswa').ilike('unit', `%${kunci}%`).range(from, from + 999)
+    if (error || !data) break
+    for (const row of data) {
+      const id = String(row.id_siswa || '').trim()
+      if (id) idSiswa.add(id)
+    }
+    if (data.length < 1000) break
+    from += 1000
+  }
+
+  const { data: pengguna } = await supabase.from('users').select('nama_lengkap,unit').limit(1000)
+  const hitung = new Map<string, Set<string>>()
+  for (const row of pengguna || []) {
+    const nama = normNamaOrang(row.nama_lengkap)
+    const unitBaris = kanonNamaUnit(String(row.unit || ''))
+    if (!nama || !unitBaris) continue
+    const daftar = hitung.get(nama) || new Set<string>()
+    daftar.add(unitBaris)
+    hitung.set(nama, daftar)
+  }
+  const namaGuru = new Set<string>()
+  for (const [nama, daftar] of hitung) {
+    if (daftar.size === 1 && daftar.has(kunci)) namaGuru.add(nama)
+  }
+
+  const data = { idSiswa, namaGuru }
+  cacheKonteksJurnal.set(kunci, { at: Date.now(), data })
+  return data
+}
+
+/** Buang jurnal unit lain. Baris tanpa penanda unit tidak dipakai sebagai pengganti. */
+export async function saringJurnalUntukUnit<
+  T extends { kelas?: string | null; guru?: string | null; siswa_tidak_hadir?: unknown },
+>(rows: T[], unit?: string | null) {
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci) return rows.map(normalkanKelasJurnal)
+  const konteks = await konteksJurnalUnit(kunci)
+  if (!konteks) return []
+  return rows.filter((row) => barisJurnalMilikUnit(row, kunci, konteks)).map(normalkanKelasJurnal)
+}
+
+function kelasDicari(kelas: string, unit?: string | null) {
+  const tampil = kelasJurnalTampil(kelas)
+  const simpan = kelasJurnalSimpan(tampil, unit)
+  return simpan === tampil ? [tampil] : [tampil, simpan]
 }
 
 export function teacherName(currentUser?: any) {
@@ -389,15 +509,19 @@ export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise
   return all
 }
 
-export async function fetchJurnalHari(kelas: string, tanggal: string) {
+export async function fetchJurnalHari(kelas: string, tanggal: string, unit?: string | null) {
+  const daftarKelas = kelasDicari(kelas, unit)
   const pertama =
     kolomGuruTersedia === false
-      ? await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS_TANPA_GURU).eq('kelas', kelas).eq('tanggal', tanggal)
-      : await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS).eq('kelas', kelas).eq('tanggal', tanggal)
+      ? await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS_TANPA_GURU).in('kelas', daftarKelas).eq('tanggal', tanggal)
+      : await supabase.from('jurnal_pembelajaran').select(JURNAL_FIELDS).in('kelas', daftarKelas).eq('tanggal', tanggal)
 
   if (!pertama.error) {
     catatKolomGuru(null, (pertama.data || []) as { guru?: unknown }[])
-    return { rows: (pertama.data || []) as any[], error: null }
+    const rows = unit
+      ? await saringJurnalUntukUnit((pertama.data || []) as any[], unit)
+      : ((pertama.data || []) as any[]).map(normalkanKelasJurnal)
+    return { rows, error: null }
   }
 
   if (!kolomGuruTidakAda(pertama.error)) return { rows: [] as any[], error: pertama.error }
@@ -406,11 +530,14 @@ export async function fetchJurnalHari(kelas: string, tanggal: string) {
   const cadangan = await supabase
     .from('jurnal_pembelajaran')
     .select(JURNAL_FIELDS_TANPA_GURU)
-    .eq('kelas', kelas)
+    .in('kelas', daftarKelas)
     .eq('tanggal', tanggal)
 
   if (cadangan.error) return { rows: [] as any[], error: cadangan.error }
-  return { rows: (cadangan.data || []) as any[], error: null }
+  const rows = unit
+    ? await saringJurnalUntukUnit((cadangan.data || []) as any[], unit)
+    : ((cadangan.data || []) as any[]).map(normalkanKelasJurnal)
+  return { rows, error: null }
 }
 
 export async function fetchJurnalRentang(opts: {
@@ -418,6 +545,7 @@ export async function fetchJurnalRentang(opts: {
   start: string
   end: string
   semester?: string
+  unit?: string | null
 }) {
   const pageSize = 1000
   const all: any[] = []
@@ -433,7 +561,7 @@ export async function fetchJurnalRentang(opts: {
       .order('tanggal', { ascending: true })
       .range(from, from + pageSize - 1)
 
-    if (opts.kelas) query = query.eq('kelas', opts.kelas)
+    if (opts.kelas) query = query.in('kelas', kelasDicari(opts.kelas, opts.unit))
     if (opts.semester) query = query.eq('semester', Number(opts.semester))
 
     let { data, error } = await query
@@ -446,7 +574,7 @@ export async function fetchJurnalRentang(opts: {
         .lte('tanggal', opts.end)
         .order('tanggal', { ascending: true })
         .range(from, from + pageSize - 1)
-      if (opts.kelas) ulang = ulang.eq('kelas', opts.kelas)
+      if (opts.kelas) ulang = ulang.in('kelas', kelasDicari(opts.kelas, opts.unit))
       if (opts.semester) ulang = ulang.eq('semester', Number(opts.semester))
       const cadangan = await ulang
       data = cadangan.data as typeof data
@@ -461,7 +589,8 @@ export async function fetchJurnalRentang(opts: {
     from += pageSize
   }
 
-  return { rows: all, error: null }
+  const rows = opts.unit ? await saringJurnalUntukUnit(all, opts.unit) : all.map(normalkanKelasJurnal)
+  return { rows, error: null }
 }
 
 function normalizeLinks(value: unknown): JurnalLink[] {
@@ -536,6 +665,7 @@ export async function simpanJurnalHari(payload: {
   totalSiswa: number
   entries: Record<number, JurnalJam>
   guru?: string
+  unit?: string
   roster?: SiswaKelas[]
   jamDisimpan?: number[]
 }) {
@@ -550,7 +680,7 @@ export async function simpanJurnalHari(payload: {
       const siswaTidakHadir = saringAbsenKelas(entry.siswaTidakHadir || [], payload.roster)
       const { hadir, tidakHadir } = hitungKehadiran(payload.totalSiswa, siswaTidakHadir)
       return {
-        kelas: payload.kelas,
+        kelas: kelasJurnalSimpan(payload.kelas, payload.unit),
         tanggal: payload.tanggal,
         jam: Number(jamKey),
         semester: payload.semester,

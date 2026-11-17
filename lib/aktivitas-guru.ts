@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
+import { saringJurnalUntukUnit } from '@/lib/jurnal'
 import { teacherDisplayName } from '@/lib/qiroah'
-import { fetchAllSiswa } from '@/lib/siswa'
+import { fetchAllSiswa, kanonNamaUnit } from '@/lib/siswa'
 
 export type BarisAktivitasGuru = {
   id: string
@@ -71,7 +72,7 @@ function pushAktivitas(
 }
 
 export async function muatAktivitasGuruTerbaru(
-  currentUser?: { nama_lengkap?: string; nama?: string; username?: string } | null,
+  currentUser?: { nama_lengkap?: string; nama?: string; username?: string; unit?: string } | null,
   batas = 15,
 ): Promise<BarisAktivitasGuru[]> {
   if (!currentUser) return []
@@ -109,6 +110,7 @@ export async function muatAktivitasGuruTerbaru(
   ])
 
   for (const row of tahfidz.data || []) {
+    if (!namaMap.has(String(row.id_siswa || ''))) continue
     if (!guruCocok(row.nama_ustadz, currentUser)) continue
     const surah = String(row.hafalan_baru || '').trim() || 'Hafalan'
     const ayat =
@@ -127,6 +129,7 @@ export async function muatAktivitasGuruTerbaru(
   }
 
   for (const row of qiroah.data || []) {
+    if (!namaMap.has(String(row.id_siswa || ''))) continue
     if (!guruCocok(row.ustadz, currentUser)) continue
     const capaian = [row.jilid, row.halaman ? `Hal ${row.halaman}` : ''].filter(Boolean).join(' ')
     const status = String(row.status || '').trim()
@@ -142,6 +145,7 @@ export async function muatAktivitasGuruTerbaru(
   }
 
   for (const row of tertib.data || []) {
+    if (!namaMap.has(String(row.id_siswa || ''))) continue
     if (!guruCocok(row.guru, currentUser)) continue
     const pts = Number(row.pts) || 0
     pushAktivitas(hasil, {
@@ -153,7 +157,9 @@ export async function muatAktivitasGuruTerbaru(
     })
   }
 
-  for (const row of jurnal.data || []) {
+  const unitGuru = kanonNamaUnit(currentUser.unit)
+  const jurnalUnit = unitGuru ? await saringJurnalUntukUnit(jurnal.data || [], unitGuru) : []
+  for (const row of jurnalUnit) {
     if (!guruCocok(row.guru, currentUser)) continue
     const waktu = parseWaktu(row.tanggal ? `${row.tanggal}T12:00:00` : null)
     pushAktivitas(hasil, {

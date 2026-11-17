@@ -1,5 +1,5 @@
 import { fetchAllSiswa } from '@/lib/siswa'
-import { buildRekapSiswaPerHari, fetchJurnalRentang, todayInputValue, type SiswaKelas } from '@/lib/jurnal'
+import { buildRekapSiswaPerHari, fetchJurnalRentang, teacherUnit, todayInputValue, type SiswaKelas } from '@/lib/jurnal'
 
 export type RekapAbsensiCepatHariIni = {
   /** Ada baris jurnal hari ini untuk kelas binaan */
@@ -51,7 +51,9 @@ export async function muatAbsensiCepatHariIni(
         ? `Kelas ${Array.from(kelasSet)[0]}`
         : `${kelasSet.size} kelas binaan`
 
-  const { rows, error } = await fetchJurnalRentang({ start: tanggal, end: tanggal })
+  const unit = teacherUnit(currentUser)
+  if (!unit) return { ...kosong, totalSiswa: roster.length, labelKelas }
+  const { rows, error } = await fetchJurnalRentang({ start: tanggal, end: tanggal, unit })
   if (error) {
     console.error('Gagal memuat absensi hari ini:', error.message)
     return { ...kosong, totalSiswa: roster.length, labelKelas }

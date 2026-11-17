@@ -19,14 +19,16 @@ export async function cekAbsenSiswaPadaTanggal(opts: {
   namaSiswa: string
   kelas: string
   tanggal: string
+  unit?: string | null
 }): Promise<HasilCekAbsenSiswa> {
   const kelas = String(opts.kelas || '').trim()
   const tanggal = String(opts.tanggal || '').slice(0, 10)
-  if (!kelas || !tanggal) {
+  const unit = String(opts.unit || '').trim()
+  if (!kelas || !tanggal || !unit) {
     return { tidakMasuk: false, status: null, adaDataJurnal: false }
   }
 
-  const { rows, error } = await fetchJurnalRentang({ kelas, start: tanggal, end: tanggal })
+  const { rows, error } = await fetchJurnalRentang({ kelas, start: tanggal, end: tanggal, unit })
   if (error || !rows.length) {
     return { tidakMasuk: false, status: null, adaDataJurnal: false }
   }

@@ -59,7 +59,7 @@ export async function muatAnandaUntukWali(user?: Record<string, unknown> | null)
   const daftar = Array.from(hasil.values()).filter((s) => cocokAnandaWali(s, user) || idPrioritas === s.id)
   const unitAnanda = daftar.find((s) => s.unit)?.unit
   if (unitAnanda) {
-    return daftar.filter((s) => !s.unit || unitSama(s.unit, unitAnanda))
+    return daftar.filter((s) => unitSama(s.unit, unitAnanda))
   }
   return daftar
 }

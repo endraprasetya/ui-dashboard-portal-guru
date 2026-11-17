@@ -67,11 +67,12 @@ export function AbsensiRekap({
           start,
           end,
           semester: periode === 'semester' ? semester : undefined,
+          unit: teacherUnit(currentUser),
         }),
         kelas ? fetchSiswaKelas(kelas, currentUser) : Promise.resolve([] as SiswaKelas[]),
       ])
       if (jurnalError) setError(jurnalError.message)
-      setRows(jurnalRows)
+      setRows(teacherUnit(currentUser) ? jurnalRows : [])
       setSiswa(roster)
       setLoading(false)
     }
