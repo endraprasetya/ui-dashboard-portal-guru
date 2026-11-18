@@ -3,14 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, ScrollText } from 'lucide-react'
 import { SuratRekomendasiKeringanan } from '@/components/kepsek/surat-rekomendasi-keringanan'
-import { SuratResmiWaliKeringanan } from '@/components/kepsek/surat-resmi-wali-keringanan'
 import {
-  adaSuratResmiWali,
   formatWaktuKeringanan,
   muatPengajuanUnit,
   putuskanPengajuan,
   rupiahKeringanan,
-  tanggalSuratResmiWali,
   type PengajuanKeringanan,
   type StatusPengajuanKeringanan,
 } from '@/lib/pengajuan-keringanan'
@@ -32,11 +29,6 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
   const [catatan, setCatatan] = useState('')
   const [menyimpan, setMenyimpan] = useState(false)
   const [surat, setSurat] = useState<PengajuanKeringanan | null>(null)
-  const [ajuanResmi, setAjuanResmi] = useState<PengajuanKeringanan | null>(null)
-
-  const bukaAjuanResmi = (item: PengajuanKeringanan) => {
-    if (adaSuratResmiWali(item)) setAjuanResmi(item)
-  }
 
   const muat = (diam = false) => {
     if (!unit) {
@@ -94,7 +86,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
           <div>
             <div className="flex items-center gap-2 text-sky-950">
               <ScrollText className="size-4" />
-              <h2 className="text-sm font-extrabold">Pengajuan keringanan pembayaran</h2>
+              <h2 className="text-sm font-extrabold">Pengajuan Mengikuti Kegiatan Sekolah</h2>
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Permohonan dari wali murid unit {unit}. {menunggu} menunggu persetujuan.
@@ -124,9 +116,9 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
         </div>
 
         {galat ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{galat}</p> : null}
-        {memuat && data.length === 0 ? <p className="text-sm text-slate-500">Memuat pengajuan keringanan...</p> : null}
+        {memuat && data.length === 0 ? <p className="text-sm text-slate-500">Memuat pengajuan mengikuti kegiatan sekolah...</p> : null}
         {!memuat && tampil.length === 0 ? (
-          <p className="text-sm text-slate-500">Belum ada pengajuan keringanan pada saringan ini.</p>
+          <p className="text-sm text-slate-500">Belum ada pengajuan mengikuti kegiatan sekolah pada saringan ini.</p>
         ) : null}
 
         {tampil.length > 0 ? (
@@ -158,23 +150,6 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
                       <p>{item.kesanggupanBayar}</p>
                       {item.alasanPengajuan ? <p className="mt-1 text-slate-600">Alasan: {item.alasanPengajuan}</p> : null}
                       <p className="mt-1 font-semibold text-slate-500">Target {formatWaktuKeringanan(item.tanggalRencanaLunas)}</p>
-                      {item.suratResmiDikirimPada ? (
-                        <button
-                          type="button"
-                          onClick={() => bukaAjuanResmi(item)}
-                          className="mt-1 block text-left font-semibold text-sky-800 underline decoration-sky-400 underline-offset-2 hover:text-sky-950"
-                        >
-                          Surat resmi wali: {formatWaktuKeringanan(item.suratResmiDikirimPada)}
-                        </button>
-                      ) : adaSuratResmiWali(item) ? (
-                        <button
-                          type="button"
-                          onClick={() => bukaAjuanResmi(item)}
-                          className="mt-1 block text-left font-semibold text-sky-800 underline decoration-sky-400 underline-offset-2 hover:text-sky-950"
-                        >
-                          Surat resmi wali: {formatWaktuKeringanan(tanggalSuratResmiWali(item))}
-                        </button>
-                      ) : null}
                       {item.catatanKeputusan ? <p className="mt-1 text-rose-800">Catatan: {item.catatanKeputusan}</p> : null}
                     </td>
                     <td className="px-3 py-2">
@@ -254,15 +229,6 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
                         ) : (
                           <span className="text-[11px] text-slate-400">Selesai</span>
                         )}
-                        {adaSuratResmiWali(item) ? (
-                          <button
-                            type="button"
-                            onClick={() => bukaAjuanResmi(item)}
-                            className="rounded-lg border border-sky-300 px-2 py-1 text-[11px] font-extrabold text-sky-900 hover:bg-sky-50"
-                          >
-                            Lihat Ajuan Resmi
-                          </button>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -273,7 +239,6 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
         ) : null}
       </section>
       {surat ? <SuratRekomendasiKeringanan pengajuan={surat} onTutup={() => setSurat(null)} /> : null}
-      {ajuanResmi ? <SuratResmiWaliKeringanan pengajuan={ajuanResmi} onTutup={() => setAjuanResmi(null)} /> : null}
     </>
   )
 }

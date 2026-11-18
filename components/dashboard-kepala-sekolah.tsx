@@ -292,7 +292,7 @@ export function DashboardKepalaSekolah() {
               Tunggakan
             </a>
             <a href="#pengajuan-keringanan" className={kelasTombolNav}>
-              Keringanan
+              Kegiatan sekolah
             </a>
             <a href="/data-siswa" className={kelasTombolNav}>
               Data Siswa
