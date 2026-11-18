@@ -39,6 +39,7 @@ import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { MonitoringPiketHariIni } from '@/components/kepsek/monitoring-piket'
 import { MonitoringSidiaAbsensiReguler } from '@/components/kepsek/monitoring-sidia-absensi'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
+import { MonitoringPengajuanKeringanan } from '@/components/kepsek/monitoring-keringanan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
 import { kanonNamaUnit } from '@/lib/siswa'
@@ -290,6 +291,9 @@ export function DashboardKepalaSekolah() {
             <a href="#keuangan-tunggakan" className={kelasTombolNav}>
               Tunggakan
             </a>
+            <a href="#pengajuan-keringanan" className={kelasTombolNav}>
+              Keringanan
+            </a>
             <a href="/data-siswa" className={kelasTombolNav}>
               Data Siswa
             </a>
@@ -328,6 +332,7 @@ export function DashboardKepalaSekolah() {
           <LaporanKeuangan unit={unitTampil} judul={`Laporan keuangan unit ${unitTampil}`} />
         ) : null}
         {unitTampil ? <ModulKeuangan unit={unitTampil} /> : null}
+        {unitTampil ? <MonitoringPengajuanKeringanan unit={unitTampil} /> : null}
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>

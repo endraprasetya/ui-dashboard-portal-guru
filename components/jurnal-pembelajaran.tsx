@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, Plus, Printer, Save, Trash2, UserX, X } from '
 import { BidangSuara, useDikte } from '@/components/input-suara'
 import {
   DAFTAR_MAPEL,
+  JADWAL_PELAJARAN,
   KETERANGAN_ABSEN,
   NAMA_HARI,
   TIPE_LINK,
@@ -13,14 +14,11 @@ import {
   fetchJurnalHari,
   fetchKelasDanJumlahSiswa,
   fetchSiswaKelas,
-  guruJurnalSama,
   hitungKehadiran,
   jamAktifDariJadwal,
-  jamHariIni,
   rowsToEntries,
   saringAbsenKelas,
   simpanJurnalHari,
-  slotJurnalTerbuka,
   teacherName,
   teacherUnit,
   todayInputValue,
@@ -231,8 +229,8 @@ export function JurnalPembelajaran({
   )
 
   const selectedDate = tanggal ? new Date(`${tanggal}T00:00:00`) : null
-  const hariIndex = selectedDate ? selectedDate.getDay() : -1
-  const jadwal = selectedDate ? jamHariIni(selectedDate) : null
+  const hariIndex = selectedDate && !Number.isNaN(selectedDate.getTime()) ? selectedDate.getDay() : -1
+  const jadwal = selectedDate && !Number.isNaN(selectedDate.getTime()) ? JADWAL_PELAJARAN : null
   const jumlahKelas = siswaKelas.length || (kelas ? jumlahSiswa[kelas] || 0 : 0)
 
   const getEntry = (jam: number, source = entries) =>
@@ -240,18 +238,11 @@ export function JurnalPembelajaran({
 
   const absenKelas = (absen: SiswaTidakHadir[]) => saringAbsenKelas(absen, siswaKelas)
 
-  const jamTerkunci = (jam: number, source: Record<number, JurnalJam> = entries) => {
-    const entry = getEntry(jam, source)
-    return !slotJurnalTerbuka(entry, jam, source) && !guruJurnalSama(entry.guru, guru)
-  }
-
   const updateEntry = (jam: number, patch: Partial<JurnalJam>) => {
-    if (jamTerkunci(jam)) return
     jamDiubahRef.current.add(jam)
     absenSajaRef.current.delete(jam)
     setEntries((current) => {
       const sekarang = getEntry(jam, current)
-      if (!slotJurnalTerbuka(sekarang, jam, current) && !guruJurnalSama(sekarang.guru, guru)) return current
       const next = { ...sekarang, ...patch }
       next.siswaTidakHadir = absenKelas(next.siswaTidakHadir || [])
       const rekap = hitungKehadiran(jumlahKelas, next.siswaTidakHadir)
@@ -370,7 +361,7 @@ export function JurnalPembelajaran({
         setEntries(loaded)
         const smt = rows.find((row) => row.semester != null)?.semester
         if (smt) setSemester(String(smt))
-        setStatus('Jurnal hari ini dimuat dari Supabase.')
+        setStatus('Jurnal tanggal ini dimuat dari Supabase.')
       } else {
         jamDiubahRef.current = new Set()
         absenKustomRef.current = new Set()
@@ -413,12 +404,10 @@ export function JurnalPembelajaran({
     setStatusError(false)
 
     const jamAktif = jamAktifDariJadwal(jadwal)
-    const jamSimpan = jamAktif.filter(
-      (jam) => jamDiubahRef.current.has(jam) && (absenSajaRef.current.has(jam) || !jamTerkunci(jam)),
-    )
+    const jamSimpan = jamAktif.filter((jam) => jamDiubahRef.current.has(jam))
     if (jamSimpan.length === 0) {
       setSaving(false)
-      setStatus('Tidak ada jam yang diubah. Jam yang sudah diisi guru lain tetap tertutup.')
+      setStatus('Tidak ada jam yang diubah. Isi atau ubah jurnal lalu simpan.')
       setStatusError(false)
       return
     }
@@ -690,7 +679,7 @@ export function JurnalPembelajaran({
             </div>
           ) : !jadwal ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-slate-500">
-              Hari {hariIndex >= 0 ? NAMA_HARI[hariIndex] : '-'} libur. Tidak ada jam pelajaran.
+              Pilih tanggal untuk mengisi jurnal. Semua hari dan semua jam pelajaran dapat diisi.
             </div>
           ) : loading || rosterKelas !== kelas ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">
@@ -729,14 +718,12 @@ export function JurnalPembelajaran({
                     const jam = item.j as number
                     const entry = getEntry(jam)
                     const rekap = hitungKehadiran(jumlahKelas, absenTampil(jam))
-                    const terkunciJam = jamTerkunci(jam)
-                    const kelasSel = terkunciJam ? 'pointer-events-none bg-slate-50 opacity-80' : ''
 
                     return (
-                      <tr key={jam} className={terkunciJam ? 'bg-slate-50' : undefined}>
+                      <tr key={jam}>
                         <td className="border border-slate-200 p-2 text-center font-black text-slate-800">{jam}</td>
                         <td className="whitespace-nowrap border border-slate-200 p-2 text-slate-500">{item.w}</td>
-                        <td className={`border border-slate-200 p-1.5 ${kelasSel}`}>
+                        <td className="border border-slate-200 p-1.5">
                           <InputLokal
                             type="text"
                             list="daftar-mapel"
@@ -745,7 +732,7 @@ export function JurnalPembelajaran({
                             className="w-full rounded border border-slate-200 px-2 py-1.5"
                           />
                         </td>
-                        <td className={`border border-slate-200 p-1.5 align-top ${kelasSel}`}>
+                        <td className="border border-slate-200 p-1.5 align-top">
                           <BidangSuara
                             value={entry.materi}
                             mendengarkan={dikte.aktif === `${jam}:materi`}
@@ -759,7 +746,7 @@ export function JurnalPembelajaran({
                             }
                           />
                         </td>
-                        <td className={`border border-slate-200 p-1.5 align-top ${kelasSel}`}>
+                        <td className="border border-slate-200 p-1.5 align-top">
                           <BidangSuara
                             value={entry.kegiatan}
                             mendengarkan={dikte.aktif === `${jam}:kegiatan`}
@@ -773,7 +760,7 @@ export function JurnalPembelajaran({
                             }
                           />
                         </td>
-                        <td className={`border border-slate-200 p-1.5 ${kelasSel}`}>
+                        <td className="border border-slate-200 p-1.5">
                           <div className="space-y-1.5">
                             {entry.links.map((link, linkIndex) => (
                               <div key={`${jam}-${linkIndex}`} className="flex items-center gap-1">
@@ -842,7 +829,7 @@ export function JurnalPembelajaran({
                             </button>
                           </div>
                         </td>
-                        <td className={`w-44 border border-slate-200 p-1.5 align-top ${kelasSel}`}>
+                        <td className="w-44 border border-slate-200 p-1.5 align-top">
                           <BidangSuara
                             value={entry.tugas}
                             mendengarkan={dikte.aktif === `${jam}:tugas`}
@@ -878,18 +865,13 @@ export function JurnalPembelajaran({
                           {entry.ttd && (
                             <img src={entry.ttd} alt="Paraf" className="mx-auto mb-1 max-h-11 max-w-24" />
                           )}
-                          <p className={`mb-1 text-[10px] font-semibold leading-tight ${terkunciJam ? 'text-slate-700' : 'text-slate-400'}`}>
-                            {terkunciJam || (entry.guru && !slotJurnalTerbuka(entry, jam, entries))
-                              ? entry.guru
-                              : entry.guru && guruJurnalSama(entry.guru, guru)
-                                ? entry.guru
-                                : 'Belum diisi'}
+                          <p className="mb-1 text-[10px] font-semibold leading-tight text-slate-500">
+                            {entry.guru || 'Belum diisi'}
                           </p>
                           <button
                             type="button"
-                            disabled={terkunciJam}
                             onClick={() => openTtd(jam)}
-                            className="no-print rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-print rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
                           >
                             {entry.ttd ? 'Ubah' : 'Tanda tangan'}
                           </button>

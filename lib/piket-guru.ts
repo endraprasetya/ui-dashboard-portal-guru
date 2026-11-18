@@ -15,7 +15,7 @@ export type StatusSesiPiket = StatusPiket | 'Belum'
 export const NAMA_HARI_PIKET = ['Ahad', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const
 
 export const CATATAN_WAKTU_PIKET =
-  'Catatan Kehadiran Piket: Piket Pagi hadir maksimal paling lambat pukul 06.40 WIB. Piket Sore / Pulang pukul 16.15 WIB (untuk hari Senin s.d. Kamis) dan pukul 14.15 WIB (untuk hari Sabtu).'
+  'Catatan Kehadiran Piket: Hadir atau Izin untuk Piket Pagi dan Piket Sore dapat dicatat kapan saja selama masih pada tanggal yang sama. Jam yang tersimpan adalah waktu aktual saat tombol diklik.'
 
 export type BarisJadwalPiket = {
   id: string
@@ -201,7 +201,25 @@ function waktuAbsenDariKolom(iso?: string | null, sumber?: string) {
 }
 
 function kolomWaktuAbsenTidakAda(pesan?: string) {
-  return /waktu_absen_pagi|waktu_absen_sore|schema cache|could not find/i.test(String(pesan || ''))
+  return /waktu_absen_pagi|waktu_absen_sore|waktu_absen[^_]|schema cache|could not find/i.test(String(pesan || ''))
+}
+
+function statusKehadiranTerlaluPanjang(pesan?: string) {
+  return /value too long|character varying/i.test(String(pesan || ''))
+}
+
+/** Cocokkan baris jadwal/absensi yang sama (jenis + id atau nama guru). */
+export function cocokSlotPiket(
+  a: { jenis: JenisPiket | string; id_guru?: string | null; nama_guru?: string | null },
+  b: { jenis: JenisPiket | string; id_guru?: string | null; nama_guru?: string | null },
+) {
+  if (a.jenis !== b.jenis) return false
+  if (normId(a.id_guru) && normId(a.id_guru) === normId(b.id_guru)) return true
+  return (
+    cocokNamaPiket(a.nama_guru, b.nama_guru) ||
+    cocokNamaPiket(a.id_guru, b.nama_guru) ||
+    cocokNamaPiket(a.nama_guru, b.id_guru)
+  )
 }
 
 export function bacaSesiKehadiran(nilai: unknown): SesiKehadiranPiket {
@@ -380,7 +398,7 @@ export function slotUntukHari(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiP
   const dasar = jadwal
     .filter((item) => item.hari === hari)
     .map((slot) => {
-      const catat = absensi.find((item) => item.jenis === slot.jenis && item.id_guru === slot.id_guru)
+      const catat = absensi.find((item) => cocokSlotPiket(slot, item))
       if (!catat) return slot
       return {
         ...slot,
@@ -391,7 +409,7 @@ export function slotUntukHari(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiP
       }
     })
   const tambahan = absensi
-    .filter((item) => !dasar.some((slot) => slot.jenis === item.jenis && slot.id_guru === item.id_guru))
+    .filter((item) => !dasar.some((slot) => cocokSlotPiket(slot, item)))
     .map(
       (item) =>
         ({
@@ -415,7 +433,7 @@ export function slotUntukHari(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiP
 export function susunMonitorPiket(jadwal: BarisJadwalPiket[], absensi: BarisAbsensiPiket[]): BarisMonitorPiket[] {
   return jadwal
     .map((slot) => {
-      const catat = absensi.find((item) => item.jenis === slot.jenis && item.id_guru === slot.id_guru)
+      const catat = absensi.find((item) => cocokSlotPiket(slot, item))
       return {
         id: slot.id,
         jenis: slot.jenis,
@@ -580,7 +598,7 @@ export async function muatJadwalPiket(unit: string) {
         tanggal: item.tanggal,
         id_guru: item.id_guru,
         nama_guru: item.nama_guru,
-        status_kehadiran: 'Belum',
+        status_kehadiran: tulisSesiKehadiran('Belum', 'Belum'),
       })),
     )
     if (!error) return urutSesuaiMaster(kunci, await baca())
@@ -608,38 +626,36 @@ export async function simpanAbsensiPiket(input: {
 }) {
   const unit = kanonNamaUnit(input.unit)
   if (!unit) throw new Error('Unit akun belum terbaca. Absensi tidak disimpan ke unit lain.')
-  const hari = NAMA_HARI_PIKET[hariDariTanggal(input.tanggal)] || tanggalHariJakarta().namaHari
+  const tanggal = String(input.tanggal || '').slice(0, 10)
+  if (tanggal !== tanggalHariJakarta().tanggal) {
+    throw new Error('Absensi piket hanya dapat dicatat pada tanggal yang sama.')
+  }
+  const hari = NAMA_HARI_PIKET[hariDariTanggal(tanggal)] || tanggalHariJakarta().namaHari
   const { data: ada, error: galatBaca } = await supabase
     .from(TABEL_PIKET)
     .select('id,unit,jenis_piket,id_guru,nama_guru,status_kehadiran')
     .ilike('unit', `%${unit}%`)
-    .eq('tanggal', input.tanggal)
+    .eq('tanggal', tanggal)
     .limit(400)
   if (galatBaca) lempar(galatBaca, 'Absensi piket belum dapat disimpan.')
   const cocokOrang = (row: { unit?: string | null; id_guru?: string | null; nama_guru?: string | null; jenis_piket?: string | null }) =>
     unitSama(String(row.unit || ''), unit) &&
-    jenisSah(row.jenis_piket) &&
-    (normId(row.id_guru) === normId(input.id_guru) ||
-      cocokNamaPiket(row.nama_guru, input.nama_guru) ||
-      cocokNamaPiket(row.id_guru, input.nama_guru))
+    row.jenis_piket === input.jenis &&
+    cocokSlotPiket(
+      { jenis: input.jenis, id_guru: input.id_guru, nama_guru: input.nama_guru },
+      { jenis: row.jenis_piket || '', id_guru: row.id_guru, nama_guru: row.nama_guru },
+    )
   const sasaran = (ada || []).filter(cocokOrang)
   const sekarang = new Date().toISOString()
-  const stamp = String(Date.now())
   const gabung = (nilai: unknown) => {
     const sesi = bacaSesiKehadiran(nilai)
-    if (input.sesi === 'Pagi') {
-      sesi.pagi = input.status
-      if (input.status === 'Hadir' || input.status === 'Izin') sesi.waktuPagi = stamp
-    } else {
-      sesi.sore = input.status
-      if (input.status === 'Hadir' || input.status === 'Izin') sesi.waktuSore = stamp
-    }
-    return tulisSesiKehadiran(sesi.pagi, sesi.sore, { pagi: sesi.waktuPagi, sore: sesi.waktuSore })
+    if (input.sesi === 'Pagi') sesi.pagi = input.status
+    else sesi.sore = input.status
+    return tulisSesiKehadiran(sesi.pagi, sesi.sore)
   }
   const muatPayloadAbsen = (status_kehadiran: string) => {
     const dasar: Record<string, unknown> = {
       status_kehadiran,
-      waktu_absen: sekarang,
       nama_guru: input.nama_guru,
     }
     if (input.status === 'Hadir' || input.status === 'Izin') {
@@ -653,12 +669,13 @@ export async function simpanAbsensiPiket(input: {
     if (nama_guru) dasar.nama_guru = nama_guru
     let { error } = await supabase.from(TABEL_PIKET).update(dasar).eq('id', id)
     if (error && kolomWaktuAbsenTidakAda(error.message)) {
-      const ringkas: Record<string, unknown> = {
-        status_kehadiran,
-        waktu_absen: sekarang,
-        nama_guru: dasar.nama_guru,
-      }
-      error = (await supabase.from(TABEL_PIKET).update(ringkas).eq('id', id)).error
+      const { waktu_absen_pagi: _p, waktu_absen_sore: _s, ...tanpaWaktu } = dasar
+      error = (await supabase.from(TABEL_PIKET).update(tanpaWaktu).eq('id', id)).error
+    }
+    if (error && statusKehadiranTerlaluPanjang(error.message)) {
+      throw new Error(
+        'Kolom status_kehadiran di Supabase terlalu pendek. Jalankan perluasan kolom pada supabase/piket-guru.sql.',
+      )
     }
     if (error) lempar(error, 'Absensi piket belum dapat disimpan.')
   }
@@ -669,23 +686,17 @@ export async function simpanAbsensiPiket(input: {
     return
   }
   const kosong: SesiKehadiranPiket = { pagi: 'Belum', sore: 'Belum' }
-  if (input.sesi === 'Pagi') {
-    kosong.pagi = input.status
-    if (input.status === 'Hadir' || input.status === 'Izin') kosong.waktuPagi = stamp
-  } else {
-    kosong.sore = input.status
-    if (input.status === 'Hadir' || input.status === 'Izin') kosong.waktuSore = stamp
-  }
-  const status_kehadiran = tulisSesiKehadiran(kosong.pagi, kosong.sore, { pagi: kosong.waktuPagi, sore: kosong.waktuSore })
+  if (input.sesi === 'Pagi') kosong.pagi = input.status
+  else kosong.sore = input.status
+  const status_kehadiran = tulisSesiKehadiran(kosong.pagi, kosong.sore)
   const insert: Record<string, unknown> = {
     unit,
     jenis_piket: input.jenis,
     hari,
-    tanggal: input.tanggal,
+    tanggal,
     id_guru: input.id_guru,
     nama_guru: input.nama_guru,
     status_kehadiran,
-    waktu_absen: sekarang,
   }
   if (input.status === 'Hadir' || input.status === 'Izin') {
     if (input.sesi === 'Pagi') insert.waktu_absen_pagi = sekarang
@@ -695,6 +706,11 @@ export async function simpanAbsensiPiket(input: {
   if (error && kolomWaktuAbsenTidakAda(error.message)) {
     const { waktu_absen_pagi: _p, waktu_absen_sore: _s, ...tanpa } = insert
     error = (await supabase.from(TABEL_PIKET).insert(tanpa)).error
+  }
+  if (error && statusKehadiranTerlaluPanjang(error.message)) {
+    throw new Error(
+      'Kolom status_kehadiran di Supabase terlalu pendek. Jalankan perluasan kolom pada supabase/piket-guru.sql.',
+    )
   }
   if (error) lempar(error, 'Absensi piket belum dapat disimpan.')
 }

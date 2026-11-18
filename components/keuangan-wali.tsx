@@ -6,7 +6,9 @@ import { muatAnandaUntukWali } from '@/lib/portal-wali-siswa'
 import type { SantriWali } from '@/lib/portal-wali'
 import { labelPeriodeBerjalan, labelTapel, saringRincianPortalWali } from '@/lib/ampss-urai'
 import { LencanaYatim } from '@/components/lencana-yatim'
+import { PanelPengajuanKeringanan } from '@/components/pengajuan-keringanan-wali'
 import type { DetailTunggakan } from '@/lib/keuangan-tipe'
+import { muatPengajuanUntukNis, pengajuanTerbaru, type PengajuanKeringanan } from '@/lib/pengajuan-keringanan'
 
 function rupiah(nilai: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(nilai)
@@ -67,6 +69,11 @@ export function KeuanganWaliBeranda({
         </ul>
       )}
       {total > 0 ? <p className="mt-2 text-xs font-extrabold text-amber-950">Total tertunda {rupiah(total)}</p> : null}
+      {total > 0 ? (
+        <p className="mt-1 text-[11px] font-semibold text-sky-800">
+          Setelah surat pemberitahuan, ajukan keringanan atau penundaan di menu Keuangan.
+        </p>
+      ) : null}
     </>
   )
 
@@ -82,7 +89,32 @@ export function KeuanganWaliBeranda({
 }
 
 export function KeuanganWaliMenu({ currentUser }: { currentUser?: Record<string, unknown> | null }) {
-  const { data, memuat, galat, periode } = useKeuanganWali(currentUser)
+  const { data, memuat, galat, periode, unitNis } = useKeuanganWali(currentUser)
+  const [pengajuan, setPengajuan] = useState<PengajuanKeringanan[]>([])
+  const [galatPengajuan, setGalatPengajuan] = useState('')
+  const [segarPengajuan, setSegarPengajuan] = useState(0)
+
+  useEffect(() => {
+    const nis = data.map((item) => item.nis).filter(Boolean)
+    if (nis.length === 0) {
+      setPengajuan([])
+      return
+    }
+    let batal = false
+    muatPengajuanUntukNis(nis)
+      .then((hasil) => {
+        if (!batal) {
+          setPengajuan(hasil)
+          setGalatPengajuan('')
+        }
+      })
+      .catch((error: Error) => {
+        if (!batal) setGalatPengajuan(error.message || 'Pengajuan keringanan belum dapat dimuat.')
+      })
+    return () => {
+      batal = true
+    }
+  }, [data, segarPengajuan])
 
   return (
     <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -96,18 +128,35 @@ export function KeuanganWaliMenu({ currentUser }: { currentUser?: Record<string,
 
       {memuat && <p className="text-sm text-slate-500">Mengambil tagihan ananda…</p>}
       {galat && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{galat}</p>}
+      {galatPengajuan && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{galatPengajuan}</p>}
       {!memuat && !galat && data.length === 0 && (
         <p className="text-sm text-slate-500">Data keuangan ananda belum ditemukan. Pastikan NIS siswa tertaut pada akun wali.</p>
       )}
 
       {data.map((item) => (
-        <KartuTunggakanAnanda key={item.nis} data={item} />
+        <KartuTunggakanAnanda
+          key={item.nis}
+          data={item}
+          unit={unitNis[item.nis.replace(/\D/g, '')] || String(currentUser?.unit || '')}
+          pengajuan={pengajuanTerbaru(pengajuan, item.nis)}
+          onPengajuan={() => setSegarPengajuan((nilai) => nilai + 1)}
+        />
       ))}
     </section>
   )
 }
 
-function KartuTunggakanAnanda({ data }: { data: DetailTunggakan }) {
+function KartuTunggakanAnanda({
+  data,
+  unit,
+  pengajuan,
+  onPengajuan,
+}: {
+  data: DetailTunggakan
+  unit: string
+  pengajuan?: PengajuanKeringanan | null
+  onPengajuan: () => void
+}) {
   const lunas = data.tunggakan <= 0
   return (
     <article className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
@@ -150,12 +199,16 @@ function KartuTunggakanAnanda({ data }: { data: DetailTunggakan }) {
           ))}
         </ul>
       )}
+      {!data.yatim && data.tunggakan > 0 ? (
+        <PanelPengajuanKeringanan siswa={data} unit={unit} riwayat={pengajuan} onSelesai={onPengajuan} />
+      ) : null}
     </article>
   )
 }
 
 function useKeuanganWali(currentUser?: Record<string, unknown> | null) {
   const [data, setData] = useState<DetailTunggakan[]>([])
+  const [unitNis, setUnitNis] = useState<Record<string, string>>({})
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
   const periode = useMemo(() => labelPeriodeBerjalan('2627'), [])
@@ -166,6 +219,12 @@ function useKeuanganWali(currentUser?: Record<string, unknown> | null) {
     setGalat('')
     muatAnandaUntukWali(currentUser)
       .then(async (ananda) => {
+        const petaUnit: Record<string, string> = {}
+        for (const anak of ananda) {
+          const kunci = String(anak.nis || '').replace(/\D/g, '')
+          if (kunci) petaUnit[kunci] = anak.unit || String(currentUser?.unit || '')
+        }
+        if (!batal) setUnitNis(petaUnit)
         const nis = kunciNisAnanda(ananda, currentUser)
         if (nis.length === 0) return [] as DetailTunggakan[]
         const respon = await fetch(`/api/portal-wali/keuangan?${nis.map((nilai) => `nis=${encodeURIComponent(nilai)}`).join('&')}`)
@@ -197,5 +256,5 @@ function useKeuanganWali(currentUser?: Record<string, unknown> | null) {
     }
   }, [currentUser])
 
-  return { data, memuat, galat, periode }
+  return { data, memuat, galat, periode, unitNis }
 }

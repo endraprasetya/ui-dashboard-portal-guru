@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { UjianQiroahWaliBeranda, UjianQiroahWaliMenu } from '@/components/ujian-qiroah-wali'
 import { KeuanganWaliBeranda, KeuanganWaliMenu } from '@/components/keuangan-wali'
+import { BannerKeringananWali } from '@/components/pengajuan-keringanan-wali'
 import { PengingatAsasWali } from '@/components/pengingat-asas-wali'
 import {
   ArrowRight,
@@ -112,6 +113,7 @@ export function PortalWali({
                 <h2 className="mt-1 text-xl font-black">Ahlan wa Sahlan, {nama}</h2>
                 <p className="mt-1 text-xs text-emerald-50/90">Pantau tertib poin, keuangan, pengumuman, prestasi, dan kegiatan ananda.</p>
               </section>
+              <BannerKeringananWali currentUser={currentUser} />
               <PengingatAsasWali />
             </div>
 

@@ -39,25 +39,31 @@ export function AbsensiPiket({
 }) {
   const hariIni = tanggalHariJakarta()
   const unit = kanonNamaUnit(currentUser?.unit)
-  const [memuat, setMemuat] = useState(true)
+  const [memuatAwal, setMemuatAwal] = useState(true)
+  const [menyegarkan, setMenyegarkan] = useState(false)
   const [galat, setGalat] = useState('')
   const [jadwal, setJadwal] = useState<BarisJadwalPiket[]>([])
   const [menyimpan, setMenyimpan] = useState('')
 
-  const muat = (diam = false) => {
+  const muat = (diam = false): Promise<void> => {
     if (!unit) {
       setJadwal([])
-      setMemuat(false)
-      return
+      setMemuatAwal(false)
+      setMenyegarkan(false)
+      return Promise.resolve()
     }
-    if (!diam) setMemuat(true)
+    if (!diam) setMemuatAwal(true)
+    else setMenyegarkan(true)
     setGalat('')
-    Promise.all([muatJadwalPiket(unit), muatAbsensiPiket(unit, hariIni.tanggal)])
+    return Promise.all([muatJadwalPiket(unit), muatAbsensiPiket(unit, hariIni.tanggal)])
       .then(([slot, catat]) => {
         setJadwal(slotUntukHari(slot, catat, hariIni.hari))
       })
       .catch((error: Error) => setGalat(error.message || 'Jadwal piket belum dapat dimuat.'))
-      .finally(() => setMemuat(false))
+      .finally(() => {
+        setMemuatAwal(false)
+        setMenyegarkan(false)
+      })
   }
 
   useEffect(() => {
@@ -84,7 +90,7 @@ export function AbsensiPiket({
     setGalat('')
     try {
       await simpanAbsensiPiket({
-        unit: slot.unit,
+        unit: slot.unit || unit,
         jenis: slot.jenis,
         tanggal: hariIni.tanggal,
         id_guru: slot.id_guru,
@@ -92,7 +98,7 @@ export function AbsensiPiket({
         sesi,
         status,
       })
-      muat(true)
+      await muat(true)
     } catch (error) {
       setGalat(error instanceof Error ? error.message : 'Absensi piket belum dapat disimpan.')
     } finally {
@@ -136,9 +142,9 @@ export function AbsensiPiket({
           </p>
         ) : null}
 
-        {memuat ? <p className="mt-4 text-sm text-slate-500">Memeriksa jadwal piket hari ini...</p> : null}
+        {memuatAwal ? <p className="mt-4 text-sm text-slate-500">Memeriksa jadwal piket hari ini...</p> : null}
 
-        {!memuat && milikSaya.length > 0 ? (
+        {!memuatAwal && milikSaya.length > 0 ? (
           <div className="mt-4 space-y-3">
             <article className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
               <p className="text-sm font-extrabold text-emerald-950">
@@ -181,7 +187,7 @@ export function AbsensiPiket({
           </div>
         ) : null}
 
-        {!memuat && !galat && milikSaya.length === 0 ? (
+        {!memuatAwal && !galat && milikSaya.length === 0 ? (
           <button
             type="button"
             disabled
@@ -192,12 +198,15 @@ export function AbsensiPiket({
         ) : null}
       </section>
 
-      {!memuat && unit ? (
+      {unit && !memuatAwal ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-relaxed text-sky-950">
             {CATATAN_WAKTU_PIKET}
           </p>
-          <h3 className="mt-4 text-sm font-extrabold text-slate-900">Petugas piket {hariIni.namaHari} di unit {unit}</h3>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-extrabold text-slate-900">Petugas piket {hariIni.namaHari} di unit {unit}</h3>
+            {menyegarkan ? <p className="text-[11px] font-semibold text-emerald-700">Memperbarui daftar…</p> : null}
+          </div>
           {jadwal.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500">Belum ada petugas piket pada hari ini.</p>
           ) : (

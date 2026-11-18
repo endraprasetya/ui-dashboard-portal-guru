@@ -27,3 +27,14 @@ create table if not exists public.tabel_piket_guru (
 
 alter table public.tabel_piket_guru add column if not exists waktu_absen_pagi timestamptz;
 alter table public.tabel_piket_guru add column if not exists waktu_absen_sore timestamptz;
+
+-- Portal menulis status ringkas (contoh: Pagi:Hadir|Sore:Belum) dan timestamp di kolom waktu_absen_*.
+alter table public.tabel_piket_guru alter column status_kehadiran type text using status_kehadiran::text;
+
+alter table public.tabel_piket_guru enable row level security;
+drop policy if exists "anon all tabel_piket_guru" on public.tabel_piket_guru;
+create policy "anon all tabel_piket_guru" on public.tabel_piket_guru
+  for all to anon, authenticated using (true) with check (true);
+grant select, insert, update, delete on public.tabel_piket_guru to anon, authenticated;
+
+notify pgrst, 'reload schema';
