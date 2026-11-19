@@ -4,6 +4,16 @@ import { useState } from 'react'
 import { ArrowLeft, X } from 'lucide-react'
 import { kriteriaTargetKelas, KRITERIA_TARGET_HQ, type BarisKriteriaTarget } from '@/lib/kriteria-target-rapor-hq'
 
+function kelasTerpilih(kelasSiswa: number) {
+  return kelasSiswa >= 1 && kelasSiswa <= 6 ? kelasSiswa : null
+}
+
+function poinAwalKelas(tingkat: number) {
+  const awal: Record<string, string> = {}
+  for (const item of kriteriaTargetKelas(tingkat).baris) awal[item.id] = String(item.poin)
+  return awal
+}
+
 export function ModalHitungTargetRapor({
   kelasSiswa,
   onTutup,
@@ -13,15 +23,13 @@ export function ModalHitungTargetRapor({
   onTutup: () => void
   onPakai: (poin: number, capaian: string, kelas: number) => void
 }) {
-  const [kelas, setKelas] = useState<number | null>(null)
-  const [poinIsian, setPoinIsian] = useState<Record<string, string>>({})
+  const awal = kelasTerpilih(kelasSiswa)
+  const [kelas, setKelas] = useState<number | null>(awal)
+  const [poinIsian, setPoinIsian] = useState<Record<string, string>>(() => (awal ? poinAwalKelas(awal) : {}))
   const kriteria = kelas ? kriteriaTargetKelas(kelas) : null
 
   const bukaKelas = (tingkat: number) => {
-    const data = kriteriaTargetKelas(tingkat)
-    const awal: Record<string, string> = {}
-    for (const item of data.baris) awal[item.id] = String(item.poin)
-    setPoinIsian(awal)
+    setPoinIsian(poinAwalKelas(tingkat))
     setKelas(tingkat)
   }
 
@@ -42,7 +50,7 @@ export function ModalHitungTargetRapor({
             </h3>
             <p className="mt-1 text-xs text-slate-500">
               {kriteria
-                ? 'Pilih capaian santri, lalu sesuaikan poin target bila perlu. Poin yang dipakai masuk ke rumus ((2 × nilai rata-rata) + nilai target) / 3.'
+                ? `Kriteria Kelas ${kriteria.kelas}. Pilih capaian santri, lalu sesuaikan poin target bila perlu. Poin yang dipakai masuk ke rumus ((2 × nilai rata-rata) + nilai target) / 3.`
                 : 'Pilih jenjang kelas untuk melihat kriteria poin target hafalan.'}
             </p>
           </div>

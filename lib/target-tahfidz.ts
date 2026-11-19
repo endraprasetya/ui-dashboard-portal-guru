@@ -59,9 +59,9 @@ function namaSuratNomor(surahs: Surah[], nomor: number) {
 
 /**
  * Urutan capaian kurikulum HQ: semakin besar semakin maju.
- * Kelas 1–2: Juz 30 mundur (114 → 1).
- * Kelas 3–4: Juz 30 sampai An-Naba, lalu Juz 29 dari Al-Mulk maju.
- * Kelas 5–6: Juz 29 (Al-Ma'arij → Al-Mursalat), lalu Juz 28 dari Al-Mujadilah maju.
+ * Kelas 1–2: Juz 30 mundur (nomor surat lebih kecil = lebih maju).
+ * Kelas 3–4: Juz 30 mundur sampai An-Naba, lalu dari Al-Mulk maju ke Juz 28.
+ * Kelas 5–6: dari Nuh maju ke Al-Mursalat, lalu Juz 28 dari Al-Mujadilah maju.
  */
 export function urutanCapaian(kelas: number, nomor: number, ayat: number) {
   const a = Math.max(0, ayat)
