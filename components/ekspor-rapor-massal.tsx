@@ -6,7 +6,7 @@ import { ArrowLeft, Download, Loader2, Printer } from 'lucide-react'
 import { fetchSiswaBinaan, type Siswa } from '@/lib/siswa'
 import { ASESMEN_TAHFIDZ } from '@/lib/materi-ujian-tahfidz'
 import { denganPenandatanganSesi, fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
-import { GAYA_CETAK_RAPOR_TAHFIDZ, LembarRaporTahfidz } from '@/components/cetak-rapor-tahfidz'
+import { cetakLembarRapor, GAYA_CETAK_RAPOR_TAHFIDZ, LembarRaporTahfidz } from '@/components/cetak-rapor-tahfidz'
 import { unduhSemuaPdfRapor } from '@/lib/unduh-pdf-rapor'
 
 async function muatRaporBergiliran(siswa: Siswa[], asesmen: string) {
@@ -121,7 +121,7 @@ export function EksporRaporMassal({ asesmenAwal }: { asesmenAwal?: string }) {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Ekspor rapor massal</p>
-            <p className="text-sm font-extrabold">PDF terpisah per siswa binaan · kertas F4</p>
+            <p className="text-sm font-extrabold">PDF terpisah per siswa binaan · kertas A4</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
@@ -129,7 +129,7 @@ export function EksporRaporMassal({ asesmenAwal }: { asesmenAwal?: string }) {
             </Link>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={cetakLembarRapor}
               disabled={memuat || daftar.length === 0}
               className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold disabled:opacity-50"
             >

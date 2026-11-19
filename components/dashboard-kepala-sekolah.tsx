@@ -60,6 +60,13 @@ const ID_PINTASAN = {
   piket: 'pintasan-monitoring-piket',
 } as const
 
+function teksKelasRapor(kelas: string[]) {
+  if (kelas.length === 0) return 'belum ada'
+  const tampil = kelas.slice(0, 8)
+  const sisa = kelas.length - tampil.length
+  return sisa > 0 ? `${tampil.join(', ')}, dan ${sisa} kelas lain` : tampil.join(', ')
+}
+
 function lompatKePintasan(id: string) {
   const el = document.getElementById(id)
   if (!el) return
@@ -460,11 +467,19 @@ export function DashboardKepalaSekolah() {
                   Asesmen {labelAsesmenRapor} · {laporan.raporHqMentah.semester} {laporan.raporHqMentah.tahunAjaran}
                 </p>
                 <p className="mt-2 text-sm text-slate-800">
-                  <strong className="text-emerald-800">{laporan.raporHqRingkas.sudah}</strong> sudah menyetorkan ·{' '}
-                  <strong className="text-amber-800">{laporan.raporHqRingkas.belum}</strong> belum ·{' '}
+                  <strong className="text-2xl font-black text-emerald-800">{laporan.raporHqRingkas.siswaSudah}</strong>{' '}
+                  siswa sudah menyetorkan
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                  Kelas masuk: {teksKelasRapor(laporan.raporHqRingkas.kelasSudah)}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  <strong className="text-amber-800">{laporan.raporHqRingkas.belum}</strong> kelas belum lengkap ·{' '}
                   {laporan.raporHqRingkas.total} kelas binaan
                 </p>
-                <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk filter ASTS 1, ASAS, ASTS 2, ASAT.</p>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Ketuk untuk rincian per siswa dan kelas yang belum menyetorkan.
+                </p>
               </article>
               <article
                 id={ID_PINTASAN.guruBantu}

@@ -11,8 +11,19 @@ function garis(value: string, panjang = 22) {
   return teks || '.'.repeat(panjang)
 }
 
+export function cetakLembarRapor() {
+  const judul = document.title
+  document.title = '\u00a0'
+  const pulihkan = () => {
+    document.title = judul
+    window.removeEventListener('afterprint', pulihkan)
+  }
+  window.addEventListener('afterprint', pulihkan)
+  window.print()
+}
+
 export const GAYA_CETAK_RAPOR_TAHFIDZ = `
-  @page { size: 210mm 330mm; margin: 10mm 12mm; }
+  @page { size: A4; margin: 0; }
   .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #000; }
   .lembar-rapor table { width: 100%; border-collapse: collapse; }
   .lembar-rapor .identitas td { padding: 1px 4px; vertical-align: middle; }
@@ -28,8 +39,15 @@ export const GAYA_CETAK_RAPOR_TAHFIDZ = `
   .ttd-rapor td { border: none !important; text-align: center; vertical-align: top; width: 33.33%; }
   .ttd-rapor .ruang { height: 22mm; }
   @media print {
-    body { background: #fff !important; }
-    .lembar-rapor { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+    .lembar-rapor {
+      box-shadow: none !important;
+      margin: 0 auto !important;
+      padding: 15mm 18mm !important;
+      min-height: auto !important;
+      max-width: none !important;
+      page-break-after: always;
+    }
     .lembar-rapor:last-child { page-break-after: auto; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
@@ -65,7 +83,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
       <div className="print:hidden sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-300 bg-[#143d32] px-4 py-3 text-white">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Pratinjau rapor tahfidz</p>
-          <p className="text-sm font-extrabold">Kertas F4 · {asesmen || 'asesmen terbaru'}</p>
+          <p className="text-sm font-extrabold">Kertas A4 · {asesmen || 'asesmen terbaru'}</p>
         </div>
         <div className="flex gap-2">
           <Link href="/" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
@@ -73,7 +91,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
           </Link>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={cetakLembarRapor}
             disabled={status !== 'siap'}
             className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 disabled:opacity-50"
           >
@@ -98,7 +116,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
   )
 }
 
-export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
+export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTahfidz; indikator?: string }) {
   const { siswa } = data
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
@@ -107,7 +125,7 @@ export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
   const tempatTanggal = `${data.lokasi}, ${data.tanggalCetak}`
 
   return (
-    <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-7 py-6 text-[11pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none">
+    <article className="lembar-rapor mx-auto min-h-[297mm] max-w-[210mm] bg-white px-7 py-6 text-[11pt] leading-snug shadow-xl print:shadow-none">
       <header className="text-center">
         <h1 className="text-[14pt] font-bold tracking-wide">RAPOR TAHFIZHUL QUR&apos;AN</h1>
         <p className="text-[14pt] font-bold">{data.judulAsesmen}</p>
@@ -131,6 +149,8 @@ export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
           </tr>
         </tbody>
       </table>
+
+      {indikator ? <p className="mt-2 text-[10.5pt]">Indikator penilaian: {indikator}</p> : null}
 
       <table className="tabel-nilai mt-3 text-[10.5pt]">
         <thead>

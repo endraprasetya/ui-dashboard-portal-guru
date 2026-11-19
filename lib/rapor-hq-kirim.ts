@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+import { TABEL_HEADER_RAPOR, periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import { teacherDisplayName } from '@/lib/qiroah'
 
 export const NAMA_SETTING_KIRIM_RAPOR = 'hq_kirim'
@@ -16,6 +16,9 @@ export type KirimRaporHq = {
   semester: string
   idGuru: string
   namaGuru: string
+  materi: string
+  nilaiAkhir: number | null
+  predikat: string
   status: StatusKirimRaporHq
   catatanRevisi: string
   dikirimPada: string
@@ -27,6 +30,7 @@ export type UsulanKirimRaporHq = {
   namaSiswa: string
   kelas: string
   asesmen: string
+  materi?: string
   idGuru: string
   namaGuru: string
 }
@@ -49,6 +53,12 @@ export function guruPenerimaRevisi(baris: Pick<KirimRaporHq, 'idGuru' | 'namaGur
   return false
 }
 
+function angkaAtauNull(nilai: unknown) {
+  if (nilai == null || nilai === '') return null
+  const n = Number(nilai)
+  return Number.isFinite(n) ? n : null
+}
+
 function bacaKirim(nilai: unknown): KirimRaporHq | null {
   try {
     const data = typeof nilai === 'string' ? JSON.parse(nilai) : nilai
@@ -66,6 +76,9 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
       semester: String(data.semester || ''),
       idGuru: String(data.idGuru || ''),
       namaGuru: String(data.namaGuru || ''),
+      materi: String(data.materi || ''),
+      nilaiAkhir: angkaAtauNull(data.nilaiAkhir),
+      predikat: String(data.predikat || ''),
       status,
       catatanRevisi: String(data.catatanRevisi || '').trim(),
       dikirimPada: String(data.dikirimPada || ''),
@@ -76,19 +89,122 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
   }
 }
 
-export async function muatKirimRaporHq() {
+async function muatPetaNilai(daftar: Pick<KirimRaporHq, 'idSiswa' | 'asesmen' | 'tahunAjaran' | 'semester'>[]) {
+  const peta = new Map<string, { nilaiAkhir: number | null; predikat: string }>()
+  const ids = Array.from(new Set(daftar.map((item) => item.idSiswa).filter(Boolean)))
+  const ukuran = 80
+  for (let i = 0; i < ids.length; i += ukuran) {
+    const bagian = ids.slice(i, i + ukuran)
+    const { data, error } = await supabase
+      .from(TABEL_HEADER_RAPOR)
+      .select('id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat')
+      .in('id_siswa', bagian)
+    if (error) return peta
+    for (const row of data || []) {
+      peta.set([row.id_siswa, row.jenis_asesmen, row.tahun_ajaran, row.semester].join('|'), {
+        nilaiAkhir: angkaAtauNull(row.nilai_akhir),
+        predikat: String(row.predikat || ''),
+      })
+    }
+  }
+  return peta
+}
+
+async function muatPetaMateri(idSiswa: string[]) {
+  const peta = new Map<string, string>()
+  const ids = Array.from(new Set(idSiswa.filter(Boolean)))
+  const ukuran = 80
+  for (let i = 0; i < ids.length; i += ukuran) {
+    const bagian = ids.slice(i, i + ukuran)
+    const { data, error } = await supabase
+      .from('materi_ujian_tahfidz')
+      .select('id_siswa,asesmen,surah,ayat')
+      .in('id_siswa', bagian)
+    if (error) return peta
+    for (const row of data || []) {
+      const kunci = `${row.id_siswa}|${row.asesmen}`
+      const label = row.ayat ? `${row.surah} (Ayat ${row.ayat})` : String(row.surah || '')
+      if (!label) continue
+      const lama = peta.get(kunci)
+      peta.set(kunci, lama ? `${lama}; ${label}` : label)
+    }
+  }
+  return peta
+}
+
+export async function lengkapiTampilanKirim(daftar: KirimRaporHq[]) {
+  if (daftar.length === 0) return []
+  const [materi, nilai] = await Promise.all([muatPetaMateri(daftar.map((row) => row.idSiswa)), muatPetaNilai(daftar)])
+  return daftar.map((row) => {
+    const hidup = nilai.get([row.idSiswa, row.asesmen, row.tahunAjaran, row.semester].join('|'))
+    return {
+      ...row,
+      materi: materi.get(`${row.idSiswa}|${row.asesmen}`) || row.materi,
+      nilaiAkhir: hidup ? hidup.nilaiAkhir : row.nilaiAkhir,
+      predikat: hidup ? hidup.predikat : row.predikat,
+    }
+  })
+}
+
+function bacaDaftarKirim(nilai: unknown) {
+  try {
+    const data = typeof nilai === 'string' ? JSON.parse(nilai) : nilai
+    const sumber = Array.isArray(data) ? data : [data]
+    const peta = new Map<string, KirimRaporHq>()
+    for (const item of sumber) {
+      const baris = bacaKirim(item)
+      if (!baris) continue
+      const kunci = kunciKirimRaporHq(baris)
+      const lama = peta.get(kunci)
+      if (!lama || baris.diperbaruiPada >= lama.diperbaruiPada) peta.set(kunci, baris)
+    }
+    return [...peta.values()]
+  } catch {
+    return [] as KirimRaporHq[]
+  }
+}
+
+async function muatDokumenKirim() {
   const { data, error } = await supabase
     .from('setting')
-    .select('nilai,keterangan')
+    .select('nilai')
     .eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR)
-    .limit(2000)
-  if (error) return { error: error.message, data: [] as KirimRaporHq[] }
-  const hasil = (data || []).map((row) => bacaKirim(row.nilai)).filter((row): row is KirimRaporHq => Boolean(row))
-  return { error: null as string | null, data: hasil }
+    .limit(20)
+  if (error) return { error: error.message, daftar: [] as KirimRaporHq[], ada: false }
+  const daftar = (data || []).flatMap((row) => bacaDaftarKirim(row.nilai))
+  const peta = new Map<string, KirimRaporHq>()
+  for (const baris of daftar) {
+    const kunci = kunciKirimRaporHq(baris)
+    const lama = peta.get(kunci)
+    if (!lama || baris.diperbaruiPada >= lama.diperbaruiPada) peta.set(kunci, baris)
+  }
+  return { error: null as string | null, daftar: [...peta.values()], ada: (data || []).length > 0 }
+}
+
+async function simpanDokumenKirim(daftar: KirimRaporHq[], niy: string) {
+  const nilai = JSON.stringify(daftar)
+  const ada = await supabase.from('setting').select('nama_variabel').eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR).limit(1)
+  if (ada.error) return ada.error.message
+  if ((ada.data || []).length > 0) {
+    const { error } = await supabase
+      .from('setting')
+      .update({ nilai, keterangan: 'daftar', niy })
+      .eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR)
+    return error?.message || null
+  }
+  const { error } = await supabase
+    .from('setting')
+    .insert({ nama_variabel: NAMA_SETTING_KIRIM_RAPOR, nilai, keterangan: 'daftar', niy })
+  return error?.message || null
+}
+
+export async function muatKirimRaporHq() {
+  const hasil = await muatDokumenKirim()
+  return { error: hasil.error, data: hasil.daftar }
 }
 
 export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
-  if (daftar.length === 0) return { error: 'Belum ada rapor untuk dikirim.', jumlah: 0 }
+  if (daftar.length === 0) return { error: 'Belum ada siswa yang dicentang. Centang siswa yang hasil penilaiannya akan dikirim ke Kepala Sekolah.', jumlah: 0 }
   const { tahunAjaran, semester } = periodeAjaranSekarang()
   const sekarang = new Date().toISOString()
   const sasaran = daftar.map((item) => ({
@@ -97,26 +213,14 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
     semester,
     kunci: kunciKirimRaporHq({ ...item, tahunAjaran, semester }),
   }))
+  const nilaiHidup = await muatPetaNilai(sasaran)
+  const dokumen = await muatDokumenKirim()
+  if (dokumen.error) return { error: dokumen.error, jumlah: 0 }
+  const peta = new Map(dokumen.daftar.map((row) => [kunciKirimRaporHq(row), row]))
 
-  const ada = new Map<string, KirimRaporHq>()
-  const ukuran = 80
-  for (let i = 0; i < sasaran.length; i += ukuran) {
-    const bagian = sasaran.slice(i, i + ukuran).map((item) => item.kunci)
-    const { data, error } = await supabase
-      .from('setting')
-      .select('nilai,keterangan')
-      .eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR)
-      .in('keterangan', bagian)
-    if (error) return { error: error.message, jumlah: 0 }
-    for (const row of data || []) {
-      const isi = bacaKirim(row.nilai)
-      if (isi) ada.set(String(row.keterangan), isi)
-    }
-  }
-
-  const sisipan: { nama_variabel: string; nilai: string; keterangan: string; niy: string }[] = []
   for (const item of sasaran) {
-    const sebelumnya = ada.get(item.kunci)
+    const sebelumnya = peta.get(item.kunci)
+    const nilai = nilaiHidup.get(item.kunci)
     const isi: KirimRaporHq = {
       idSiswa: item.idSiswa,
       namaSiswa: item.namaSiswa,
@@ -126,46 +230,43 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
       semester,
       idGuru: item.idGuru,
       namaGuru: item.namaGuru,
+      materi: item.materi || sebelumnya?.materi || '',
+      nilaiAkhir: nilai ? nilai.nilaiAkhir : (sebelumnya?.nilaiAkhir ?? null),
+      predikat: nilai ? nilai.predikat : sebelumnya?.predikat || '',
       status: 'Terkirim',
       catatanRevisi: sebelumnya?.catatanRevisi || '',
       dikirimPada: sekarang,
       diperbaruiPada: sebelumnya?.diperbaruiPada || sekarang,
     }
-    const nilai = JSON.stringify(isi)
-    if (sebelumnya) {
-      const { error } = await supabase
-        .from('setting')
-        .update({ nilai, niy: item.idGuru })
-        .eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR)
-        .eq('keterangan', item.kunci)
-      if (error) return { error: error.message, jumlah: 0 }
-    } else {
-      sisipan.push({ nama_variabel: NAMA_SETTING_KIRIM_RAPOR, nilai, keterangan: item.kunci, niy: item.idGuru })
-    }
+    peta.set(item.kunci, isi)
   }
 
-  if (sisipan.length) {
-    const { error } = await supabase.from('setting').insert(sisipan)
-    if (error) return { error: error.message, jumlah: 0 }
-  }
+  const galat = await simpanDokumenKirim([...peta.values()], sasaran[0]?.idGuru || '')
+  if (galat) return { error: galat, jumlah: 0 }
   return { error: null as string | null, jumlah: sasaran.length }
 }
 
 export async function simpanCatatanRevisiRaporHq(baris: KirimRaporHq, catatan: string) {
   const teks = catatan.trim()
+  const dokumen = await muatDokumenKirim()
+  if (dokumen.error) return { error: dokumen.error }
+  const kunci = kunciKirimRaporHq(baris)
+  const peta = new Map(dokumen.daftar.map((row) => [kunciKirimRaporHq(row), row]))
+  const lama = peta.get(kunci)
+  if (!lama) return { error: 'Data kiriman tidak ditemukan.' }
   const isi: KirimRaporHq = {
-    ...baris,
+    ...lama,
+    materi: baris.materi || lama.materi,
+    nilaiAkhir: baris.nilaiAkhir ?? lama.nilaiAkhir,
+    predikat: baris.predikat || lama.predikat,
     catatanRevisi: teks,
     status: teks ? 'Revisi' : 'Terkirim',
     diperbaruiPada: new Date().toISOString(),
   }
-  const { error } = await supabase
-    .from('setting')
-    .update({ nilai: JSON.stringify(isi) })
-    .eq('nama_variabel', NAMA_SETTING_KIRIM_RAPOR)
-    .eq('keterangan', kunciKirimRaporHq(baris))
-  if (error) return { error: error.message }
-  if (teks) await siarkanRevisiRaporHq(baris.idGuru)
+  peta.set(kunci, isi)
+  const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
+  if (galat) return { error: galat }
+  if (teks) await siarkanRevisiRaporHq(isi.idGuru)
   return { error: null as string | null }
 }
 

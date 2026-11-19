@@ -2,19 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
+import { supabase } from '@/lib/supabase'
 import {
   guruPenerimaRevisi,
   idGuruAktif,
   kirimRaporKeKepsek,
   muatKirimRaporHq,
+  NAMA_SETTING_KIRIM_RAPOR,
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
+import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import { formatDateString } from '@/lib/qiroah'
 import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
 import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
@@ -34,12 +37,24 @@ import {
   type MateriSurah,
 } from '@/lib/materi-ujian-tahfidz'
 
+function kunciBarisUjian(row: { idSiswa: string; asesmen: string }) {
+  return `${row.idSiswa}|${row.asesmen}`
+}
+
+function waktuKirim(iso: string) {
+  const tanggal = new Date(iso)
+  if (Number.isNaN(tanggal.getTime())) return ''
+  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
 export function InputRaporTahfidz({
   onBack,
   currentUser,
+  fokus,
 }: {
   onBack: () => void
   currentUser?: any
+  fokus?: { idSiswa: string; asesmen: string } | null
 }) {
   const [siswa, setSiswa] = useState<Siswa[]>([])
   const [surahs, setSurahs] = useState<Surah[]>([])
@@ -53,6 +68,9 @@ export function InputRaporTahfidz({
   const [memuat, setMemuat] = useState(true)
   const [menyimpan, setMenyimpan] = useState(false)
   const [mengirim, setMengirim] = useState(false)
+  const [centang, setCentang] = useState<string[]>([])
+  const [peringatanKirim, setPeringatanKirim] = useState('')
+  const [konfirmasiKirim, setKonfirmasiKirim] = useState<{ jumlah: number; nama: string[] } | null>(null)
   const [kiriman, setKiriman] = useState<KirimRaporHq[]>([])
   const [status, setStatus] = useState('')
   const [galat, setGalat] = useState(false)
@@ -99,13 +117,27 @@ export function InputRaporTahfidz({
 
   useEffect(() => {
     let batal = false
-    muatKirimRaporHq().then((hasil) => {
-      if (!batal) setKiriman(hasil.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
-    })
+    const muat = () => {
+      muatKirimRaporHq().then((hasil) => {
+        if (!batal) setKiriman(hasil.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
+      })
+    }
+    muat()
+    const kanal = supabase
+      .channel(`rapor-hq-guru-${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
+        () => {
+          if (!batal) muat()
+        },
+      )
+    kanal.subscribe()
     return () => {
       batal = true
+      void supabase.removeChannel(kanal)
     }
-  }, [kunciUserGuru(currentUser)])
+  }, [kunciUserGuru(currentUser), fokus?.idSiswa, fokus?.asesmen])
 
   useEffect(() => {
     if (siswa.length === 0) {
@@ -210,6 +242,41 @@ export function InputRaporTahfidz({
       .sort((a, b) => a.nama.localeCompare(b.nama, 'id') || a.asesmen.localeCompare(b.asesmen, 'id'))
   }, [daftar, siswa])
 
+  const kunciFokus = fokus?.idSiswa ? kunciBarisUjian(fokus) : ''
+  const semuaKunci = rekap.map(kunciBarisUjian)
+  const jumlahCentang = semuaKunci.filter((kunci) => centang.includes(kunci)).length
+  const semuaCentang = semuaKunci.length > 0 && jumlahCentang === semuaKunci.length
+
+  const petaKirim = useMemo(() => {
+    const { tahunAjaran, semester } = periodeAjaranSekarang()
+    const peta = new Map<string, KirimRaporHq>()
+    for (const row of kiriman) {
+      if (row.tahunAjaran && row.tahunAjaran !== tahunAjaran) continue
+      if (row.semester && row.semester !== semester) continue
+      peta.set(kunciBarisUjian(row), row)
+    }
+    return peta
+  }, [kiriman])
+
+  useEffect(() => {
+    if (!kunciFokus) return
+    document.getElementById(`baris-ujian-${kunciFokus}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const row = rekap.find((item) => kunciBarisUjian(item) === kunciFokus)
+    if (!row) return
+    setNilaiTarget((current) => {
+      if (current?.idSiswa === row.idSiswa && current.asesmen === row.asesmen) return current
+      return {
+        idSiswa: row.idSiswa,
+        nama: row.nama,
+        kelas: row.kelas,
+        asesmen: row.asesmen,
+        surahs: daftar
+          .filter((item) => item.id_siswa === row.idSiswa && item.asesmen === row.asesmen)
+          .map((item) => ({ nama: item.surah, ayat: item.ayat })),
+      }
+    })
+  }, [kunciFokus, rekap, daftar])
+
   const pilihSurah = (surah: Surah, aktif: boolean) => {
     setMateri((current) => {
       if (!aktif) return current.filter((item) => item.nomor !== surah.nomor_surat)
@@ -244,6 +311,76 @@ export function InputRaporTahfidz({
     const konteks = field === 'ayatMulai' ? `${item.nama} (ayat mulai)` : `${item.nama} (ayat selesai)`
     const info = infoAyatMelebihi(surahs, item.nama, item[field], konteks)
     if (info) setPeringatanAyat(info)
+  }
+
+  const bukaNilai = (idSiswaNilai: string, asesmenNilai: string) => {
+    const row = rekap.find((item) => item.idSiswa === idSiswaNilai && item.asesmen === asesmenNilai)
+    if (!row) return
+    setNilaiTarget({
+      idSiswa: row.idSiswa,
+      nama: row.nama,
+      kelas: row.kelas,
+      asesmen: row.asesmen,
+      surahs: daftar
+        .filter((item) => item.id_siswa === row.idSiswa && item.asesmen === row.asesmen)
+        .map((item) => ({ nama: item.surah, ayat: item.ayat })),
+    })
+  }
+
+  const ubahCentang = (kunci: string, aktif: boolean) => {
+    setPeringatanKirim('')
+    setCentang((current) => {
+      if (aktif) return current.includes(kunci) ? current : [...current, kunci]
+      return current.filter((item) => item !== kunci)
+    })
+  }
+
+  const kirimTercentang = async () => {
+    const sasaran = rekap.filter((row) => centang.includes(kunciBarisUjian(row)) && row.idSiswa)
+    if (sasaran.length === 0) {
+      setPeringatanKirim('Belum ada siswa yang dicentang. Centang siswa yang hasil penilaiannya akan dikirim ke Kepala Sekolah.')
+      return
+    }
+    setMengirim(true)
+    setPeringatanKirim('')
+    const hasil = await kirimRaporKeKepsek(
+      sasaran.map((row) => ({
+        idSiswa: row.idSiswa,
+        namaSiswa: row.nama,
+        kelas: row.kelas,
+        asesmen: row.asesmen,
+        materi: row.materi,
+        idGuru: idGuruAktif(currentUser),
+        namaGuru: teacherDisplayName(currentUser),
+      })),
+    )
+    setMengirim(false)
+    if (hasil.error) {
+      setPeringatanKirim(hasil.error)
+      return
+    }
+    const segar = await muatKirimRaporHq()
+    if (segar.error) {
+      setPeringatanKirim('Pengiriman dilaporkan berhasil, tetapi status belum dapat dimuat ulang. Muat ulang halaman untuk memastikan.')
+      return
+    }
+    const { tahunAjaran, semester } = periodeAjaranSekarang()
+    const terbaca = sasaran.every((row) =>
+      segar.data.some(
+        (item) =>
+          item.idSiswa === row.idSiswa &&
+          item.asesmen === row.asesmen &&
+          item.tahunAjaran === tahunAjaran &&
+          item.semester === semester,
+      ),
+    )
+    setKiriman(segar.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
+    if (!terbaca) {
+      setPeringatanKirim('Data belum terbaca kembali dari penyimpanan. Hasil penilaian belum dipastikan tersimpan untuk Kepala Sekolah.')
+      return
+    }
+    setCentang((current) => current.filter((kunci) => !sasaran.some((row) => kunciBarisUjian(row) === kunci)))
+    setKonfirmasiKirim({ jumlah: hasil.jumlah, nama: sasaran.map((row) => row.nama) })
   }
 
   const handleSimpan = async () => {
@@ -487,58 +624,53 @@ export function InputRaporTahfidz({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
-          <button
-            type="button"
-            disabled={mengirim}
-            onClick={async () => {
-              const sasaran = (asesmen ? rekap.filter((row) => row.asesmen === asesmen) : rekap).filter((row) => row.idSiswa)
-              if (sasaran.length === 0) {
-                setGalat(true)
-                setStatus(asesmen ? 'Belum ada materi rapor pada asesmen ini untuk dikirim.' : 'Pilih asesmen atau simpan materi rapor terlebih dahulu.')
-                return
-              }
-              setMengirim(true)
-              setGalat(false)
-              setStatus('')
-              const hasil = await kirimRaporKeKepsek(
-                sasaran.map((row) => ({
-                  idSiswa: row.idSiswa,
-                  namaSiswa: row.nama,
-                  kelas: row.kelas,
-                  asesmen: row.asesmen,
-                  idGuru: idGuruAktif(currentUser),
-                  namaGuru: teacherDisplayName(currentUser),
-                })),
-              )
-              setMengirim(false)
-              if (hasil.error) {
-                setGalat(true)
-                setStatus(hasil.error)
-                return
-              }
-              const segar = await muatKirimRaporHq()
-              setKiriman(segar.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
-              setGalat(false)
-              setStatus(`${hasil.jumlah} rapor terkirim ke Kepala Sekolah.`)
-            }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
-          >
-            <Send className="size-3.5" /> {mengirim ? 'Mengirim…' : 'Kirim ke Kepala Sekolah'}
-          </button>
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-800">Daftar materi ujian tahfidz</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Centang siswa yang hasil penilaiannya akan dikirim. Status terkirim tetap tersimpan setelah halaman dimuat ulang.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={rekap.length === 0}
+              onClick={() => {
+                setPeringatanKirim('')
+                setCentang(semuaCentang ? [] : semuaKunci)
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {semuaCentang ? 'Batalkan pilihan' : 'Pilih semua'}
+            </button>
+            <button
+              type="button"
+              disabled={mengirim}
+              onClick={kirimTercentang}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+            >
+              <Send className="size-3.5" /> {mengirim ? 'Mengirim…' : `Kirim ke Kepala Sekolah${jumlahCentang ? ` (${jumlahCentang})` : ''}`}
+            </button>
+          </div>
         </div>
-        <p className="mt-1 text-xs text-slate-500">
-          Status pengiriman tersimpan agar Kepala Sekolah dapat memeriksa rapor dan menuliskan catatan revisi.
-        </p>
+        {peringatanKirim ? <p className="mt-3 text-sm font-semibold text-red-600">{peringatanKirim}</p> : null}
         {kiriman.some((row) => row.status === 'Revisi' && row.catatanRevisi) ? (
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">Catatan revisi Kepala Sekolah</p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-800">
+            <ul className="mt-2 space-y-2 text-sm text-slate-800">
               {kiriman
                 .filter((row) => row.status === 'Revisi' && row.catatanRevisi)
                 .map((row) => (
-                  <li key={`${row.idSiswa}-${row.asesmen}`}>
-                    <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}: {row.catatanRevisi}
+                  <li key={`${row.idSiswa}-${row.asesmen}`} className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}: {row.catatanRevisi}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => bukaNilai(row.idSiswa, row.asesmen)}
+                      className="rounded-lg bg-amber-800 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-900"
+                    >
+                      Perbaiki penilaian
+                    </button>
                   </li>
                 ))}
             </ul>
@@ -555,51 +687,86 @@ export function InputRaporTahfidz({
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
+                  <th className="px-3 py-2">
+                      <input
+                      type="checkbox"
+                      checked={semuaCentang}
+                      ref={(el) => {
+                        if (el) el.indeterminate = jumlahCentang > 0 && !semuaCentang
+                      }}
+                      onChange={(event) => {
+                        setPeringatanKirim('')
+                        setCentang(event.target.checked ? semuaKunci : [])
+                      }}
+                      aria-label="Pilih semua siswa"
+                      className="size-4 accent-emerald-700"
+                    />
+                  </th>
                   <th className="px-3 py-2">Siswa</th>
                   <th className="px-3 py-2">Asesmen</th>
                   <th className="px-3 py-2">Materi ujian</th>
                   <th className="px-3 py-2">Indikator Penilaian</th>
                   <th className="px-3 py-2">Guru</th>
+                  <th className="px-3 py-2">Status kirim</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {rekap.map((row) => (
-                  <tr key={`${row.idSiswa}-${row.asesmen}`} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-semibold text-slate-800">{row.nama}</td>
-                    <td className="px-3 py-2">{row.asesmen}</td>
-                    <td className="px-3 py-2">{row.materi}</td>
-                    <td className="px-3 py-2 text-slate-600">{row.keterangan || '-'}</td>
-                    <td className="px-3 py-2 text-slate-700">{row.guru || '-'}</td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNilaiTarget({
-                              idSiswa: row.idSiswa,
-                              nama: row.nama,
-                              kelas: row.kelas,
-                              asesmen: row.asesmen,
-                              surahs: daftar
-                                .filter((item) => item.id_siswa === row.idSiswa && item.asesmen === row.asesmen)
-                                .map((item) => ({ nama: item.surah, ayat: item.ayat })),
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-800"
-                        >
-                          <ClipboardCheck className="size-3" /> Nilai Ujian
-                        </button>
-                        <Link
-                          href={`/raport/${encodeURIComponent(row.idSiswa)}?asesmen=${encodeURIComponent(row.asesmen)}`}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-900"
-                        >
-                          <Printer className="size-3" /> Cetak Rapor
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {rekap.map((row) => {
+                  const kunci = kunciBarisUjian(row)
+                  const kirim = petaKirim.get(kunci)
+                  const sorot = kunciFokus === kunci
+                  return (
+                    <tr
+                      key={kunci}
+                      id={`baris-ujian-${kunci}`}
+                      className={`scroll-mt-24 border-t border-slate-100 ${sorot ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={centang.includes(kunci)}
+                          onChange={(event) => ubahCentang(kunci, event.target.checked)}
+                          aria-label={`Pilih ${row.nama} untuk dikirim ke Kepala Sekolah`}
+                          className="size-4 accent-emerald-700"
+                        />
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{row.nama}</td>
+                      <td className="px-3 py-2">{row.asesmen}</td>
+                      <td className="px-3 py-2">{row.materi}</td>
+                      <td className="px-3 py-2 text-slate-600">{row.keterangan || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.guru || '-'}</td>
+                      <td className="px-3 py-2">
+                        {!kirim ? (
+                          <span className="text-xs font-semibold text-slate-400">Belum dikirim</span>
+                        ) : kirim.status === 'Revisi' ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Ada koreksi</span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                            Terkirim{waktuKirim(kirim.dikirimPada) ? ` · ${waktuKirim(kirim.dikirimPada)}` : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => bukaNilai(row.idSiswa, row.asesmen)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-800"
+                          >
+                            <ClipboardCheck className="size-3" /> Nilai Ujian
+                          </button>
+                          <Link
+                            href={`/raport/${encodeURIComponent(row.idSiswa)}?asesmen=${encodeURIComponent(row.asesmen)}`}
+                            className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-900"
+                          >
+                            <Printer className="size-3" /> Cetak Rapor
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -613,6 +780,34 @@ export function InputRaporTahfidz({
           targetTahfidzAktif={targetTahfidzAktif}
         />
       )}
+      {konfirmasiKirim ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/55 p-4" role="dialog" aria-modal="true" aria-labelledby="judul-kirim-kepsek">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-emerald-600" />
+              <div>
+                <h2 id="judul-kirim-kepsek" className="text-base font-extrabold text-slate-900">
+                  Hasil penilaian terkirim
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                  Hasil penilaian sudah terkirim ke Kepala Sekolah.
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {konfirmasiKirim.jumlah} siswa: {konfirmasiKirim.nama.join(', ')}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setKonfirmasiKirim(null)}
+              className="mt-4 w-full rounded-xl bg-emerald-700 py-2.5 text-sm font-bold text-white hover:bg-emerald-800"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      ) : null}
       {peringatanAyat ? (
         <PeringatanBatasAyatDialog
           info={'namaSurah' in peringatanAyat ? peringatanAyat : null}

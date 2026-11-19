@@ -13,14 +13,16 @@ import {
   type KategoriNotifikasi,
   type NotifikasiItem,
   type NotifikasiQiroah,
+  type NotifikasiRevisiRapor,
 } from '@/lib/notifikasi'
-import { KANAL_REVISI_RAPOR_HQ } from '@/lib/rapor-hq-kirim'
+import { KANAL_REVISI_RAPOR_HQ, NAMA_SETTING_KIRIM_RAPOR } from '@/lib/rapor-hq-kirim'
 
 const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
 
 export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
   const [semua, setSemua] = useState<NotifikasiItem[]>([])
   const [qiroah, setQiroah] = useState<NotifikasiQiroah[]>([])
+  const [revisiRapor, setRevisiRapor] = useState<NotifikasiRevisiRapor[]>([])
   const [dibaca, setDibaca] = useState<string[]>([])
   const [memuat, setMemuat] = useState(false)
 
@@ -34,6 +36,7 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
       const hasil = await muatNotifikasi(currentUser)
       setSemua(hasil.semua)
       setQiroah(hasil.qiroah)
+      setRevisiRapor(Array.isArray(hasil.revisiRapor) ? hasil.revisiRapor : [])
     } finally {
       berjalan.current = false
       if (!senyap) setMemuat(false)
@@ -66,6 +69,22 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     return segar.pasang(kanal)
   }, [muat])
 
+  useEffect(() => {
+    const segar = buatKendaliSegar(() => {
+      void muat(true)
+    })
+    const kanal = supabase
+      .channel(`notifikasi-hq-kirim-${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
+        () => {
+          segar.dariRealtime()
+        },
+      )
+    return segar.pasang(kanal)
+  }, [muat])
+
   const sudah = useCallback((id: string) => dibaca.includes(id), [dibaca])
   const belumDibaca = semua.filter((item) => !dibaca.includes(item.id)).length
   const penguji = qiroah.filter((item) => item.peran === 'penguji')
@@ -84,7 +103,7 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     setDibaca((current) => simpanIdDibaca([...current, ...ids]))
   }, [])
 
-  return { semua, qiroah, penguji, pengampu, pengampuMenunggu, pengampuSelesai, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
+  return { semua, qiroah, revisiRapor, penguji, pengampu, pengampuMenunggu, pengampuSelesai, belumDibaca, sudah, tandai, tandaiSemua, memuat, muat }
 }
 
 export function PusatNotifikasi({

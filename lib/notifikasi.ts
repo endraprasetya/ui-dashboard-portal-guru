@@ -13,6 +13,17 @@ export type NotifikasiItem = {
   judul: string
   detail: string
   tujuan: string
+  idSiswa?: string
+  asesmen?: string
+}
+
+export type NotifikasiRevisiRapor = {
+  id: string
+  idSiswa: string
+  asesmen: string
+  nama: string
+  kelas: string
+  catatan: string
 }
 
 export type NotifikasiQiroah = NotifikasiItem & {
@@ -31,7 +42,7 @@ export const LABEL_KATEGORI: Record<KategoriNotifikasi, string> = {
   tahfidz: 'Tahfidz',
   jurnal: 'Jurnal pembelajaran',
   tertib: 'Tertib Point',
-  rapor: 'Revisi rapor HQ',
+  rapor: 'Koreksi penilaian HQ',
 }
 
 const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
@@ -142,6 +153,7 @@ function unitCocok(unitBaris: string, unitGuru: string, semuaUnit = false) {
 export async function muatNotifikasi(currentUser?: any) {
   const pengumuman = pengumumanAktif()
   const qiroah: NotifikasiQiroah[] = []
+  const revisiRapor: NotifikasiRevisiRapor[] = []
   const lain: NotifikasiItem[] = []
   if (!currentUser) return { semua: pengumuman, qiroah }
 
@@ -182,12 +194,25 @@ export async function muatNotifikasi(currentUser?: any) {
   if (!kirimRapor.error) {
     for (const row of kirimRapor.data) {
       if (row.status !== 'Revisi' || !row.catatanRevisi || !guruPenerimaRevisi(row, currentUser)) continue
+      const materi = row.materi ? ` · ${row.materi}` : ''
+      const detailMentah = `${row.kelas || '-'} · ${row.asesmen}${materi} · Catatan Kepala Sekolah: ${row.catatanRevisi}. Ketuk untuk memperbaiki penilaian.`
+      const idRevisi = `rapor-revisi:${kunciKirimRaporHq(row)}:${row.diperbaruiPada}`
+      revisiRapor.push({
+        id: idRevisi,
+        idSiswa: row.idSiswa,
+        asesmen: row.asesmen,
+        nama: row.namaSiswa,
+        kelas: row.kelas || '-',
+        catatan: row.catatanRevisi,
+      })
       lain.push({
-        id: `rapor-revisi:${kunciKirimRaporHq(row)}:${row.diperbaruiPada}`,
+        id: idRevisi,
         kategori: 'rapor',
-        judul: `Revisi rapor ${row.namaSiswa}`,
-        detail: `${row.kelas || '-'} · ${row.asesmen} · ${row.catatanRevisi}`,
+        judul: `Koreksi penilaian ${row.namaSiswa}`,
+        detail: detailMentah.length > 180 ? `${detailMentah.slice(0, 179)}…` : detailMentah,
         tujuan: 'tahfidz_rapor',
+        idSiswa: row.idSiswa,
+        asesmen: row.asesmen,
       })
     }
   }
@@ -376,5 +401,5 @@ export async function muatNotifikasi(currentUser?: any) {
   const semua = [...pengumuman, ...qiroah, ...lain].sort(
     (a, b) => URUTAN.indexOf(a.kategori) - URUTAN.indexOf(b.kategori),
   )
-  return { semua, qiroah }
+  return { semua, qiroah, revisiRapor }
 }

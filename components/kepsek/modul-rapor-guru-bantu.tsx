@@ -17,7 +17,8 @@ import {
   hitungPemantauanRaporHq,
   type KodeAsesmenRaporHq,
 } from '@/lib/kepsek-rapor-hq'
-import { muatKirimRaporHq, simpanCatatanRevisiRaporHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { lengkapiTampilanKirim, muatKirimRaporHq, simpanCatatanRevisiRaporHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
 
 function BadgeStatus({ teks }: { teks: string }) {
   const sudah = teks === 'Sudah Menyetorkan'
@@ -53,6 +54,18 @@ function ThumbnailFoto({ url, label }: { url: string | null; label: string }) {
   )
 }
 
+function waktuKirim(iso: string) {
+  const tanggal = new Date(iso)
+  if (Number.isNaN(tanggal.getTime())) return ''
+  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function teksCapaian(nilai: number | null, predikat: string) {
+  if (nilai == null || !Number.isFinite(nilai)) return 'Belum dinilai'
+  const angka = Number.isInteger(nilai) ? String(nilai) : String(Math.round(nilai * 10) / 10)
+  return predikat ? `${angka} · ${predikat}` : angka
+}
+
 export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onTutup: () => void }) {
   const [asesmen, setAsesmen] = useState<KodeAsesmenRaporHq>(laporan.raporHqRingkas.asesmen)
   const baris = useMemo(
@@ -64,28 +77,43 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
   const [catatan, setCatatan] = useState<Record<string, string>>({})
   const [menyimpan, setMenyimpan] = useState('')
   const [pesan, setPesan] = useState('')
+  const [galatCatatan, setGalatCatatan] = useState(false)
+  const [memuatMasuk, setMemuatMasuk] = useState(true)
+  const [penyegar, setPenyegar] = useState(0)
+  const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
 
-  const muatMasuk = () => {
-    muatKirimRaporHq().then((hasil) => {
+  useEffect(() => {
+    let batal = false
+    setMemuatMasuk(true)
+    setPesan('')
+    setGalatCatatan(false)
+    muatKirimRaporHq().then(async (hasil) => {
+      if (batal) return
       const daftar = hasil.data
         .filter((row) => row.tahunAjaran === tahunAjaran && row.semester === semester && row.asesmen === asesmen)
         .sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.namaSiswa.localeCompare(b.namaSiswa, 'id'))
-      setMasuk(daftar)
-      setCatatan(Object.fromEntries(daftar.map((row) => [`${row.idSiswa}|${row.asesmen}`, row.catatanRevisi])))
-      if (hasil.error) setPesan('Daftar rapor masuk belum dapat dimuat.')
+      const lengkap = await lengkapiTampilanKirim(daftar)
+      if (batal) return
+      setMasuk(lengkap)
+      setCatatan(Object.fromEntries(lengkap.map((row) => [`${row.idSiswa}|${row.asesmen}`, row.catatanRevisi])))
+      setMemuatMasuk(false)
+      if (hasil.error) {
+        setGalatCatatan(true)
+        setPesan('Daftar rapor masuk belum dapat dimuat.')
+      }
     })
-  }
-
-  useEffect(() => {
-    muatMasuk()
-  }, [asesmen, tahunAjaran, semester])
+    return () => {
+      batal = true
+    }
+  }, [asesmen, tahunAjaran, semester, penyegar])
 
   return (
+    <>
     <ModalKerangka
       judul="Pemantauan Rapor HQ"
       keterangan={`Unit ${laporan.unit} · ${semester} ${tahunAjaran}. Status menyetorkan nilai ujian tahfidz per kelas binaan.`}
       onTutup={onTutup}
-      lebar="max-w-4xl"
+      lebar="max-w-6xl"
     >
       <div className="mb-3 flex flex-wrap gap-2">
         {PILIHAN_ASESMEN_RAPOR_HQ.map((item) => (
@@ -109,6 +137,7 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
             <tr className="text-xs text-slate-500">
               <th className="border-b p-2">Nama guru</th>
               <th className="border-b p-2">Kelas</th>
+              <th className="border-b p-2">Siswa masuk</th>
               <th className="border-b p-2">Status asesmen</th>
             </tr>
           </thead>
@@ -117,6 +146,9 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
               <tr key={`${row.namaGuru}-${row.kelas}-${indeks}`}>
                 <td className="border-b p-2 font-bold">{row.namaGuru}</td>
                 <td className="border-b p-2">{row.kelas}</td>
+                <td className="border-b p-2 tabular-nums">
+                  {row.siswaMasuk}/{row.siswaTotal}
+                </td>
                 <td className="border-b p-2">
                   <BadgeStatus teks={row.status} />
                 </td>
@@ -127,67 +159,109 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
       )}
 
       <div className="mt-6 border-t border-slate-200 pt-4">
-        <h3 className="text-sm font-extrabold text-slate-800">Rapor masuk dari guru</h3>
+        <h3 className="text-sm font-extrabold text-slate-800">Hasil penilaian masuk dari guru</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Rapor yang dikirim guru pengampu pada {semester} {tahunAjaran}. Catatan revisi sampai ke lonceng notifikasi guru tersebut.
+          Penilaian ujian tahfidz/HQ yang dikirim guru pengampu pada {semester} {tahunAjaran}. Catatan Kepala Sekolah
+          tersimpan dan masuk ke lonceng notifikasi guru tersebut.
         </p>
-        {pesan ? <p className="mt-2 text-sm font-semibold text-emerald-700">{pesan}</p> : null}
-        {masuk.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">Belum ada rapor yang dikirim untuk asesmen ini.</p>
+        {pesan ? (
+          <p className={`mt-2 text-sm font-semibold ${galatCatatan ? 'text-red-700' : 'text-emerald-700'}`}>{pesan}</p>
+        ) : null}
+        {memuatMasuk ? (
+          <p className="mt-3 text-sm text-slate-500">Memuat hasil penilaian yang dikirim guru…</p>
+        ) : masuk.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">Belum ada hasil penilaian yang dikirim untuk asesmen ini.</p>
         ) : (
-          <div className="mt-3 space-y-3">
-            {masuk.map((row) => {
-              const kunci = `${row.idSiswa}|${row.asesmen}`
-              return (
-                <article key={kunci} className="rounded-xl border border-slate-200 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-bold text-slate-800">
-                      {row.namaSiswa} <span className="font-semibold text-slate-500">· {row.kelas || '-'} · {row.namaGuru || 'Guru'}</span>
-                    </p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                        row.status === 'Revisi' ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-800'
-                      }`}
-                    >
-                      {row.status === 'Revisi' ? 'Perlu revisi' : 'Terkirim'}
-                    </span>
-                  </div>
-                  <label className="mt-2 block text-xs font-bold text-slate-600">
-                    Catatan revisi
-                    <textarea
-                      value={catatan[kunci] ?? ''}
-                      onChange={(event) => setCatatan((semua) => ({ ...semua, [kunci]: event.target.value }))}
-                      rows={2}
-                      placeholder="Catatan kompetensi perlu perbaikan"
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={menyimpan === kunci}
-                    onClick={async () => {
-                      setMenyimpan(kunci)
-                      setPesan('')
-                      const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '')
-                      setMenyimpan('')
-                      if (hasil.error) {
-                        setPesan(hasil.error)
-                        return
-                      }
-                      setPesan(catatan[kunci]?.trim() ? 'Catatan revisi terkirim ke guru pengampu.' : 'Catatan revisi dihapus.')
-                      muatMasuk()
-                    }}
-                    className="mt-2 rounded-lg bg-[#143d32] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-                  >
-                    {menyimpan === kunci ? 'Menyimpan…' : 'Simpan catatan'}
-                  </button>
-                </article>
-              )
-            })}
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[880px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="text-xs text-slate-500">
+                  <th className="border-b p-2">Siswa</th>
+                  <th className="border-b p-2">Materi / surah</th>
+                  <th className="border-b p-2">Nilai / capaian</th>
+                  <th className="border-b p-2">Guru pengampu</th>
+                  <th className="border-b p-2">Catatan Kepala Sekolah / Koreksi</th>
+                  <th className="border-b p-2">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {masuk.map((row) => {
+                  const kunci = `${row.idSiswa}|${row.asesmen}`
+                  const waktu = waktuKirim(row.dikirimPada)
+                  return (
+                    <tr key={kunci} className="align-top">
+                      <td className="border-b p-2">
+                        <p className="font-bold text-slate-800">{row.namaSiswa}</p>
+                        <p className="text-xs text-slate-500">
+                          {row.kelas || '-'} · {row.asesmen}
+                        </p>
+                        <span
+                          className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                            row.status === 'Revisi' ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-800'
+                          }`}
+                        >
+                          {row.status === 'Revisi' ? 'Perlu revisi' : 'Terkirim'}
+                          {waktu ? ` · ${waktu}` : ''}
+                        </span>
+                      </td>
+                      <td className="border-b p-2 text-slate-700">{row.materi || 'Belum ada materi'}</td>
+                      <td className="border-b p-2 font-semibold text-slate-800">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>
+                      <td className="border-b p-2">{row.namaGuru || 'Guru'}</td>
+                      <td className="border-b p-2">
+                        <textarea
+                          value={catatan[kunci] ?? ''}
+                          onChange={(event) => setCatatan((semua) => ({ ...semua, [kunci]: event.target.value }))}
+                          rows={3}
+                          placeholder="Tuliskan kekurangan atau kekeliruan yang perlu diperbaiki guru"
+                          aria-label={`Catatan Kepala Sekolah untuk ${row.namaSiswa}`}
+                          className="w-full min-w-[16rem] rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                        />
+                        <button
+                          type="button"
+                          disabled={menyimpan === kunci}
+                          onClick={async () => {
+                            setMenyimpan(kunci)
+                            setPesan('')
+                            setGalatCatatan(false)
+                            const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '')
+                            setMenyimpan('')
+                            if (hasil.error) {
+                              setGalatCatatan(true)
+                              setPesan(hasil.error)
+                              return
+                            }
+                            setPesan(
+                              catatan[kunci]?.trim()
+                                ? `Catatan koreksi untuk ${row.namaSiswa} terkirim ke lonceng guru pengampu.`
+                                : 'Catatan koreksi dihapus.',
+                            )
+                            setPenyegar((nilai) => nilai + 1)
+                          }}
+                          className="mt-2 rounded-lg bg-[#143d32] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          {menyimpan === kunci ? 'Menyimpan…' : 'Simpan catatan'}
+                        </button>
+                      </td>
+                      <td className="border-b p-2">
+                        <button
+                          type="button"
+                          onClick={() => setPratinjau(row)}
+                          className="rounded-lg border border-[#143d32] px-3 py-1.5 text-xs font-bold text-[#143d32] hover:bg-emerald-50"
+                        >
+                          Detail & Rapor
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
     </ModalKerangka>
+    {pratinjau ? <PratinjauRaporHqKepsek baris={pratinjau} onTutup={() => setPratinjau(null)} /> : null}
+    </>
   )
 }
 

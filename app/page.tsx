@@ -58,6 +58,7 @@ import {
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [currentView, setCurrentView] = useState<string>('dashboard')
+  const [fokusRapor, setFokusRapor] = useState<{ idSiswa: string; asesmen: string } | null>(null)
   const [completedTodos, setCompletedTodos] = useState<string[]>([])
   const [agenda, setAgenda] = useState<{ jadwal: Awaited<ReturnType<typeof muatAgendaGuru>>['jadwal']; tugas: TugasGuru[] }>({
     jadwal: [],
@@ -100,6 +101,7 @@ export default function Home() {
   }
 
   const pusat = usePusatNotifikasi(currentUser, currentView)
+  const revisiRapor = pusat.revisiRapor ?? []
   const pekan = ringkasanPekan()
   const kunciTugas = `portal-guru-todo:${currentUser?.target_id || currentUser?.username || 'guru'}:${todayInputValue()}`
 
@@ -247,6 +249,9 @@ export default function Home() {
               sudah={pusat.sudah}
               onBuka={(item) => {
                 pusat.tandai(item.id)
+                if (item.tujuan === 'tahfidz_rapor' && item.idSiswa) {
+                  setFokusRapor({ idSiswa: item.idSiswa, asesmen: item.asesmen || '' })
+                }
                 setCurrentView(item.tujuan)
               }}
               onTandaiSemua={() => pusat.tandaiSemua(pusat.semua.map((item) => item.id))}
@@ -276,19 +281,44 @@ export default function Home() {
 
             {/* Grid Card Menu Utama (Termasuk Card Merah Cerah Tertib Point) */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              <button
-                onClick={() => setCurrentView('tahfidz_menu')}
-                className="group relative overflow-hidden rounded-2xl bg-[#059669] p-5 text-left text-white shadow transition hover:shadow-lg hover:-translate-y-0.5"
-              >
-                <div className="flex items-center justify-between pb-6">
-                  <div className="rounded-xl bg-white/20 p-2.5">
-                    <BookOpen className="size-5" />
+              <div className="flex flex-col self-start rounded-2xl bg-[#059669] p-5 text-left text-white shadow transition hover:shadow-lg">
+                <button type="button" onClick={() => setCurrentView('tahfidz_menu')} className="text-left">
+                  <div className="flex items-center justify-between pb-6">
+                    <div className="rounded-xl bg-white/20 p-2.5">
+                      <BookOpen className="size-5" />
+                    </div>
+                    <ArrowRight className="size-4 opacity-75" />
                   </div>
-                  <ArrowRight className="size-4 opacity-75" />
-                </div>
-                <h3 className="text-sm font-extrabold">Tahfidzul Qur&apos;an</h3>
-                <p className="mt-1 text-[11px] opacity-80">Kelola setoran, hafalan, dan kenaikan hafalan santri</p>
-              </button>
+                  <h3 className="text-sm font-extrabold">Tahfidzul Qur&apos;an</h3>
+                  <p className="mt-1 text-[11px] opacity-80">Kelola setoran, hafalan, dan kenaikan hafalan santri</p>
+                </button>
+                {revisiRapor.length > 0 && (
+                  <div className="mt-3 rounded-xl bg-black/10 p-2.5">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide">Revisi / koreksi rapor HQ</p>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {revisiRapor.slice(0, 3).map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              pusat.tandai(item.id)
+                              setFokusRapor({ idSiswa: item.idSiswa, asesmen: item.asesmen })
+                              setCurrentView('tahfidz_rapor')
+                            }}
+                            className="w-full text-left text-[11px] leading-4 hover:underline"
+                          >
+                            <span className="font-bold">{item.nama}</span> · {item.kelas}
+                            <span className="line-clamp-2 block opacity-90">{item.catatan}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {revisiRapor.length > 3 && (
+                      <p className="mt-1 text-[10px] font-bold">+{revisiRapor.length - 3} siswa lain</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <RingkasanQiroah
                 onOpen={() => setCurrentView('qiroah_menu')}
@@ -641,7 +671,14 @@ export default function Home() {
         )}
 
         {currentView === 'tahfidz_rapor' && (
-          <InputRaporTahfidz currentUser={currentUser} onBack={() => setCurrentView('tahfidz_menu')} />
+          <InputRaporTahfidz
+            currentUser={currentUser}
+            fokus={fokusRapor}
+            onBack={() => {
+              setFokusRapor(null)
+              setCurrentView('tahfidz_menu')
+            }}
+          />
         )}
 
         {currentView === 'jurnal' && (

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { TABEL_HEADER_RAPOR, periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { normalKelas, teacherDisplayName } from '@/lib/qiroah'
+import { muatKirimRaporHq } from '@/lib/rapor-hq-kirim'
 import { kanonNamaUnit, unitSama } from '@/lib/siswa'
 
 export const PILIHAN_ASESMEN_RAPOR_HQ = [
@@ -17,6 +18,14 @@ export type BarisPemantauanRaporHq = {
   namaGuru: string
   kelas: string
   status: 'Sudah Menyetorkan' | 'Belum Menyetorkan'
+  siswaMasuk: number
+  siswaTotal: number
+}
+
+export type KirimanRaporHqMentah = {
+  idSiswa: string
+  asesmen: string
+  kelas: string
 }
 
 export type DataMentahRaporHq = {
@@ -24,6 +33,7 @@ export type DataMentahRaporHq = {
   semester: string
   guruKelas: { guruId: string; namaGuru: string; kelas: string; idSiswa: string[] }[]
   headerNilai: { id_siswa: string; jenis_asesmen: string; nilai_akhir: number | null }[]
+  kiriman: KirimanRaporHqMentah[]
 }
 
 export type RingkasRaporHq = {
@@ -31,6 +41,8 @@ export type RingkasRaporHq = {
   sudah: number
   belum: number
   total: number
+  siswaSudah: number
+  kelasSudah: string[]
 }
 
 export type SiswaBinaanUnit = {
@@ -55,32 +67,76 @@ function sudahMenyetorkan(nilai: number | null | undefined) {
   return nilai != null && Number.isFinite(Number(nilai))
 }
 
-export function hitungPemantauanRaporHq(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq): BarisPemantauanRaporHq[] {
+export function kumpulanSiswaMasuk(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq) {
   const kode = normalAsesmen(asesmen)
-  const petaHeader = new Map<string, boolean>()
+  const ids = new Set<string>()
+  for (const row of mentah.kiriman || []) {
+    if (normalAsesmen(row.asesmen) === kode && row.idSiswa) ids.add(row.idSiswa)
+  }
   for (const row of mentah.headerNilai) {
     if (normalAsesmen(row.jenis_asesmen) !== kode) continue
-    if (sudahMenyetorkan(row.nilai_akhir)) {
-      petaHeader.set(String(row.id_siswa), true)
+    if (sudahMenyetorkan(row.nilai_akhir)) ids.add(String(row.id_siswa))
+  }
+  return ids
+}
+
+export function pilihAsesmenRaporHq(mentah: DataMentahRaporHq): KodeAsesmenRaporHq {
+  let dariKirim: KodeAsesmenRaporHq = 'ASTS I'
+  let jumlahKirim = 0
+  for (const item of PILIHAN_ASESMEN_RAPOR_HQ) {
+    const jumlah = (mentah.kiriman || []).filter((row) => normalAsesmen(row.asesmen) === item.kode).length
+    if (jumlah > jumlahKirim) {
+      jumlahKirim = jumlah
+      dariKirim = item.kode
     }
   }
+  if (jumlahKirim > 0) return dariKirim
 
+  let dariNilai: KodeAsesmenRaporHq = 'ASTS I'
+  let jumlahNilai = 0
+  for (const item of PILIHAN_ASESMEN_RAPOR_HQ) {
+    const jumlah = kumpulanSiswaMasuk(mentah, item.kode).size
+    if (jumlah > jumlahNilai) {
+      jumlahNilai = jumlah
+      dariNilai = item.kode
+    }
+  }
+  return dariNilai
+}
+
+export function hitungPemantauanRaporHq(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq): BarisPemantauanRaporHq[] {
+  const masuk = kumpulanSiswaMasuk(mentah, asesmen)
   const baris: BarisPemantauanRaporHq[] = []
   for (const blok of mentah.guruKelas) {
     if (blok.idSiswa.length === 0) continue
-    const lengkap = blok.idSiswa.every((id) => petaHeader.get(id))
+    const siswaMasuk = blok.idSiswa.filter((id) => masuk.has(id)).length
     baris.push({
       namaGuru: blok.namaGuru,
       kelas: blok.kelas,
-      status: lengkap ? 'Sudah Menyetorkan' : 'Belum Menyetorkan',
+      siswaMasuk,
+      siswaTotal: blok.idSiswa.length,
+      status: siswaMasuk === blok.idSiswa.length ? 'Sudah Menyetorkan' : 'Belum Menyetorkan',
     })
   }
   return baris.sort((a, b) => a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.namaGuru.localeCompare(b.namaGuru, 'id'))
 }
 
-export function ringkasPemantauanRaporHq(baris: BarisPemantauanRaporHq[], asesmen: KodeAsesmenRaporHq): RingkasRaporHq {
+export function kelasDariKiriman(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq) {
+  const kode = normalAsesmen(asesmen)
+  return (mentah.kiriman || []).filter((row) => normalAsesmen(row.asesmen) === kode && row.kelas).map((row) => row.kelas)
+}
+
+export function ringkasPemantauanRaporHq(
+  baris: BarisPemantauanRaporHq[],
+  asesmen: KodeAsesmenRaporHq,
+  siswaSudah = 0,
+  kelasKiriman: string[] = [],
+): RingkasRaporHq {
   const sudah = baris.filter((row) => row.status === 'Sudah Menyetorkan').length
-  return { asesmen, sudah, belum: baris.length - sudah, total: baris.length }
+  const kelasSudah = Array.from(
+    new Set([...baris.filter((row) => row.siswaMasuk > 0).map((row) => row.kelas), ...kelasKiriman.filter(Boolean)]),
+  ).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
+  return { asesmen, sudah, belum: baris.length - sudah, total: baris.length, siswaSudah, kelasSudah }
 }
 
 export async function muatDataRaporHqKepsek(
@@ -92,6 +148,7 @@ export async function muatDataRaporHqKepsek(
   const { tahunAjaran, semester } = periodeAjaranSekarang()
   const ids = siswaUnit.map((s) => s.id_siswa)
   const headerNilai: DataMentahRaporHq['headerNilai'] = []
+  const idUnit = new Set(ids)
 
   if (ids.length) {
     const ukuran = 80
@@ -122,7 +179,16 @@ export async function muatDataRaporHqKepsek(
   const { data: guru, error: galatGuru } = await permintaanGuru
   if (galatGuru) {
     catatan.push('Daftar guru untuk Rapor HQ belum dapat dimuat.')
-    return { mentah: { tahunAjaran, semester, guruKelas: [], headerNilai }, catatan }
+    return { mentah: { tahunAjaran, semester, guruKelas: [], headerNilai, kiriman: [] }, catatan }
+  }
+
+  const kiriman: KirimanRaporHqMentah[] = []
+  const hasilKirim = await muatKirimRaporHq()
+  if (hasilKirim.error) catatan.push('Daftar rapor HQ yang dikirim guru belum dapat dimuat.')
+  for (const row of hasilKirim.data) {
+    if (row.tahunAjaran !== tahunAjaran || row.semester !== semester) continue
+    if (idUnit.size > 0 && !idUnit.has(row.idSiswa)) continue
+    kiriman.push({ idSiswa: row.idSiswa, asesmen: row.asesmen, kelas: row.kelas })
   }
 
   const kelasBinaan = (row: { target_id?: string; username?: string }) => {
@@ -157,7 +223,7 @@ export async function muatDataRaporHqKepsek(
   }
 
   return {
-    mentah: { tahunAjaran, semester, guruKelas, headerNilai },
+    mentah: { tahunAjaran, semester, guruKelas, headerNilai, kiriman },
     catatan,
   }
 }

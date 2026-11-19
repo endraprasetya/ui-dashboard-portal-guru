@@ -15,7 +15,10 @@ import {
 } from '@/lib/kepsek-guru-bantu'
 import {
   hitungPemantauanRaporHq,
+  kelasDariKiriman,
+  kumpulanSiswaMasuk,
   muatDataRaporHqKepsek,
+  pilihAsesmenRaporHq,
   ringkasPemantauanRaporHq,
   type DataMentahRaporHq,
   type RingkasRaporHq,
@@ -719,6 +722,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
           ...periodeAjaranSekarang(),
           guruKelas: [],
           headerNilai: [],
+          kiriman: [],
         } satisfies DataMentahRaporHq,
         catatan: [] as string[],
       }
@@ -731,9 +735,14 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
   ])
   catatan.push(...raporHqHasil.catatan)
 
-  const asesmenAwal = 'ASTS I' as const
+  const asesmenAwal = pilihAsesmenRaporHq(raporHqHasil.mentah)
   const barisRaporHq = hitungPemantauanRaporHq(raporHqHasil.mentah, asesmenAwal)
-  const raporHqRingkas = ringkasPemantauanRaporHq(barisRaporHq, asesmenAwal)
+  const raporHqRingkas = ringkasPemantauanRaporHq(
+    barisRaporHq,
+    asesmenAwal,
+    kumpulanSiswaMasuk(raporHqHasil.mentah, asesmenAwal).size,
+    kelasDariKiriman(raporHqHasil.mentah, asesmenAwal),
+  )
 
   return {
     unit,
