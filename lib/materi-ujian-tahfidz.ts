@@ -67,6 +67,14 @@ export function formatLabelMateri(item: MateriSurah) {
   return ayat ? `${item.nama} (Ayat ${ayat})` : item.nama
 }
 
+/** Sidik stabil untuk membandingkan daftar surah + rentang ayat, tanpa peduli urutan. */
+export function sidikMateriUjian(daftar: { nama: string; ayat: string }[]) {
+  return daftar
+    .map((item) => `${teks(item.nama).toLowerCase()}|${teks(item.ayat)}`)
+    .sort()
+    .join('||')
+}
+
 export function validasiMateriUjian(surahs: Surah[], materi: MateriSurah[]) {
   if (materi.length === 0) return 'Pilih minimal satu surah untuk materi ujian.'
   for (const item of materi) {
@@ -92,7 +100,7 @@ export async function fetchMateriUjianTahfidz(idSiswa: string[]) {
 export async function simpanMateriUjianTahfidz(payload: {
   idSiswa: string
   kelas: string
-  asesmen: AsesmenTahfidz
+  asesmen: AsesmenTahfidz | string
   materi: MateriSurah[]
   keterangan: string
   guru: string
@@ -120,6 +128,50 @@ export async function simpanMateriUjianTahfidz(payload: {
   const { data, error } = await supabase.from('materi_ujian_tahfidz').insert(baris).select('id_siswa,asesmen,surah')
   if (error) return { error: error.message, data: [] as BarisMateriUjian[] }
   return { error: null, data: (data || []) as BarisMateriUjian[] }
+}
+
+export async function hapusMateriUjianTahfidz(idSiswa: string, asesmen: string) {
+  const { error } = await supabase.from('materi_ujian_tahfidz').delete().eq('id_siswa', idSiswa).eq('asesmen', asesmen)
+  if (error && error.code !== 'PGRST116') return { error: error.message }
+  return { error: null as string | null }
+}
+
+/** Salin daftar surah dan indikator yang sama ke banyak siswa binaan untuk satu asesmen. */
+export async function terapkanMateriUjianKeSiswa(payload: {
+  siswa: { idSiswa: string; kelas: string }[]
+  asesmen: AsesmenTahfidz | string
+  materi: MateriSurah[]
+  keterangan: string
+  guru: string
+}) {
+  const siswa = payload.siswa.filter((item) => teks(item.idSiswa))
+  if (siswa.length === 0) return { error: 'Tidak ada siswa binaan.', jumlah: 0 }
+  if (!teks(payload.asesmen)) return { error: 'Pilih jenis asesmen.', jumlah: 0 }
+
+  const baris: BarisMateriUjian[] = siswa.flatMap((item) =>
+    payload.materi.map((materi) => ({
+      id_siswa: item.idSiswa,
+      kelas: item.kelas,
+      asesmen: payload.asesmen,
+      surah: materi.nama,
+      ayat: formatRentangAyat(materi.ayatMulai, materi.ayatSelesai),
+      keterangan: teks(payload.keterangan),
+      guru: teks(payload.guru),
+    })),
+  )
+
+  for (let index = 0; index < siswa.length; index += 80) {
+    const bagian = siswa.slice(index, index + 80).map((item) => item.idSiswa)
+    const hapus = await supabase.from('materi_ujian_tahfidz').delete().in('id_siswa', bagian).eq('asesmen', payload.asesmen)
+    if (hapus.error && hapus.error.code !== 'PGRST116') return { error: hapus.error.message, jumlah: 0 }
+  }
+
+  for (let index = 0; index < baris.length; index += 200) {
+    const { error } = await supabase.from('materi_ujian_tahfidz').insert(baris.slice(index, index + 200))
+    if (error) return { error: error.message, jumlah: 0 }
+  }
+
+  return { error: null as string | null, jumlah: siswa.length }
 }
 
 export function gabungMateriSiswa(baris: BarisMateriUjian[]) {

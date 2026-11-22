@@ -19,12 +19,15 @@ import AbsensiGuruBantu from '@/components/guru-bantu/AbsensiGuruBantu'
 import { PanelRekapAbsensiGuruBantu } from '@/components/guru-bantu/RekapMatriksGuruBantu'
 import { SettingSiswaBinaan } from '@/components/setting-siswa-binaan'
 import { InputRaporTahfidz } from '@/components/input-rapor-tahfidz'
+import { JadwalAsasI } from '@/components/jadwal-asas'
+import { PemeriksaPenilaianHq } from '@/components/pemeriksa-penilaian-hq'
 import { PortalGuruNav } from '@/components/portal-guru-nav'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
-import { unitDariAkun } from '@/lib/siswa'
+import { kunciUserGuru, unitDariAkun } from '@/lib/siswa'
+import { adalahPemeriksaHq, muatHakPemeriksaHq } from '@/lib/pemeriksa-hq'
 import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
   keteranganJadwal,
@@ -49,6 +52,7 @@ import {
   ClipboardCheck,
   Plus,
   ShieldAlert,
+  ShieldCheck,
   Settings,
   Users,
   LayoutDashboard,
@@ -68,6 +72,7 @@ export default function Home() {
   const [sesiSiap, setSesiSiap] = useState(false)
   const [aktivitasGuru, setAktivitasGuru] = useState<BarisAktivitasGuru[]>([])
   const [aktivitasSiap, setAktivitasSiap] = useState(false)
+  const [hakPemeriksaHq, setHakPemeriksaHq] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -146,6 +151,21 @@ export default function Home() {
       batal = true
     }
   }, [currentUser, currentView])
+
+  useEffect(() => {
+    if (!currentUser) {
+      setHakPemeriksaHq(false)
+      return
+    }
+    setHakPemeriksaHq(adalahPemeriksaHq(currentUser))
+    let batal = false
+    muatHakPemeriksaHq(currentUser).then((hasil) => {
+      if (!batal) setHakPemeriksaHq(hasil.hak)
+    })
+    return () => {
+      batal = true
+    }
+  }, [kunciUserGuru(currentUser)])
 
   const tugasHariIni = useMemo(() => {
     const daftar = [...agenda.tugas]
@@ -278,6 +298,8 @@ export default function Home() {
                 <p className="text-xs text-slate-500">Kelola kegiatan belajar dan perkembangan santri dengan mudah.</p>
               </div>
             </div>
+
+            <JadwalAsasI />
 
             {/* Grid Card Menu Utama (Termasuk Card Merah Cerah Tertib Point) */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -636,6 +658,15 @@ export default function Home() {
               <FileCheck className="size-5" /> Input Rapor
             </button>
 
+            {hakPemeriksaHq ? (
+              <button
+                onClick={() => setCurrentView('tahfidz_pemeriksa_hq')}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#6d28d9] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#5b21b6] transition"
+              >
+                <ShieldCheck className="size-5" /> Pemeriksa Penilaian HQ
+              </button>
+            ) : null}
+
             <button
               onClick={() => setCurrentView('tahfidz_setting')}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#334155] py-4 text-sm font-extrabold text-white shadow-md hover:bg-[#1e293b] transition"
@@ -679,6 +710,10 @@ export default function Home() {
               setCurrentView('tahfidz_menu')
             }}
           />
+        )}
+
+        {currentView === 'tahfidz_pemeriksa_hq' && (
+          <PemeriksaPenilaianHq onBack={() => setCurrentView('tahfidz_menu')} currentUser={currentUser} />
         )}
 
         {currentView === 'jurnal' && (

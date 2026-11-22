@@ -1,0 +1,298 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, BadgeCheck, ClipboardCheck, Search } from 'lucide-react'
+import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
+import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
+import { NAMA_SETTING_KIRIM_RAPOR, idGuruAktif, lengkapiTampilanKirim, tandaiDiperiksaHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { PILIHAN_ASESMEN_RAPOR_HQ, type KodeAsesmenRaporHq } from '@/lib/kepsek-rapor-hq'
+import {
+  adalahPemeriksaHq,
+  muatHakPemeriksaHq,
+  muatPenilaianPutriHq,
+  sudahDiperiksaHq,
+} from '@/lib/pemeriksa-hq'
+import { teacherDisplayName } from '@/lib/qiroah'
+import { supabase } from '@/lib/supabase'
+import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+
+function waktuTampil(iso: string) {
+  const tanggal = new Date(iso)
+  if (Number.isNaN(tanggal.getTime())) return ''
+  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function teksCapaian(nilai: number | null, predikat: string) {
+  if (nilai == null || !Number.isFinite(nilai)) return 'Belum dinilai'
+  const angka = Number.isInteger(nilai) ? String(nilai) : String(Math.round(nilai * 10) / 10)
+  return predikat ? `${angka} · ${predikat}` : angka
+}
+
+export function PemeriksaPenilaianHq({
+  onBack,
+  currentUser,
+}: {
+  onBack: () => void
+  currentUser?: any
+}) {
+  const [asesmen, setAsesmen] = useState<KodeAsesmenRaporHq>('ASAS')
+  const [daftar, setDaftar] = useState<KirimRaporHq[]>([])
+  const [memuat, setMemuat] = useState(true)
+  const [galat, setGalat] = useState('')
+  const [status, setStatus] = useState('')
+  const [cari, setCari] = useState('')
+  const [izin, setIzin] = useState(() => adalahPemeriksaHq(currentUser))
+  const [menyimpan, setMenyimpan] = useState('')
+  const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
+  const [konfirmasi, setKonfirmasi] = useState<KirimRaporHq | null>(null)
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+
+  useEffect(() => {
+    let batal = false
+    muatHakPemeriksaHq(currentUser).then((hasil) => {
+      if (!batal) setIzin(hasil.hak)
+    })
+    return () => {
+      batal = true
+    }
+  }, [currentUser])
+
+  const muat = async () => {
+    setMemuat(true)
+    setGalat('')
+    const hasil = await muatPenilaianPutriHq(asesmen)
+    if (hasil.error) {
+      setGalat(hasil.error)
+      setDaftar([])
+      setMemuat(false)
+      return
+    }
+    const lengkap = await lengkapiTampilanKirim(hasil.data)
+    setDaftar(lengkap)
+    setMemuat(false)
+  }
+
+  useEffect(() => {
+    void muat()
+  }, [asesmen])
+
+  useEffect(() => {
+    const kanal = supabase
+      .channel(`pemeriksa-hq-${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
+        () => {
+          void muat()
+        },
+      )
+    kanal.subscribe()
+    return () => {
+      void supabase.removeChannel(kanal)
+    }
+  }, [asesmen])
+
+  const tampil = useMemo(() => {
+    const kata = cari.trim().toLowerCase()
+    if (!kata) return daftar
+    return daftar.filter(
+      (row) =>
+        row.namaSiswa.toLowerCase().includes(kata) ||
+        row.kelas.toLowerCase().includes(kata) ||
+        row.namaGuru.toLowerCase().includes(kata) ||
+        row.materi.toLowerCase().includes(kata),
+    )
+  }, [daftar, cari])
+
+  const jumlahDiperiksa = daftar.filter(sudahDiperiksaHq).length
+  const jumlahBelum = daftar.length - jumlahDiperiksa
+
+  const tandai = async () => {
+    if (!konfirmasi) return
+    setMenyimpan(kunciBaris(konfirmasi))
+    setStatus('')
+    const hasil = await tandaiDiperiksaHq(konfirmasi, {
+      id: idGuruAktif(currentUser),
+      nama: teacherDisplayName(currentUser),
+    })
+    setMenyimpan('')
+    if (hasil.error) {
+      setGalat(hasil.error)
+      return
+    }
+    setKonfirmasi(null)
+    setStatus(`Penilaian ${konfirmasi.namaSiswa} ditandai sudah diperiksa. Tanda terkirim ke Kepala Sekolah.`)
+    await muat()
+  }
+
+  if (!izin) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-amber-50 p-5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-700"
+        >
+          <ArrowLeft className="size-4" /> Kembali
+        </button>
+        <p className="text-sm font-semibold text-amber-950">
+          Menu Pemeriksa Penilaian HQ hanya untuk akun yang tercatat sebagai pemeriksa HQ pada tabel users.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-4">
+      <div className="flex items-center justify-between rounded-2xl bg-[#6d28d9] px-6 py-4 text-white shadow-md">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-white/20 px-4 py-2 text-xs font-bold hover:bg-white/30"
+        >
+          <ArrowLeft className="size-4" /> Kembali
+        </button>
+        <h2 className="text-base font-black tracking-wide">Pemeriksa Penilaian HQ</h2>
+        <ClipboardCheck className="size-5" />
+      </div>
+
+      <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
+        <p className="font-extrabold">Siswa putri unit Nogosari (kelas berakhiran C dan D)</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          Periksa hasil penilaian rapor HQ yang dikirim guru pengampu, lalu tandai sudah diperiksa agar Kepala Sekolah
+          menerima tanda pada pemantauan Rapor HQ. {semester} {tahunAjaran}.
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {PILIHAN_ASESMEN_RAPOR_HQ.map((item) => (
+              <button
+                key={item.kode}
+                type="button"
+                onClick={() => setAsesmen(item.kode)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                  asesmen === item.kode ? 'bg-[#6d28d9] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs font-semibold text-slate-600">
+            {jumlahBelum} menunggu · {jumlahDiperiksa} sudah diperiksa
+          </p>
+        </div>
+
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={cari}
+            onChange={(event) => setCari(event.target.value)}
+            placeholder="Cari nama siswa, kelas, atau guru"
+            className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm"
+          />
+        </div>
+
+        {galat ? <p className="mt-3 text-sm font-semibold text-red-600">{galat}</p> : null}
+        {status ? <p className="mt-3 text-sm font-semibold text-emerald-700">{status}</p> : null}
+
+        {memuat ? (
+          <p className="mt-4 text-sm text-slate-500">Memuat penilaian siswa putri…</p>
+        ) : tampil.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            Belum ada hasil penilaian siswa putri Nogosari yang dikirim untuk {asesmen}.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Siswa</th>
+                  <th className="px-3 py-2">Materi / surah</th>
+                  <th className="px-3 py-2">Nilai</th>
+                  <th className="px-3 py-2">Guru pengampu</th>
+                  <th className="px-3 py-2">Status periksa</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {tampil.map((row) => {
+                  const kunci = kunciBaris(row)
+                  const diperiksa = sudahDiperiksaHq(row)
+                  return (
+                    <tr key={kunci} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-slate-800">{row.namaSiswa}</p>
+                        <p className="text-xs text-slate-500">
+                          {row.kelas} · {row.asesmen}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{row.materi || 'Belum ada materi'}</td>
+                      <td className="px-3 py-2 font-semibold">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>
+                      <td className="px-3 py-2">{row.namaGuru || '-'}</td>
+                      <td className="px-3 py-2">
+                        {diperiksa ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                            <BadgeCheck className="size-3" /> Sudah diperiksa
+                            {row.diperiksaPada ? ` · ${waktuTampil(row.diperiksaPada)}` : ''}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                            Belum diperiksa
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setPratinjau(row)}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-slate-50"
+                          >
+                            Detail
+                          </button>
+                          <button
+                            type="button"
+                            disabled={diperiksa || menyimpan === kunci}
+                            onClick={() => setKonfirmasi(row)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-violet-700 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-violet-800 disabled:opacity-50"
+                          >
+                            <BadgeCheck className="size-3" /> {menyimpan === kunci ? 'Menyimpan…' : 'Tandai sudah diperiksa'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {pratinjau ? <PratinjauRaporHqKepsek baris={pratinjau} onTutup={() => setPratinjau(null)} /> : null}
+      <DialogKonfirmasi
+        terbuka={Boolean(konfirmasi)}
+        pertanyaan="Apa Anda yakin akan menandai penilaian ini sudah diperiksa?"
+        keterangan={
+          konfirmasi
+            ? `Penilaian ${konfirmasi.namaSiswa} (${konfirmasi.kelas} · ${konfirmasi.asesmen}) akan ditandai sudah diperiksa dan tanda dikirim ke Kepala Sekolah.`
+            : undefined
+        }
+        labelYa={menyimpan ? 'Menyimpan…' : 'OK'}
+        labelTidak="Tidak"
+        sedang={Boolean(menyimpan)}
+        onYa={() => void tandai()}
+        onTidak={() => {
+          if (!menyimpan) setKonfirmasi(null)
+        }}
+      />
+    </div>
+  )
+}
+
+function kunciBaris(row: Pick<KirimRaporHq, 'idSiswa' | 'asesmen'>) {
+  return `${row.idSiswa}|${row.asesmen}`
+}

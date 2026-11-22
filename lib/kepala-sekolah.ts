@@ -15,6 +15,7 @@ import {
 } from '@/lib/kepsek-guru-bantu'
 import {
   hitungPemantauanRaporHq,
+  jumlahDiperiksaHq,
   kelasDariKiriman,
   kumpulanSiswaMasuk,
   muatDataRaporHqKepsek,
@@ -742,6 +743,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     asesmenAwal,
     kumpulanSiswaMasuk(raporHqHasil.mentah, asesmenAwal).size,
     kelasDariKiriman(raporHqHasil.mentah, asesmenAwal),
+    jumlahDiperiksaHq(raporHqHasil.mentah, asesmenAwal),
   )
 
   return {

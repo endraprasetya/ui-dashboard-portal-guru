@@ -149,6 +149,63 @@ export function parseNilaiTargetDariTeks(teks: string) {
   return Number.isFinite(n) ? n : null
 }
 
+export type CadanganNilaiTarget = {
+  nilaiTarget: number
+  capaianTarget: string
+}
+
+/** Kunci unik per siswa, asesmen, dan periode ajaran yang sedang berjalan. */
+export function kunciCadanganNilaiTarget(idSiswa: string, asesmen: string, tanggal = new Date()) {
+  const { tahunAjaran, semester } = periodeAjaranSekarang(tanggal)
+  return `nilai-target-tahfidz:${String(idSiswa || '').trim()}:${String(asesmen || '').trim()}:${tahunAjaran}:${semester}`
+}
+
+export function bacaCadanganNilaiTarget(idSiswa: string, asesmen: string): CadanganNilaiTarget | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const mentah = window.localStorage.getItem(kunciCadanganNilaiTarget(idSiswa, asesmen))
+    if (!mentah) return null
+    const data = JSON.parse(mentah) as { nilaiTarget?: unknown; capaianTarget?: unknown }
+    const n = Number(data.nilaiTarget)
+    if (!Number.isFinite(n)) return null
+    return { nilaiTarget: n, capaianTarget: String(data.capaianTarget || '') }
+  } catch {
+    return null
+  }
+}
+
+export function tulisCadanganNilaiTarget(idSiswa: string, asesmen: string, nilai: number | '', capaianTarget: string) {
+  if (typeof window === 'undefined') return
+  const kunci = kunciCadanganNilaiTarget(idSiswa, asesmen)
+  if (nilai === '' || !Number.isFinite(Number(nilai))) {
+    window.localStorage.removeItem(kunci)
+    return
+  }
+  window.localStorage.setItem(kunci, JSON.stringify({ nilaiTarget: Number(nilai), capaianTarget: String(capaianTarget || '') }))
+}
+
+/** Kolom Supabase dulu, lalu cadangan localStorage, lalu angka di teks capaian. */
+export function pulihkanNilaiTarget(opsi: {
+  dariBasis: number | '' | null | undefined
+  capaianBasis: string
+  cadangan: CadanganNilaiTarget | null
+}) {
+  const capaianBasis = String(opsi.capaianBasis || '')
+  const angkaBasis = opsi.dariBasis === '' || opsi.dariBasis == null ? null : Number(opsi.dariBasis)
+  if (angkaBasis != null && Number.isFinite(angkaBasis)) {
+    return { nilaiTarget: angkaBasis, capaianTarget: capaianBasis || opsi.cadangan?.capaianTarget || '' }
+  }
+  if (opsi.cadangan) {
+    return {
+      nilaiTarget: opsi.cadangan.nilaiTarget,
+      capaianTarget: opsi.cadangan.capaianTarget || capaianBasis,
+    }
+  }
+  const dariTeks = parseNilaiTargetDariTeks(capaianBasis)
+  if (dariTeks != null) return { nilaiTarget: dariTeks, capaianTarget: capaianBasis }
+  return { nilaiTarget: '' as number | '', capaianTarget: capaianBasis }
+}
+
 export function judulAsesmenTahfidz(kode: string, semester?: string) {
   const k = String(kode || '')
     .toUpperCase()
@@ -303,6 +360,7 @@ export async function simpanNilaiUjianTahfidz(payload: {
   baris: NilaiSurahUjian[]
   narasi?: NarasiRaporTahfidz
 }) {
+  if (payload.baris.length === 0) return { error: 'Pilih minimal satu surah untuk materi ujian.' }
   for (const row of payload.baris) {
     const nilai = nilaiSurah(row)
     if (nilai == null) {
@@ -395,4 +453,198 @@ export async function simpanNilaiUjianTahfidz(payload: {
 
   if (galatDetail) return { error: galatDetail.message }
   return { error: null, nilaiAkhir, predikat }
+}
+
+/** Simpan angka target tanpa menunggu nilai kelancaran, tajwid, dan adab lengkap. */
+export async function simpanNilaiTargetUjian(payload: {
+  idSiswa: string
+  jenisAsesmen: string
+  nilaiTarget: number
+  capaianTarget: string
+}) {
+  const idSiswa = String(payload.idSiswa || '').trim()
+  const jenisAsesmen = String(payload.jenisAsesmen || '').trim()
+  if (!idSiswa || !jenisAsesmen) return { error: 'Siswa atau asesmen belum dipilih.' }
+  if (!Number.isFinite(payload.nilaiTarget)) return { error: 'Nilai target tidak valid.' }
+
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const { data: lama, error: galatCari } = await supabase
+    .from(TABEL_HEADER_RAPOR)
+    .select('id_ujian_tahfidz')
+    .eq('id_siswa', idSiswa)
+    .eq('jenis_asesmen', jenisAsesmen)
+    .eq('tahun_ajaran', tahunAjaran)
+    .eq('semester', semester)
+    .maybeSingle()
+  if (galatCari) return { error: galatCari.message }
+
+  const waktu = new Date().toISOString()
+  const denganAngka = { capaian_target: payload.capaianTarget, nilai_target: payload.nilaiTarget, updated_at: waktu }
+  const tanpaAngka = { capaian_target: payload.capaianTarget, updated_at: waktu }
+
+  if (lama?.id_ujian_tahfidz) {
+    let { error } = await supabase.from(TABEL_HEADER_RAPOR).update(denganAngka).eq('id_ujian_tahfidz', lama.id_ujian_tahfidz)
+    if (error && /nilai_target/i.test(error.message || '')) {
+      error = (await supabase.from(TABEL_HEADER_RAPOR).update(tanpaAngka).eq('id_ujian_tahfidz', lama.id_ujian_tahfidz)).error
+    }
+    return { error: error?.message || null }
+  }
+
+  const dasar = {
+    id_siswa: idSiswa,
+    jenis_asesmen: jenisAsesmen,
+    tahun_ajaran: tahunAjaran,
+    semester,
+    predikat: '',
+    capaian_kompetensi: '',
+    motivasi: '',
+    capaian_target: payload.capaianTarget,
+  }
+
+  async function sisip(denganTarget: boolean, nilaiAkhir: number | null) {
+    const isi = denganTarget
+      ? { ...dasar, nilai_akhir: nilaiAkhir, nilai_target: payload.nilaiTarget }
+      : { ...dasar, nilai_akhir: nilaiAkhir }
+    return supabase.from(TABEL_HEADER_RAPOR).insert([isi]).select('id_ujian_tahfidz').single()
+  }
+
+  let hasil = await sisip(true, null)
+  if (hasil.error && /nilai_akhir|null value/i.test(hasil.error.message || '')) hasil = await sisip(true, 0)
+  if (hasil.error && /nilai_target/i.test(hasil.error.message || '')) hasil = await sisip(false, 0)
+  if (hasil.error) return { error: hasil.error.message }
+  return { error: null as string | null }
+}
+
+function normSurah(nama: string) {
+  return String(nama || '')
+    .trim()
+    .toLowerCase()
+}
+
+/** Hapus header dan rincian nilai ujian siswa pada periode ajaran yang sedang berjalan. */
+export async function hapusNilaiUjianTahfidz(idSiswa: string, jenisAsesmen: string) {
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const { data, error } = await supabase
+    .from(TABEL_HEADER_RAPOR)
+    .select('id_ujian_tahfidz')
+    .eq('id_siswa', idSiswa)
+    .eq('jenis_asesmen', jenisAsesmen)
+    .eq('tahun_ajaran', tahunAjaran)
+    .eq('semester', semester)
+
+  if (error) return { error: error.message }
+  const ids = (data || []).map((row) => String(row.id_ujian_tahfidz || '')).filter(Boolean)
+  if (ids.length === 0) return { error: null as string | null }
+
+  const hapusDetail = await supabase.from(TABEL_DETAIL_RAPOR).delete().in('header_id', ids)
+  if (hapusDetail.error) return { error: hapusDetail.error.message }
+  const hapusHeader = await supabase.from(TABEL_HEADER_RAPOR).delete().in('id_ujian_tahfidz', ids)
+  if (hapusHeader.error) return { error: hapusHeader.error.message }
+  return { error: null as string | null }
+}
+
+/**
+ * Sesuaikan rincian nilai yang sudah tersimpan dengan daftar surah baru.
+ * Nilai surah yang masih diujikan dipertahankan; surah yang dikeluarkan dihapus dari nilai.
+ * Surah baru tidak diisi angka — siap dinilai saat form dibuka.
+ */
+export async function selaraskanNilaiDenganMateri(idSiswa: string[], jenisAsesmen: string, materi: MateriNilaiUjian[]) {
+  const unik = Array.from(new Set(idSiswa.map((item) => String(item || '').trim()).filter(Boolean)))
+  if (unik.length === 0) return { error: null as string | null }
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const petaMateri = new Map(materi.map((item) => [normSurah(item.nama), item]))
+
+  const headers: { id_ujian_tahfidz: string; id_siswa: string }[] = []
+  for (let index = 0; index < unik.length; index += 80) {
+    const bagian = unik.slice(index, index + 80)
+    const { data, error } = await supabase
+      .from(TABEL_HEADER_RAPOR)
+      .select('id_ujian_tahfidz,id_siswa')
+      .in('id_siswa', bagian)
+      .eq('jenis_asesmen', jenisAsesmen)
+      .eq('tahun_ajaran', tahunAjaran)
+      .eq('semester', semester)
+    if (error) return { error: error.message }
+    headers.push(...((data || []) as { id_ujian_tahfidz: string; id_siswa: string }[]))
+  }
+  if (headers.length === 0) return { error: null as string | null }
+
+  const headerIds = headers.map((row) => String(row.id_ujian_tahfidz))
+  const detail: Record<string, unknown>[] = []
+  for (let index = 0; index < headerIds.length; index += 80) {
+    const bagian = headerIds.slice(index, index + 80)
+    const { data, error } = await supabase
+      .from(TABEL_DETAIL_RAPOR)
+      .select(
+        'header_id,nama_surat,rentang_ayat,kesalahan_kelancaran,nilai_kelancaran,kesalahan_mad,kesalahan_dengung,kesalahan_makhraj,nilai_tajwid,nilai_adab',
+      )
+      .in('header_id', bagian)
+    if (error) return { error: error.message }
+    detail.push(...((data || []) as Record<string, unknown>[]))
+  }
+
+  for (const header of headers) {
+    const id = String(header.id_ujian_tahfidz)
+    const milik = detail.filter((row) => String(row.header_id) === id)
+    let adaHapus = false
+    const sisa: Record<string, unknown>[] = []
+
+    for (const row of milik) {
+      const nama = String(row.nama_surat || '')
+      const cocok = petaMateri.get(normSurah(nama))
+      if (!cocok) {
+        const hapus = await supabase.from(TABEL_DETAIL_RAPOR).delete().eq('header_id', id).eq('nama_surat', nama)
+        if (hapus.error) return { error: hapus.error.message }
+        adaHapus = true
+        continue
+      }
+      const ayatBaru = String(cocok.ayat || '').trim()
+      const ayatLama = String(row.rentang_ayat || '').trim()
+      if (ayatBaru && ayatBaru !== ayatLama) {
+        const ubah = await supabase.from(TABEL_DETAIL_RAPOR).update({ rentang_ayat: ayatBaru }).eq('header_id', id).eq('nama_surat', nama)
+        if (ubah.error) return { error: ubah.error.message }
+        sisa.push({ ...row, rentang_ayat: ayatBaru })
+        continue
+      }
+      sisa.push(row)
+    }
+
+    if (!adaHapus) continue
+
+    const nilaiList = sisa
+      .map((row) =>
+        nilaiSurah({
+          namaSurat: String(row.nama_surat || ''),
+          rentangAyat: String(row.rentang_ayat || ''),
+          kesalahanKelancaran: angka(row.kesalahan_kelancaran),
+          nilaiKelancaran: angka(row.nilai_kelancaran),
+          kesalahanMad: angka(row.kesalahan_mad),
+          kesalahanDengung: angka(row.kesalahan_dengung),
+          kesalahanMakhraj: angka(row.kesalahan_makhraj),
+          nilaiTajwid: angka(row.nilai_tajwid),
+          nilaiAdab: angka(row.nilai_adab),
+        }),
+      )
+      .filter((nilai): nilai is number => nilai != null)
+
+    const nilaiAkhir =
+      nilaiList.length > 0 ? Math.round((nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) * 100) / 100 : null
+    const isi = {
+      nilai_akhir: nilaiAkhir,
+      predikat: nilaiAkhir == null ? '' : predikatNilai(nilaiAkhir),
+      updated_at: new Date().toISOString(),
+    }
+    let { error } = await supabase.from(TABEL_HEADER_RAPOR).update(isi).eq('id_ujian_tahfidz', id)
+    if (error && nilaiAkhir == null) {
+      error = (
+        await supabase
+          .from(TABEL_HEADER_RAPOR)
+          .update({ ...isi, nilai_akhir: 0 })
+          .eq('id_ujian_tahfidz', id)
+      ).error
+    }
+    if (error) return { error: error.message }
+  }
+
+  return { error: null as string | null }
 }

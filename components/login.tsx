@@ -70,6 +70,7 @@ export function Login({
         nama_lengkap: baris.nama_lengkap || baris.nama || baris.username,
         unit: unitDariAkun(tanpaSandi),
         role: String(baris.role || 'Ustadz').trim(),
+        is_pemeriksa_hq: baris.is_pemeriksa_hq,
       }
 
       localStorage.setItem('user_session', JSON.stringify(userData))

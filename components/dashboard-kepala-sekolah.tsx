@@ -43,6 +43,8 @@ import { MonitoringPengajuanKeringanan } from '@/components/kepsek/monitoring-ke
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
 import { kanonNamaUnit } from '@/lib/siswa'
+import { supabase } from '@/lib/supabase'
+import { KANAL_REVISI_RAPOR_HQ, NAMA_SETTING_KIRIM_RAPOR } from '@/lib/rapor-hq-kirim'
 
 type Panel = 'absensi' | 'absensi_guru_bantu' | 'qiroah' | 'skl' | null
 type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
@@ -133,6 +135,8 @@ export function DashboardKepalaSekolah() {
   const [rincianAbsen, setRincianAbsen] = useState(false)
   const [guruLengkap, setGuruLengkap] = useState(false)
   const [ujianLengkap, setUjianLengkap] = useState(false)
+  const [penyegarHq, setPenyegarHq] = useState(0)
+  const [pesanPemeriksaHq, setPesanPemeriksaHq] = useState('')
 
   useEffect(() => {
     let batal = false
@@ -185,7 +189,35 @@ export function DashboardKepalaSekolah() {
     return () => {
       batal = true
     }
-  }, [siap, user])
+  }, [siap, user, penyegarHq])
+
+  useEffect(() => {
+    if (siap !== 'siap') return
+    const kanalSetting = supabase
+      .channel(`kepsek-hq-setting-${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
+        () => setPenyegarHq((nilai) => nilai + 1),
+      )
+    const kanalSiaran = supabase.channel(KANAL_REVISI_RAPOR_HQ).on('broadcast', { event: 'pemeriksa' }, (pesan) => {
+      const muatan = (pesan?.payload || {}) as { namaSiswa?: string; kelas?: string; asesmen?: string; pemeriksaNama?: string }
+      const nama = String(muatan.namaSiswa || 'Siswa putri').trim()
+      const kelas = String(muatan.kelas || '').trim()
+      const asesmen = String(muatan.asesmen || '').trim()
+      const pemeriksa = String(muatan.pemeriksaNama || 'Pemeriksa HQ').trim()
+      setPesanPemeriksaHq(
+        `${pemeriksa} menandai penilaian ${nama}${kelas ? ` (${kelas})` : ''}${asesmen ? ` · ${asesmen}` : ''} sudah diperiksa.`,
+      )
+      setPenyegarHq((nilai) => nilai + 1)
+    })
+    kanalSetting.subscribe()
+    kanalSiaran.subscribe()
+    return () => {
+      void supabase.removeChannel(kanalSetting)
+      void supabase.removeChannel(kanalSiaran)
+    }
+  }, [siap])
 
   useEffect(() => {
     if (siap !== 'siap' || panel !== 'absensi_guru_bantu' || !user) return
@@ -343,6 +375,18 @@ export function DashboardKepalaSekolah() {
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>
+            {pesanPemeriksaHq || laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
+              <div className="no-print rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+                <p className="font-extrabold">Notifikasi Pemeriksa Penilaian HQ</p>
+                {pesanPemeriksaHq ? <p className="mt-1 text-xs font-semibold leading-relaxed">{pesanPemeriksaHq}</p> : null}
+                {laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
+                  <p className="mt-1 text-xs leading-relaxed">
+                    {laporan.raporHqRingkas.siswaDiperiksaHq} penilaian siswa putri (kelas C dan D) sudah ditandai diperiksa.
+                    Buka kartu Rapor HQ untuk melihat tandanya.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <section className="no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <article
                 role="button"
@@ -477,9 +521,15 @@ export function DashboardKepalaSekolah() {
                   <strong className="text-amber-800">{laporan.raporHqRingkas.belum}</strong> kelas belum lengkap ·{' '}
                   {laporan.raporHqRingkas.total} kelas binaan
                 </p>
-                <p className="mt-2 text-[11px] text-slate-400">
-                  Ketuk untuk rincian per siswa dan kelas yang belum menyetorkan.
-                </p>
+                {laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
+                  <p className="mt-2 rounded-lg bg-violet-100 px-2.5 py-1.5 text-xs font-bold text-violet-900">
+                    {laporan.raporHqRingkas.siswaDiperiksaHq} penilaian siswa putri sudah diperiksa Pemeriksa HQ
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Ketuk untuk rincian per siswa dan kelas yang belum menyetorkan.
+                  </p>
+                )}
               </article>
               <article
                 id={ID_PINTASAN.guruBantu}

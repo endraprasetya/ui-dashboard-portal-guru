@@ -26,6 +26,9 @@ export type KirimanRaporHqMentah = {
   idSiswa: string
   asesmen: string
   kelas: string
+  diperiksaHq?: boolean
+  pemeriksaNama?: string
+  diperiksaPada?: string
 }
 
 export type DataMentahRaporHq = {
@@ -43,6 +46,7 @@ export type RingkasRaporHq = {
   total: number
   siswaSudah: number
   kelasSudah: string[]
+  siswaDiperiksaHq: number
 }
 
 export type SiswaBinaanUnit = {
@@ -126,17 +130,23 @@ export function kelasDariKiriman(mentah: DataMentahRaporHq, asesmen: KodeAsesmen
   return (mentah.kiriman || []).filter((row) => normalAsesmen(row.asesmen) === kode && row.kelas).map((row) => row.kelas)
 }
 
+export function jumlahDiperiksaHq(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq) {
+  const kode = normalAsesmen(asesmen)
+  return (mentah.kiriman || []).filter((row) => row.diperiksaHq && normalAsesmen(row.asesmen) === kode).length
+}
+
 export function ringkasPemantauanRaporHq(
   baris: BarisPemantauanRaporHq[],
   asesmen: KodeAsesmenRaporHq,
   siswaSudah = 0,
   kelasKiriman: string[] = [],
+  siswaDiperiksaHq = 0,
 ): RingkasRaporHq {
   const sudah = baris.filter((row) => row.status === 'Sudah Menyetorkan').length
   const kelasSudah = Array.from(
     new Set([...baris.filter((row) => row.siswaMasuk > 0).map((row) => row.kelas), ...kelasKiriman.filter(Boolean)]),
   ).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
-  return { asesmen, sudah, belum: baris.length - sudah, total: baris.length, siswaSudah, kelasSudah }
+  return { asesmen, sudah, belum: baris.length - sudah, total: baris.length, siswaSudah, kelasSudah, siswaDiperiksaHq }
 }
 
 export async function muatDataRaporHqKepsek(
@@ -188,7 +198,14 @@ export async function muatDataRaporHqKepsek(
   for (const row of hasilKirim.data) {
     if (row.tahunAjaran !== tahunAjaran || row.semester !== semester) continue
     if (idUnit.size > 0 && !idUnit.has(row.idSiswa)) continue
-    kiriman.push({ idSiswa: row.idSiswa, asesmen: row.asesmen, kelas: row.kelas })
+    kiriman.push({
+      idSiswa: row.idSiswa,
+      asesmen: row.asesmen,
+      kelas: row.kelas,
+      diperiksaHq: row.statusPemeriksa === 'Diperiksa' || Boolean(row.diperiksaPada),
+      pemeriksaNama: row.pemeriksaNama,
+      diperiksaPada: row.diperiksaPada,
+    })
   }
 
   const kelasBinaan = (row: { target_id?: string; username?: string }) => {

@@ -17,8 +17,9 @@ import {
   hitungPemantauanRaporHq,
   type KodeAsesmenRaporHq,
 } from '@/lib/kepsek-rapor-hq'
-import { lengkapiTampilanKirim, muatKirimRaporHq, simpanCatatanRevisiRaporHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { lengkapiTampilanKirim, muatKirimRaporHq, NAMA_SETTING_KIRIM_RAPOR, simpanCatatanRevisiRaporHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
+import { supabase } from '@/lib/supabase'
 
 function BadgeStatus({ teks }: { teks: string }) {
   const sudah = teks === 'Sudah Menyetorkan'
@@ -107,6 +108,20 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
     }
   }, [asesmen, tahunAjaran, semester, penyegar])
 
+  useEffect(() => {
+    const kanal = supabase
+      .channel(`kepsek-hq-pemeriksa-${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
+        () => setPenyegar((nilai) => nilai + 1),
+      )
+    kanal.subscribe()
+    return () => {
+      void supabase.removeChannel(kanal)
+    }
+  }, [])
+
   return (
     <>
     <ModalKerangka
@@ -164,6 +179,13 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
           Penilaian ujian tahfidz/HQ yang dikirim guru pengampu pada {semester} {tahunAjaran}. Catatan Kepala Sekolah
           tersimpan dan masuk ke lonceng notifikasi guru tersebut.
         </p>
+        {masuk.filter((row) => row.statusPemeriksa === 'Diperiksa' || row.diperiksaPada).length > 0 ? (
+          <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-950">
+            Pemeriksa Penilaian HQ menandai{' '}
+            {masuk.filter((row) => row.statusPemeriksa === 'Diperiksa' || row.diperiksaPada).length} penilaian siswa
+            putri sudah diperiksa.
+          </p>
+        ) : null}
         {pesan ? (
           <p className={`mt-2 text-sm font-semibold ${galatCatatan ? 'text-red-700' : 'text-emerald-700'}`}>{pesan}</p>
         ) : null}
@@ -203,6 +225,12 @@ export function ModalRaporHq({ laporan, onTutup }: { laporan: LaporanKepsek; onT
                           {row.status === 'Revisi' ? 'Perlu revisi' : 'Terkirim'}
                           {waktu ? ` · ${waktu}` : ''}
                         </span>
+                        {row.statusPemeriksa === 'Diperiksa' || row.diperiksaPada ? (
+                          <span className="mt-1 ml-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-900">
+                            Diperiksa HQ
+                            {row.pemeriksaNama ? ` · ${row.pemeriksaNama}` : ''}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="border-b p-2 text-slate-700">{row.materi || 'Belum ada materi'}</td>
                       <td className="border-b p-2 font-semibold text-slate-800">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>

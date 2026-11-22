@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, Trash2, Users, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
 import { fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import {
   guruPenerimaRevisi,
   idGuruAktif,
+  cabutKirimRaporHq,
   kirimRaporKeKepsek,
   muatKirimRaporHq,
   NAMA_SETTING_KIRIM_RAPOR,
@@ -28,14 +29,20 @@ import {
   fetchMateriUjianTahfidz,
   fetchTeksJadwalUjianTahfidz,
   formatLabelMateri,
+  formatRentangAyat,
   gabungMateriSiswa,
+  hapusMateriUjianTahfidz,
   JUDUL_JADWAL_UJIAN_TAHFIDZ,
+  sidikMateriUjian,
   simpanMateriUjianTahfidz,
+  terapkanMateriUjianKeSiswa,
   validasiMateriUjian,
   type AsesmenTahfidz,
   type BarisMateriUjian,
   type MateriSurah,
 } from '@/lib/materi-ujian-tahfidz'
+import { hapusNilaiUjianTahfidz, selaraskanNilaiDenganMateri } from '@/lib/rapor-tahfidz-nilai'
+import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 
 function kunciBarisUjian(row: { idSiswa: string; asesmen: string }) {
   return `${row.idSiswa}|${row.asesmen}`
@@ -82,6 +89,10 @@ export function InputRaporTahfidz({
   const panelRef = useRef<HTMLDivElement>(null)
   const [targetTahfidzAktif, setTargetTahfidzAktif] = useState(true)
   const [ringkasTarget, setRingkasTarget] = useState('')
+  const [menerapkan, setMenerapkan] = useState(false)
+  const [menghapus, setMenghapus] = useState(false)
+  const [tanyaTerapkan, setTanyaTerapkan] = useState(false)
+  const [konfirmasiHapus, setKonfirmasiHapus] = useState<{ idSiswa: string; nama: string; asesmen: string } | null>(null)
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
 
@@ -270,6 +281,7 @@ export function InputRaporTahfidz({
         nama: row.nama,
         kelas: row.kelas,
         asesmen: row.asesmen,
+        keterangan: row.keterangan,
         surahs: daftar
           .filter((item) => item.id_siswa === row.idSiswa && item.asesmen === row.asesmen)
           .map((item) => ({ nama: item.surah, ayat: item.ayat })),
@@ -316,11 +328,14 @@ export function InputRaporTahfidz({
   const bukaNilai = (idSiswaNilai: string, asesmenNilai: string) => {
     const row = rekap.find((item) => item.idSiswa === idSiswaNilai && item.asesmen === asesmenNilai)
     if (!row) return
+    setIdSiswa(row.idSiswa)
+    setAsesmen(row.asesmen as AsesmenTahfidz)
     setNilaiTarget({
       idSiswa: row.idSiswa,
       nama: row.nama,
       kelas: row.kelas,
       asesmen: row.asesmen,
+      keterangan: row.keterangan,
       surahs: daftar
         .filter((item) => item.id_siswa === row.idSiswa && item.asesmen === row.asesmen)
         .map((item) => ({ nama: item.surah, ayat: item.ayat })),
@@ -383,33 +398,69 @@ export function InputRaporTahfidz({
     setKonfirmasiKirim({ jumlah: hasil.jumlah, nama: sasaran.map((row) => row.nama) })
   }
 
-  const handleSimpan = async () => {
-    if (!terpilih) {
-      setStatus('Pilih siswa binaan terlebih dahulu.')
-      setGalat(true)
-      return
-    }
-    if (!asesmen) {
-      setStatus('Pilih jenis asesmen.')
-      setGalat(true)
-      return
-    }
-    const galatMateri = validasiMateriUjian(surahs, materi)
-    if (galatMateri) {
-      const info = materi
-        .flatMap((item) => [
-          infoAyatMelebihi(surahs, item.nama, item.ayatMulai, `${item.nama} (ayat mulai)`),
-          infoAyatMelebihi(surahs, item.nama, item.ayatSelesai, `${item.nama} (ayat selesai)`),
-        ])
-        .find(Boolean)
-      setPeringatanAyat(info || { pesan: galatMateri })
-      setStatus(galatMateri)
-      setGalat(true)
+  const muatUlangDaftar = async () => {
+    if (siswa.length === 0) return
+    const segar = await fetchMateriUjianTahfidz(siswa.map((item) => item.id_siswa))
+    setDaftar(segar as BarisMateriUjian[])
+  }
+
+  const sidikForm = () =>
+    sidikMateriUjian(materi.map((item) => ({ nama: item.nama, ayat: formatRentangAyat(item.ayatMulai, item.ayatSelesai) })))
+
+  const sidikTersimpan = (id: string, jenis: string) =>
+    sidikMateriUjian(
+      daftar.filter((row) => row.id_siswa === id && row.asesmen === jenis).map((row) => ({ nama: row.surah, ayat: row.ayat })),
+    )
+
+  const tampilkanGalatMateri = (galatMateri: string) => {
+    const info = materi
+      .flatMap((item) => [
+        infoAyatMelebihi(surahs, item.nama, item.ayatMulai, `${item.nama} (ayat mulai)`),
+        infoAyatMelebihi(surahs, item.nama, item.ayatSelesai, `${item.nama} (ayat selesai)`),
+      ])
+      .find(Boolean)
+    setPeringatanAyat(info || { pesan: galatMateri })
+    setStatus(galatMateri)
+    setGalat(true)
+  }
+
+  const terapkanDaftarSurah = async (opsi: { asesmen: string; materi: MateriSurah[]; keterangan: string }) => {
+    const hasil = await terapkanMateriUjianKeSiswa({
+      siswa: siswa.map((item) => ({ idSiswa: item.id_siswa, kelas: item.kelas })),
+      asesmen: opsi.asesmen,
+      materi: opsi.materi,
+      keterangan: opsi.keterangan,
+      guru: teacherDisplayName(currentUser),
+    })
+    if (hasil.error) return hasil
+    const selaras = await selaraskanNilaiDenganMateri(
+      siswa.map((item) => item.id_siswa),
+      opsi.asesmen,
+      opsi.materi.map((item) => ({ nama: item.nama, ayat: formatRentangAyat(item.ayatMulai, item.ayatSelesai) })),
+    )
+    if (selaras.error) return { error: selaras.error, jumlah: 0 }
+    await muatUlangDaftar()
+    return hasil
+  }
+
+  const eksekusiSimpan = async (semua: boolean) => {
+    if (!terpilih || !asesmen) return
+    setMenyimpan(true)
+    setStatus('')
+    if (semua) {
+      const hasil = await terapkanDaftarSurah({ asesmen, materi, keterangan })
+      setMenyimpan(false)
+      if (hasil.error) {
+        setStatus(`Gagal menerapkan: ${hasil.error}`)
+        setGalat(true)
+        return
+      }
+      setStatus(`Daftar surah diterapkan ke ${hasil.jumlah} siswa binaan. Nilai pada surah yang sama tetap dipertahankan.`)
+      setGalat(false)
+      setPanelSurah(false)
       return
     }
 
-    setMenyimpan(true)
-    setStatus('')
     const hasil = await simpanMateriUjianTahfidz({
       idSiswa: terpilih.id_siswa,
       kelas: terpilih.kelas,
@@ -425,13 +476,103 @@ export function InputRaporTahfidz({
       return
     }
 
-    const segar = await fetchMateriUjianTahfidz(siswa.map((item) => item.id_siswa))
-    setDaftar(segar as BarisMateriUjian[])
+    await muatUlangDaftar()
     setStatus(`Materi ujian ${terpilih.nama_siswa} (${asesmen}) tersimpan.`)
     setGalat(false)
-    setMateri([])
-    setKeterangan('')
     setPanelSurah(false)
+  }
+
+  const handleSimpan = () => {
+    if (!terpilih) {
+      setStatus('Pilih siswa binaan terlebih dahulu.')
+      setGalat(true)
+      return
+    }
+    if (!asesmen) {
+      setStatus('Pilih jenis asesmen.')
+      setGalat(true)
+      return
+    }
+    const galatMateri = validasiMateriUjian(surahs, materi)
+    if (galatMateri) {
+      tampilkanGalatMateri(galatMateri)
+      return
+    }
+    const daftarBaru = sidikForm() !== sidikTersimpan(terpilih.id_siswa, asesmen)
+    if (daftarBaru && siswa.length > 1) {
+      setTanyaTerapkan(true)
+      return
+    }
+    void eksekusiSimpan(false)
+  }
+
+  const terapkanSemuaSekali = () => {
+    if (!asesmen) {
+      setStatus('Pilih jenis asesmen.')
+      setGalat(true)
+      return
+    }
+    if (siswa.length === 0) {
+      setStatus('Tidak ada siswa binaan.')
+      setGalat(true)
+      return
+    }
+    const galatMateri = validasiMateriUjian(surahs, materi)
+    if (galatMateri) {
+      tampilkanGalatMateri(galatMateri)
+      return
+    }
+    setMenerapkan(true)
+    setStatus('')
+    void terapkanDaftarSurah({ asesmen, materi, keterangan }).then((hasil) => {
+      setMenerapkan(false)
+      if (hasil.error) {
+        setStatus(`Gagal menerapkan: ${hasil.error}`)
+        setGalat(true)
+        return
+      }
+      setStatus(`Daftar surah diterapkan ke ${hasil.jumlah} siswa binaan. Nilai pada surah yang sama tetap dipertahankan.`)
+      setGalat(false)
+      setPanelSurah(false)
+    })
+  }
+
+  const jalankanHapus = async () => {
+    if (!konfirmasiHapus) return
+    setMenghapus(true)
+    setStatus('')
+    const nilai = await hapusNilaiUjianTahfidz(konfirmasiHapus.idSiswa, konfirmasiHapus.asesmen)
+    if (nilai.error) {
+      setMenghapus(false)
+      setStatus(`Gagal menghapus nilai: ${nilai.error}`)
+      setGalat(true)
+      return
+    }
+    const materiHapus = await hapusMateriUjianTahfidz(konfirmasiHapus.idSiswa, konfirmasiHapus.asesmen)
+    if (materiHapus.error) {
+      setMenghapus(false)
+      setStatus(`Gagal menghapus materi ujian: ${materiHapus.error}`)
+      setGalat(true)
+      return
+    }
+    const kirim = await cabutKirimRaporHq(konfirmasiHapus.idSiswa, konfirmasiHapus.asesmen)
+    const kunci = kunciBarisUjian(konfirmasiHapus)
+    setCentang((current) => current.filter((item) => item !== kunci))
+    if (nilaiTarget?.idSiswa === konfirmasiHapus.idSiswa && nilaiTarget.asesmen === konfirmasiHapus.asesmen) {
+      setNilaiTarget(null)
+    }
+    await muatUlangDaftar()
+    const segarKirim = await muatKirimRaporHq()
+    if (!segarKirim.error) setKiriman(segarKirim.data.filter((row) => guruPenerimaRevisi(row, currentUser)))
+    setMenghapus(false)
+    setKonfirmasiHapus(null)
+    if (kirim.error) {
+      setStatus(`Penilaian ${konfirmasiHapus.nama} terhapus, tetapi status kirim ke Kepala Sekolah gagal dicabut: ${kirim.error}`)
+      setGalat(true)
+      return
+    }
+    setStatus(`Penilaian ${konfirmasiHapus.nama} (${konfirmasiHapus.asesmen}) dihapus.`)
+    setGalat(false)
   }
 
   return (
@@ -599,6 +740,15 @@ export function InputRaporTahfidz({
           </div>
         )}
 
+        <button
+          type="button"
+          onClick={terapkanSemuaSekali}
+          disabled={menyimpan || menerapkan}
+          className="mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-bold text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+        >
+          <Users className="size-4" /> {menerapkan ? 'Menerapkan…' : 'Terapkan ke Semua Siswa Binaan'}
+        </button>
+
         <label className="mt-4 block text-xs font-bold text-slate-600">
           Indikator Penilaian
           <textarea
@@ -615,7 +765,7 @@ export function InputRaporTahfidz({
         <button
           type="button"
           onClick={handleSimpan}
-          disabled={menyimpan}
+          disabled={menyimpan || menerapkan}
           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50"
         >
           <Save className="size-4" /> {menyimpan ? 'Menyimpan…' : 'Simpan'}
@@ -756,6 +906,13 @@ export function InputRaporTahfidz({
                           >
                             <ClipboardCheck className="size-3" /> Nilai Ujian
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setKonfirmasiHapus({ idSiswa: row.idSiswa, nama: row.nama, asesmen: row.asesmen })}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-red-700"
+                          >
+                            <Trash2 className="size-3" /> Hapus
+                          </button>
                           <Link
                             href={`/raport/${encodeURIComponent(row.idSiswa)}?asesmen=${encodeURIComponent(row.asesmen)}`}
                             className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-900"
@@ -778,6 +935,15 @@ export function InputRaporTahfidz({
           target={nilaiTarget}
           onClose={() => setNilaiTarget(null)}
           targetTahfidzAktif={targetTahfidzAktif}
+          surahs={surahs}
+          guru={teacherDisplayName(currentUser)}
+          bolehTerapkanSemua={siswa.length > 1}
+          onTerapkanSurah={(daftarSurah, catatan) =>
+            terapkanDaftarSurah({ asesmen: nilaiTarget.asesmen, materi: daftarSurah, keterangan: catatan })
+          }
+          onSelesai={() => {
+            void muatUlangDaftar()
+          }}
         />
       )}
       {konfirmasiKirim ? (
@@ -808,6 +974,63 @@ export function InputRaporTahfidz({
           </div>
         </div>
       ) : null}
+      {tanyaTerapkan ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/55 p-4" role="dialog" aria-modal="true" aria-labelledby="judul-terapkan-surah">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h2 id="judul-terapkan-surah" className="text-base font-extrabold text-slate-900">
+              Terapkan ke semua murid binaan?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              Apa pilihan surah yang diujikan akan berlaku untuk semua murid binaan?
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              {siswa.length} siswa binaan
+              {asesmen ? ` · ${asesmen}` : ''}. Nilai yang sudah ada pada surah yang sama tetap dipertahankan.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={menyimpan}
+                onClick={() => {
+                  setTanyaTerapkan(false)
+                  void eksekusiSimpan(true)
+                }}
+                className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50"
+              >
+                {menyimpan ? 'Menyimpan…' : 'Ya, Terapkan ke Semua'}
+              </button>
+              <button
+                type="button"
+                disabled={menyimpan}
+                onClick={() => {
+                  setTanyaTerapkan(false)
+                  void eksekusiSimpan(false)
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Tidak, Hanya Siswa Ini
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DialogKonfirmasi
+        terbuka={Boolean(konfirmasiHapus)}
+        pertanyaan="Apa Anda yakin akan menghapus ini?"
+        keterangan={
+          konfirmasiHapus
+            ? `Penilaian ${konfirmasiHapus.nama} (${konfirmasiHapus.asesmen}) beserta materi ujian dan nilai yang tersimpan akan dihapus. Tindakan ini tidak dapat dibatalkan.`
+            : undefined
+        }
+        labelYa={menghapus ? 'Menghapus…' : 'Ya, Hapus'}
+        labelTidak="Tidak / Batal"
+        berbahaya
+        sedang={menghapus}
+        onYa={() => void jalankanHapus()}
+        onTidak={() => {
+          if (!menghapus) setKonfirmasiHapus(null)
+        }}
+      />
       {peringatanAyat ? (
         <PeringatanBatasAyatDialog
           info={'namaSurah' in peringatanAyat ? peringatanAyat : null}

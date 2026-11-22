@@ -6,6 +6,7 @@ export const NAMA_SETTING_KIRIM_RAPOR = 'hq_kirim'
 export const KANAL_REVISI_RAPOR_HQ = 'rapor-hq-revisi'
 
 export type StatusKirimRaporHq = 'Terkirim' | 'Revisi'
+export type StatusPemeriksaHq = 'Belum' | 'Diperiksa'
 
 export type KirimRaporHq = {
   idSiswa: string
@@ -23,6 +24,10 @@ export type KirimRaporHq = {
   catatanRevisi: string
   dikirimPada: string
   diperbaruiPada: string
+  statusPemeriksa: StatusPemeriksaHq
+  pemeriksaId: string
+  pemeriksaNama: string
+  diperiksaPada: string
 }
 
 export type UsulanKirimRaporHq = {
@@ -67,6 +72,7 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
     const asesmen = String(data.asesmen || '').trim()
     if (!idSiswa || !asesmen) return null
     const status = data.status === 'Revisi' ? 'Revisi' : 'Terkirim'
+    const statusPemeriksa = data.statusPemeriksa === 'Diperiksa' || data.diperiksaPada ? 'Diperiksa' : 'Belum'
     return {
       idSiswa,
       namaSiswa: String(data.namaSiswa || idSiswa),
@@ -83,6 +89,10 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
       catatanRevisi: String(data.catatanRevisi || '').trim(),
       dikirimPada: String(data.dikirimPada || ''),
       diperbaruiPada: String(data.diperbaruiPada || ''),
+      statusPemeriksa,
+      pemeriksaId: String(data.pemeriksaId || ''),
+      pemeriksaNama: String(data.pemeriksaNama || ''),
+      diperiksaPada: String(data.diperiksaPada || ''),
     }
   } catch {
     return null
@@ -237,6 +247,10 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
       catatanRevisi: sebelumnya?.catatanRevisi || '',
       dikirimPada: sekarang,
       diperbaruiPada: sebelumnya?.diperbaruiPada || sekarang,
+      statusPemeriksa: 'Belum',
+      pemeriksaId: '',
+      pemeriksaNama: '',
+      diperiksaPada: '',
     }
     peta.set(item.kunci, isi)
   }
@@ -244,6 +258,20 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
   const galat = await simpanDokumenKirim([...peta.values()], sasaran[0]?.idGuru || '')
   if (galat) return { error: galat, jumlah: 0 }
   return { error: null as string | null, jumlah: sasaran.length }
+}
+
+export async function cabutKirimRaporHq(idSiswa: string, asesmen: string) {
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const dokumen = await muatDokumenKirim()
+  if (dokumen.error) return { error: dokumen.error }
+  const kunci = kunciKirimRaporHq({ idSiswa, asesmen, tahunAjaran, semester })
+  const peta = new Map(dokumen.daftar.map((row) => [kunciKirimRaporHq(row), row]))
+  const lama = peta.get(kunci)
+  if (!lama) return { error: null as string | null }
+  peta.delete(kunci)
+  const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
+  if (galat) return { error: galat }
+  return { error: null as string | null }
 }
 
 export async function simpanCatatanRevisiRaporHq(baris: KirimRaporHq, catatan: string) {
@@ -268,6 +296,70 @@ export async function simpanCatatanRevisiRaporHq(baris: KirimRaporHq, catatan: s
   if (galat) return { error: galat }
   if (teks) await siarkanRevisiRaporHq(isi.idGuru)
   return { error: null as string | null }
+}
+
+export async function tandaiDiperiksaHq(
+  baris: KirimRaporHq,
+  pemeriksa: { id: string; nama: string },
+) {
+  const dokumen = await muatDokumenKirim()
+  if (dokumen.error) return { error: dokumen.error }
+  const kunci = kunciKirimRaporHq(baris)
+  const peta = new Map(dokumen.daftar.map((row) => [kunciKirimRaporHq(row), row]))
+  const lama = peta.get(kunci)
+  if (!lama) return { error: 'Data kiriman tidak ditemukan.' }
+  const sekarang = new Date().toISOString()
+  const isi: KirimRaporHq = {
+    ...lama,
+    materi: baris.materi || lama.materi,
+    nilaiAkhir: baris.nilaiAkhir ?? lama.nilaiAkhir,
+    predikat: baris.predikat || lama.predikat,
+    statusPemeriksa: 'Diperiksa',
+    pemeriksaId: pemeriksa.id,
+    pemeriksaNama: pemeriksa.nama,
+    diperiksaPada: sekarang,
+    diperbaruiPada: sekarang,
+  }
+  peta.set(kunci, isi)
+  const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
+  if (galat) return { error: galat }
+  await siarkanPemeriksaHq(isi)
+  return { error: null as string | null, data: isi }
+}
+
+export async function siarkanPemeriksaHq(baris: Pick<KirimRaporHq, 'idSiswa' | 'namaSiswa' | 'kelas' | 'asesmen' | 'pemeriksaNama'>) {
+  const kanal = supabase.channel(KANAL_REVISI_RAPOR_HQ)
+  await new Promise<void>((selesai) => {
+    const batas = setTimeout(() => {
+      void supabase.removeChannel(kanal)
+      selesai()
+    }, 2500)
+    kanal.subscribe((status) => {
+      if (status !== 'SUBSCRIBED' && status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') return
+      clearTimeout(batas)
+      if (status !== 'SUBSCRIBED') {
+        void supabase.removeChannel(kanal)
+        selesai()
+        return
+      }
+      void kanal
+        .send({
+          type: 'broadcast',
+          event: 'pemeriksa',
+          payload: {
+            idSiswa: baris.idSiswa,
+            namaSiswa: baris.namaSiswa,
+            kelas: baris.kelas,
+            asesmen: baris.asesmen,
+            pemeriksaNama: baris.pemeriksaNama,
+          },
+        })
+        .finally(() => {
+          void supabase.removeChannel(kanal)
+          selesai()
+        })
+    })
+  })
 }
 
 export async function siarkanRevisiRaporHq(idGuru: string) {
