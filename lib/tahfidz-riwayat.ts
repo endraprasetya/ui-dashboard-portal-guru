@@ -9,6 +9,7 @@ export type RiwayatSetoranTahfidz = {
   hafalan_baru?: string
   ayat_mulai?: string
   ayat_selesai?: string
+  surah_ziyadah?: string
   status?: string
   keterangan?: string
   keterangan_pesan_hafalan?: string
@@ -24,14 +25,24 @@ export async function fetchRiwayatSetoranTahfidz(idSiswa: string, limit = 5): Pr
   const id = String(idSiswa || '').trim()
   if (!id) return []
 
-  const { data, error } = await supabase
-    .from('setoran_tahfidz')
-    .select(
-      'id_setoran,tanggal,hafalan_baru,ayat_mulai,ayat_selesai,status,keterangan,keterangan_pesan_hafalan,tugas_rumah,surah_tugas,ayat_mulai_tugas,ayat_selesai_tugas,konfirmasi_ortu,tipe_tugas',
-    )
-    .eq('id_siswa', id)
-    .order('tanggal', { ascending: false })
-    .limit(Math.max(limit, 5) * 3)
+  const kolomUtama =
+    'id_setoran,tanggal,hafalan_baru,ayat_mulai,ayat_selesai,surah_ziyadah,status,keterangan,keterangan_pesan_hafalan,tugas_rumah,surah_tugas,ayat_mulai_tugas,ayat_selesai_tugas,konfirmasi_ortu,tipe_tugas'
+  const kolomDasar =
+    'id_setoran,tanggal,hafalan_baru,ayat_mulai,ayat_selesai,status,keterangan,keterangan_pesan_hafalan,tugas_rumah,surah_tugas,ayat_mulai_tugas,ayat_selesai_tugas,konfirmasi_ortu,tipe_tugas'
+  const permintaan = (kolom: string) =>
+    supabase
+      .from('setoran_tahfidz')
+      .select(kolom)
+      .eq('id_siswa', id)
+      .order('tanggal', { ascending: false })
+      .limit(Math.max(limit, 5) * 3)
+
+  let { data, error } = await permintaan(kolomUtama)
+  if (error && /surah_ziyadah|column|schema cache/i.test(error.message || '')) {
+    const ulang = await permintaan(kolomDasar)
+    data = ulang.data
+    error = ulang.error
+  }
 
   if (error) {
     console.error('Gagal memuat riwayat tahfidz:', error.message)

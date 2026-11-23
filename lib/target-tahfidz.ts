@@ -83,7 +83,10 @@ export function posisiDariNama(
   nama: string,
   rentangAyat?: string | null,
 ): PosisiHafalan | null {
-  const surah = cariSurah(surahs, nama)
+  const bersih = String(nama || '')
+    .replace(/\s*\(Ayat\s+\d+(?:\s*-\s*\d+)?\)\s*$/i, '')
+    .trim()
+  const surah = cariSurah(surahs, bersih)
   if (!surah) return null
   const ayat = ayatTerakhirDariRentang(rentangAyat)
   return {
@@ -155,7 +158,7 @@ export function buatNarasiCapaianTarget(hasil: HasilNilaiTarget, asesmen: string
     : sedang
       ? `Alhamdulillah ananda di kelas ${hasil.kelas} mampu menambah hafalan baru`
       : `Ananda di kelas ${hasil.kelas} masih tahap muroja'ah dari hafalan sebelumnya`
-  return `${pengantar}. Target hafalan Al-Qur'an (${labelAsesmen}) kelas ${hasil.kelas} sampai surat ${hasil.targetKurikulum}. Karena ananda baru mencapai ${capaian}, maka nilai target yang didapat ${hasil.poin} poin.`
+  return `${pengantar}. Target hafalan Al-Qur'an (${labelAsesmen}) kelas ${hasil.kelas} sampai surat ${hasil.targetKurikulum}. Capaian aktual ananda ${capaian}, sehingga nilai target yang didapat ${hasil.poin} poin.`
 }
 
 export function buatNarasiMotivasi(hasil: HasilNilaiTarget) {

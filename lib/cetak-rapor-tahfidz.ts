@@ -15,9 +15,6 @@ import {
 } from '@/lib/rapor-tahfidz-nilai'
 import {
   angkaKelas,
-  buatNarasiCapaianTarget,
-  buatNarasiKompetensi,
-  buatNarasiMotivasi,
   hitungNilaiTarget,
   posisiDariNama,
   posisiTerbaik,
@@ -86,6 +83,13 @@ function teks(value: unknown) {
   const hasil = String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim()
+  if (!hasil || hasil === '-' || hasil.toLowerCase() === 'null') return ''
+  return hasil
+}
+
+/** Narasi guru: jangan meratakan spasi/baris baru, agar cetak sama dengan isian form. */
+function teksNarasi(value: unknown) {
+  const hasil = String(value ?? '').trim()
   if (!hasil || hasil === '-' || hasil.toLowerCase() === 'null') return ''
   return hasil
 }
@@ -246,12 +250,13 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
   const posisiCapaian = posisiTerbaik(kelasAngka || 1, kandidat)
   const hasilTarget = hitungNilaiTarget(teks(siswaRow.kelas), posisiCapaian, surahs)
   const nilaiRataRata = nilaiRataRataSurah(baris.map((row) => row.nilaiSurat))
-  const nilaiTarget = hasilTarget.poin
+  const angkaTargetHeader =
+    header?.nilai_target == null || header?.nilai_target === '' ? NaN : Number(header.nilai_target)
+  const nilaiTarget = Number.isFinite(angkaTargetHeader) ? angkaTargetHeader : hasilTarget.poin
   const nilaiRapor = nilaiRaporTahfidz(nilaiRataRata, nilaiTarget)
-  const capaianTarget = buatNarasiCapaianTarget(hasilTarget, teks(header?.jenis_asesmen) || teks(asesmen), surahs)
-  const motivasi = buatNarasiMotivasi(hasilTarget)
-  const capaianKompetensi =
-    teks(header?.capaian_kompetensi) || buatNarasiKompetensi(baris.map((row) => row.namaSurat))
+  const capaianTarget = teksNarasi(header?.capaian_target)
+  const motivasi = teksNarasi(header?.motivasi)
+  const capaianKompetensi = teksNarasi(header?.capaian_kompetensi)
 
   return {
     siswa: {

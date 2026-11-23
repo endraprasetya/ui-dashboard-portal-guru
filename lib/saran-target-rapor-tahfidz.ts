@@ -1,5 +1,6 @@
 import { fetchRiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
 import { fetchAllSurah, type Surah } from '@/lib/surah'
+import { formatZiyadahRecord, parseBagianAyat } from '@/lib/tahfidz'
 import {
   angkaKelas,
   buatNarasiCapaianTarget,
@@ -11,8 +12,15 @@ import {
 } from '@/lib/target-tahfidz'
 
 function posisiDariSetoran(surahs: Surah[], row: Record<string, unknown>): PosisiHafalan | null {
-  const nama = String(row.surah || row.nama_surat || '').trim()
-  const ayat = String(row.ayat || row.ayat_selesai || row.ayat_akhir || '').trim()
+  const label = formatZiyadahRecord(row)
+  const bagian = parseBagianAyat(label === '-' ? '' : label)
+  if (bagian?.surah) {
+    const rentang = [bagian.mulai, bagian.selesai].filter(Boolean).join('-')
+    const pos = posisiDariNama(surahs, bagian.surah, rentang)
+    if (pos) return pos
+  }
+  const nama = String(row.surah_ziyadah || row.hafalan_baru || row.surah || row.nama_surat || '').trim()
+  const ayat = String(row.ayat_selesai || row.ayat_mulai || row.ayat || row.ayat_akhir || '').trim()
   if (!nama) return null
   return posisiDariNama(surahs, nama, ayat)
 }

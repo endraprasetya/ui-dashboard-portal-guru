@@ -32,6 +32,7 @@ export const GAYA_CETAK_RAPOR_TAHFIDZ = `
   .lembar-rapor .tabel-nilai thead th { background: #d9d9d9; font-weight: 700; text-align: center; }
   .lembar-rapor .tabel-catatan th,
   .lembar-rapor .tabel-catatan td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; }
+  .lembar-rapor .tabel-catatan td { white-space: pre-wrap; }
   .banner-biru { background: #1e40af !important; color: #fff !important; font-weight: 700; text-align: center; }
   .kotak-merah { background: #ef4444 !important; color: #fff !important; font-weight: 700; text-align: center; }
   .kotak-hijau { background: #22c55e !important; color: #000 !important; font-weight: 700; text-align: center; font-size: 18pt; }

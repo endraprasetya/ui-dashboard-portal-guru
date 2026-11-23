@@ -184,7 +184,7 @@ export function tulisCadanganNilaiTarget(idSiswa: string, asesmen: string, nilai
   window.localStorage.setItem(kunci, JSON.stringify({ nilaiTarget: Number(nilai), capaianTarget: String(capaianTarget || '') }))
 }
 
-/** Kolom Supabase dulu, lalu cadangan localStorage, lalu angka di teks capaian. */
+/** Kolom Supabase dulu, lalu cadangan localStorage, lalu angka di teks capaian. Teks guru di basis tidak ditimpa cadangan. */
 export function pulihkanNilaiTarget(opsi: {
   dariBasis: number | '' | null | undefined
   capaianBasis: string
@@ -192,18 +192,16 @@ export function pulihkanNilaiTarget(opsi: {
 }) {
   const capaianBasis = String(opsi.capaianBasis || '')
   const angkaBasis = opsi.dariBasis === '' || opsi.dariBasis == null ? null : Number(opsi.dariBasis)
+  const capaianTarget = capaianBasis || opsi.cadangan?.capaianTarget || ''
   if (angkaBasis != null && Number.isFinite(angkaBasis)) {
-    return { nilaiTarget: angkaBasis, capaianTarget: capaianBasis || opsi.cadangan?.capaianTarget || '' }
+    return { nilaiTarget: angkaBasis, capaianTarget }
   }
-  if (opsi.cadangan) {
-    return {
-      nilaiTarget: opsi.cadangan.nilaiTarget,
-      capaianTarget: opsi.cadangan.capaianTarget || capaianBasis,
-    }
+  if (opsi.cadangan && Number.isFinite(opsi.cadangan.nilaiTarget)) {
+    return { nilaiTarget: opsi.cadangan.nilaiTarget, capaianTarget }
   }
   const dariTeks = parseNilaiTargetDariTeks(capaianBasis)
   if (dariTeks != null) return { nilaiTarget: dariTeks, capaianTarget: capaianBasis }
-  return { nilaiTarget: '' as number | '', capaianTarget: capaianBasis }
+  return { nilaiTarget: '' as number | '', capaianTarget }
 }
 
 export function judulAsesmenTahfidz(kode: string, semester?: string) {
@@ -398,9 +396,9 @@ export async function simpanNilaiUjianTahfidz(payload: {
 
   const nilaiTarget = angkaAtauKosong(payload.narasi?.nilaiTarget)
   const narasi = {
-    capaian_kompetensi: payload.narasi?.capaianKompetensi || '',
-    capaian_target: payload.narasi?.capaianTarget || '',
-    motivasi: payload.narasi?.motivasi || '',
+    capaian_kompetensi: String(payload.narasi?.capaianKompetensi ?? ''),
+    capaian_target: String(payload.narasi?.capaianTarget ?? ''),
+    motivasi: String(payload.narasi?.motivasi ?? ''),
   }
 
   const isiHeader = {

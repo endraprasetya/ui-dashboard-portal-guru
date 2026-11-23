@@ -162,12 +162,23 @@ export function NilaiUjianTahfidz({
         setNilaiTarget(pulih.nilaiTarget)
       }
       setMemuat(false)
-      if (targetTahfidzAktif && pulih.nilaiTarget === '' && !pulih.capaianTarget && target.surahs.length > 0) {
+      const sudahAdaNarasi = Boolean(
+        hasil.header?.capaianTarget ||
+          hasil.header?.capaianKompetensi ||
+          hasil.header?.motivasi ||
+          pulih.capaianTarget,
+      )
+      if (
+        targetTahfidzAktif &&
+        !sudahAdaNarasi &&
+        pulih.nilaiTarget === '' &&
+        target.surahs.length > 0
+      ) {
         hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs).then((saran) => {
           if (!saran || batal || targetDiubah.current) return
-          setNilaiTarget(saran.nilaiTarget)
-          setCapaianTarget(saran.capaianTarget)
-          setMotivasi(saran.motivasi)
+          setNilaiTarget((sekarang) => (sekarang === '' ? saran.nilaiTarget : sekarang))
+          setCapaianTarget((sekarang) => (sekarang.trim() ? sekarang : saran.capaianTarget))
+          setMotivasi((sekarang) => (sekarang.trim() ? sekarang : saran.motivasi))
         })
       }
     })
@@ -297,7 +308,7 @@ export function NilaiUjianTahfidz({
       baris,
       narasi: {
         capaianKompetensi,
-        capaianTarget: targetTahfidzAktif ? capaianTarget : '',
+        capaianTarget,
         motivasi,
         nilaiTarget: targetTahfidzAktif ? nilaiTarget : '',
       },
@@ -666,7 +677,12 @@ export function NilaiUjianTahfidz({
                   Capaian target
                   <textarea
                     value={capaianTarget}
-                    onChange={(event) => setCapaianTarget(event.target.value)}
+                    onChange={(event) => {
+                      targetDiubah.current = true
+                      const teks = event.target.value
+                      setCapaianTarget(teks)
+                      tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, nilaiTarget, teks)
+                    }}
                     rows={3}
                     placeholder="Deskripsi capaian terhadap target hafalan..."
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -683,7 +699,10 @@ export function NilaiUjianTahfidz({
               Capaian kompetensi
               <textarea
                 value={capaianKompetensi}
-                onChange={(event) => setCapaianKompetensi(event.target.value)}
+                onChange={(event) => {
+                  targetDiubah.current = true
+                  setCapaianKompetensi(event.target.value)
+                }}
                 rows={2}
                 placeholder="Deskripsi capaian kompetensi siswa..."
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -693,7 +712,10 @@ export function NilaiUjianTahfidz({
               Motivasi / catatan ustadz
               <textarea
                 value={motivasi}
-                onChange={(event) => setMotivasi(event.target.value)}
+                onChange={(event) => {
+                  targetDiubah.current = true
+                  setMotivasi(event.target.value)
+                }}
                 rows={2}
                 placeholder="Motivasi atau catatan pembimbing..."
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
