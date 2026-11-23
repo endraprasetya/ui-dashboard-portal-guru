@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { Printer, X } from 'lucide-react'
 import { formatTanggalPanjang } from '@/lib/hari-kerja'
 import { KEPALA_SEKOLAH } from '@/lib/kepala-sekolah'
-import { formatWaktuKeringanan, rupiahKeringanan, type PengajuanKeringanan } from '@/lib/pengajuan-keringanan'
+import { formatWaktuKeringanan, rupiahKeringanan, teksPelunasanPengajuan, type PengajuanKeringanan } from '@/lib/pengajuan-keringanan'
 
 const KOP = '/surat/kop-surat.jpg'
 const STEMPEL = '/surat/stempel.png'
@@ -163,7 +163,7 @@ export function SuratRekomendasiKeringanan({
             <tr>
               <td>Kesanggupan pelunasan</td>
               <td>:</td>
-              <td>{pengajuan.kesanggupanBayar}</td>
+              <td>{teksPelunasanPengajuan(pengajuan)}</td>
             </tr>
             <tr>
               <td>Target pelunasan</td>

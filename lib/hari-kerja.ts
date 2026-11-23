@@ -1,11 +1,25 @@
-/** Hari kerja sekolah: Senin–Kamis dan Sabtu. Jumat dan Ahad libur. */
+const HARI_KERJA = new Set([1, 2, 3, 4, 6])
+
+/** Hari kerja unit sekolah: Senin–Kamis dan Sabtu (`getDay()` 1, 2, 3, 4, 6). Jumat (5) dan Minggu (0) libur. */
 export function adalahHariKerja(tanggal: Date) {
-  const hari = tanggal.getDay()
-  return hari !== 0 && hari !== 5
+  return HARI_KERJA.has(tanggal.getDay())
 }
 
 function tanggalLokal(dari: Date) {
   return new Date(dari.getFullYear(), dari.getMonth(), dari.getDate())
+}
+
+/**
+ * 1 hari kerja sejak tanggal surat: mulai dari `baseDate`, majukan 1 hari demi 1 hari
+ * sampai menemukan hari kerja pertama (Senin–Kamis atau Sabtu), melewati Jumat dan Minggu.
+ * Contoh: Senin -> Selasa, Kamis -> Sabtu, Sabtu -> Senin.
+ */
+export function tanggalPertemuanTunggakan(baseDate: Date) {
+  const hasil = tanggalLokal(baseDate)
+  do {
+    hasil.setDate(hasil.getDate() + 1)
+  } while (!adalahHariKerja(hasil))
+  return hasil
 }
 
 /** Menggeser tanggal ke depan sebanyak `jumlah` hari kerja (tidak termasuk hari ini). */

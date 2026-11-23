@@ -14,6 +14,9 @@ export type PengajuanKeringanan = {
   nominalTunggakan: number
   nomorSurat: string
   kesanggupanBayar: string
+  jenisKegiatan: string
+  mekanismePelunasan: string
+  nominalAngsuran: number
   tanggalRencanaLunas: string
   statusPersetujuan: StatusPengajuanKeringanan
   nomorSuratRekomendasi: string
@@ -39,7 +42,7 @@ export type InputPengajuanKeringanan = {
 
 const TABEL = 'tabel_pengajuan_keringanan'
 const KOLOM =
-  'id,dibuat_pada,unit,nis,nama_siswa,kelas,nominal_tunggakan,kesanggupan_bayar,tanggal_rencana_lunas,alasan_pengajuan,status_persetujuan,catatan_kepsek,catatan_keputusan,tanggal_persetujuan,surat_resmi_isi,surat_resmi_dikirim_pada'
+  'id,dibuat_pada,unit,nis,nama_siswa,kelas,nominal_tunggakan,nomor_surat,kesanggupan_bayar,tanggal_rencana_lunas,alasan_pengajuan,jenis_kegiatan,mekanisme_pelunasan,nominal_angsuran,status_persetujuan,catatan_kepsek,catatan_keputusan,tanggal_persetujuan,nomor_surat_rekomendasi,surat_resmi_isi,surat_resmi_dikirim_pada'
 
 function lempar(error: { message?: string } | null, cadangan: string): never {
   throw new Error(error?.message || cadangan)
@@ -53,14 +56,41 @@ function angkaNis(nilai: string) {
   return String(nilai || '').replace(/\D/g, '')
 }
 
-function statusSah(nilai: unknown): nilai is StatusPengajuanKeringanan {
-  return (STATUS_PENGAJUAN_KERINGANAN as readonly string[]).includes(String(nilai || ''))
+function normalStatus(nilai: unknown): StatusPengajuanKeringanan | null {
+  const teks = String(nilai || '').trim().toLowerCase()
+  if (teks === 'pending') return 'Pending'
+  if (teks === 'disetujui') return 'Disetujui'
+  if (teks === 'ditolak') return 'Ditolak'
+  return null
+}
+
+function angkaAngsuran(row: Record<string, unknown>) {
+  const langsung = Number(row.nominal_angsuran)
+  if (Number.isFinite(langsung) && langsung > 0) return langsung
+  const kesanggupan = String(row.kesanggupan_bayar || '').replace(/[^\d]/g, '')
+  if (/angsur/i.test(String(row.mekanisme_pelunasan || row.kesanggupan_bayar || '')) && kesanggupan) {
+    const nilai = Number(kesanggupan)
+    return Number.isFinite(nilai) ? nilai : 0
+  }
+  return 0
+}
+
+function teksMekanisme(row: Record<string, unknown>) {
+  const mekanisme = String(row.mekanisme_pelunasan || '').trim()
+  if (mekanisme) return mekanisme
+  const kesanggupan = String(row.kesanggupan_bayar || '').trim()
+  if (/cash|tunai/i.test(kesanggupan)) return 'Cash / Tunai'
+  if (/angsur/i.test(kesanggupan)) return kesanggupan
+  return kesanggupan
 }
 
 function petakan(row: Record<string, unknown>): PengajuanKeringanan | null {
-  if (!statusSah(row.status_persetujuan)) return null
+  const status = normalStatus(row.status_persetujuan)
+  if (!status) return null
   const nis = String(row.nis || '').trim()
   if (!nis) return null
+  const mekanismePelunasan = teksMekanisme(row)
+  const kesanggupanBayar = String(row.kesanggupan_bayar || '').trim() || mekanismePelunasan
   return {
     id: String(row.id || ''),
     nis,
@@ -69,10 +99,13 @@ function petakan(row: Record<string, unknown>): PengajuanKeringanan | null {
     unit: String(row.unit || ''),
     nominalTunggakan: Number(row.nominal_tunggakan) || 0,
     nomorSurat: String(row.nomor_surat || ''),
-    kesanggupanBayar: String(row.kesanggupan_bayar || ''),
+    kesanggupanBayar,
+    jenisKegiatan: String(row.jenis_kegiatan || ''),
+    mekanismePelunasan,
+    nominalAngsuran: angkaAngsuran(row),
     alasanPengajuan: String(row.alasan_pengajuan || ''),
     tanggalRencanaLunas: String(row.tanggal_rencana_lunas || ''),
-    statusPersetujuan: row.status_persetujuan,
+    statusPersetujuan: status,
     nomorSuratRekomendasi: String(row.nomor_surat_rekomendasi || ''),
     catatanKeputusan: String(row.catatan_kepsek || row.catatan_keputusan || ''),
     dibuatPada: String(row.dibuat_pada || ''),
@@ -87,11 +120,11 @@ async function ambilBaris(
   bangun: (kolom: string) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
   cadangan: string,
 ) {
-  const utama = await bangun(KOLOM)
-  if (!utama.error) return utama.data
   const lengkap = await bangun('*')
   if (!lengkap.error) return lengkap.data
-  lempar(utama.error.message ? utama.error : lengkap.error, cadangan)
+  const utama = await bangun(KOLOM)
+  if (!utama.error) return utama.data
+  lempar(lengkap.error.message ? lengkap.error : utama.error, cadangan)
 }
 
 export const KLAUSUL_SURAT_RESMI_WALI =
@@ -103,7 +136,8 @@ export function adaSuratResmiWali(item: PengajuanKeringanan) {
 
 export function isiSuratResmiUtama(item: PengajuanKeringanan) {
   if (item.suratResmiIsi.trim()) return item.suratResmiIsi.trim()
-  const bagian = [item.kesanggupanBayar]
+  const bagian = [teksPelunasanPengajuan(item)]
+  if (item.jenisKegiatan.trim()) bagian.unshift(`Pengajuan mengikuti kegiatan ${item.jenisKegiatan.trim()}.`)
   if (item.alasanPengajuan.trim()) bagian.push(`Alasan pengajuan: ${item.alasanPengajuan.trim()}`)
   return bagian.filter(Boolean).join('\n\n')
 }
@@ -114,6 +148,19 @@ export function tanggalSuratResmiWali(item: PengajuanKeringanan) {
 
 export function rupiahKeringanan(nilai: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(nilai)
+}
+
+export function teksPelunasanPengajuan(item: Pick<PengajuanKeringanan, 'kesanggupanBayar' | 'mekanismePelunasan' | 'nominalAngsuran'>) {
+  const mekanisme = item.mekanismePelunasan.trim() || item.kesanggupanBayar.trim()
+  if (item.nominalAngsuran > 0) {
+    return mekanisme.includes(rupiahKeringanan(item.nominalAngsuran))
+      ? mekanisme
+      : `${mekanisme || 'Mengangsur tiap bulan'} · ${rupiahKeringanan(item.nominalAngsuran)}`
+  }
+  if (/cash|tunai/i.test(mekanisme) || /cash|tunai/i.test(item.kesanggupanBayar)) {
+    return mekanisme || 'Cash / Tunai'
+  }
+  return mekanisme || item.kesanggupanBayar
 }
 
 export function formatWaktuKeringanan(iso?: string) {

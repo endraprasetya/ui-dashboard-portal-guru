@@ -9,7 +9,7 @@ import {
   formatHariTanggal,
   formatTanggalPanjang,
   nomorSuratTunggakan,
-  tambahHariKerja,
+  tanggalPertemuanTunggakan,
 } from '@/lib/hari-kerja'
 import { KEPALA_SEKOLAH } from '@/lib/kepala-sekolah'
 import type { DetailTunggakan, SiswaTunggakan } from '@/lib/keuangan-tipe'
@@ -41,7 +41,7 @@ export function SuratTunggakan({
   const inputNomor = useRef<HTMLInputElement>(null)
   const saatBuka = useMemo(() => new Date(), [])
   const tanggalSurat = formatTanggalPanjang(saatBuka)
-  const tanggalTemu = formatHariTanggal(tambahHariKerja(saatBuka, 2))
+  const tanggalTemu = formatHariTanggal(tanggalPertemuanTunggakan(saatBuka))
   const angkaNomor = angkaNomorSurat(nomor)
   const nomorPakai = angkaNomor ? nomorSuratTunggakan(angkaNomor, saatBuka) : ''
   const contohCetak = nomorSuratTunggakan('616', saatBuka)

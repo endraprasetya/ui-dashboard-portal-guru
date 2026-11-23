@@ -28,6 +28,9 @@ alter table public.tabel_pengajuan_keringanan add column if not exists tanggal_r
 alter table public.tabel_pengajuan_keringanan add column if not exists status_persetujuan text not null default 'Pending';
 alter table public.tabel_pengajuan_keringanan add column if not exists nomor_surat_rekomendasi text;
 alter table public.tabel_pengajuan_keringanan add column if not exists alasan_pengajuan text not null default '';
+alter table public.tabel_pengajuan_keringanan add column if not exists jenis_kegiatan text not null default '';
+alter table public.tabel_pengajuan_keringanan add column if not exists mekanisme_pelunasan text not null default '';
+alter table public.tabel_pengajuan_keringanan add column if not exists nominal_angsuran numeric;
 alter table public.tabel_pengajuan_keringanan add column if not exists catatan_keputusan text;
 alter table public.tabel_pengajuan_keringanan add column if not exists catatan_kepsek text;
 alter table public.tabel_pengajuan_keringanan add column if not exists tanggal_persetujuan timestamptz;

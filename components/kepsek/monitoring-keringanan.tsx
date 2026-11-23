@@ -8,6 +8,7 @@ import {
   muatPengajuanUnit,
   putuskanPengajuan,
   rupiahKeringanan,
+  teksPelunasanPengajuan,
   type PengajuanKeringanan,
   type StatusPengajuanKeringanan,
 } from '@/lib/pengajuan-keringanan'
@@ -147,7 +148,10 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
                     </td>
                     <td className="px-3 py-2 font-bold text-slate-800">{rupiahKeringanan(item.nominalTunggakan)}</td>
                     <td className="max-w-xs px-3 py-2 text-[11px] leading-relaxed text-slate-700">
-                      <p>{item.kesanggupanBayar}</p>
+                      {item.jenisKegiatan ? (
+                        <p className="font-semibold text-slate-800">Mengikuti {item.jenisKegiatan}</p>
+                      ) : null}
+                      <p>{teksPelunasanPengajuan(item)}</p>
                       {item.alasanPengajuan ? <p className="mt-1 text-slate-600">Alasan: {item.alasanPengajuan}</p> : null}
                       <p className="mt-1 font-semibold text-slate-500">Target {formatWaktuKeringanan(item.tanggalRencanaLunas)}</p>
                       {item.catatanKeputusan ? <p className="mt-1 text-rose-800">Catatan: {item.catatanKeputusan}</p> : null}
