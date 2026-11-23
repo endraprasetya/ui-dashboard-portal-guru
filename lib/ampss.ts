@@ -20,8 +20,11 @@ import {
   type BarisTagihan,
 } from './ampss-urai'
 import type { DetailTunggakan, RekapKeuangan, RekapKelas, RincianTagihan, SiswaTunggakan } from './keuangan-tipe'
-import { overlayDaftarTunggakan, overlayDetailTunggakan, overlayRekapKeuangan } from './kasir-tagihan'
+import { overlayDaftarTunggakan, overlayDetailTunggakan, overlayRekapKeuangan, terapkanPembayaranKeDetail } from './kasir-tagihan'
+import { muatPembayaranKasTerverifikasi } from './kasir'
+import { BATAS_BULAN_SYARAT_ASAS, evaluasiSyaratAsas, LABEL_BATAS_SYARAT_ASAS, type RekapSyaratAsas } from './syarat-asas'
 import { kanonNamaUnit } from './siswa'
+import { muatKunciYatim, nisTermasukYatim } from './yatim'
 
 const UMUR_CACHE_MS = 5 * 60 * 1000
 const BATAS_MS = 45_000
@@ -422,6 +425,52 @@ export async function muatRekapKeuangan(segar = false, unit?: string): Promise<R
     )
   }
   return muatRekapSekolah(sekolah, segar, unit)
+}
+
+/** Rekap kelayakan administrasi ujian ASAS. Tidak mengubah cache tagihan umum. */
+export async function muatRekapSyaratAsas(segar = false, unit?: string): Promise<RekapSyaratAsas> {
+  const rekap = await muatRekapKeuangan(segar, unit)
+  const sekolah = sekolahDariUnit(unit)
+  const peta = sekolah ? simpanan.get(sekolah.id)?.rincian || new Map<string, RincianTagihan[]>() : new Map<string, RincianTagihan[]>()
+  const daftar = await muatPembayaranKasTerverifikasi(unit).catch(() => [])
+  const kunci = await muatKunciYatim(unit).catch(() => new Set<string>())
+
+  const siswa = rekap.siswa
+    .filter((baris) => baris.aktif)
+    .map((baris) => {
+      if (baris.yatim || nisTermasukYatim(kunci, baris.nis)) {
+        return evaluasiSyaratAsas(baris, [])
+      }
+      const sumber = (peta.get(baris.nis) || []).map((item) => ({ ...item }))
+      const rincian =
+        daftar.length === 0
+          ? sumber
+          : terapkanPembayaranKeDetail(
+              {
+                nis: baris.nis,
+                nama: baris.nama,
+                kelas: baris.kelas,
+                tunggakan: baris.tunggakan,
+                status: baris.status,
+                rincian: sumber,
+              },
+              daftar,
+            ).rincian
+      return evaluasiSyaratAsas(baris, rincian)
+    })
+    .sort(
+      (a, b) =>
+        a.kelas.localeCompare(b.kelas, 'id', { numeric: true }) || a.nama.localeCompare(b.nama, 'id'),
+    )
+
+  return {
+    sekolah: rekap.sekolah,
+    tapel: rekap.tapel,
+    diambilPada: rekap.diambilPada,
+    batasBulan: BATAS_BULAN_SYARAT_ASAS,
+    labelBatas: LABEL_BATAS_SYARAT_ASAS,
+    siswa,
+  }
 }
 
 export async function muatDetailTunggakan(nis: string, unit?: string): Promise<DetailTunggakan | null> {

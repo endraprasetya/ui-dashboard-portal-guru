@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Banknote, ChevronRight, Printer, RefreshCw, Search, Users, Wallet } from 'lucide-react'
 import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
 import { KartuRekapanTagihan } from '@/components/kepsek/rekapan-tagihan'
 import { SuratTunggakan } from '@/components/kepsek/surat-tunggakan'
+import { BarisAksiSyaratAsas, PratinjauCetakSyaratAsas, type JenisCetakSyaratAsas } from '@/components/kepsek/cetak-syarat-asas'
 import { labelTapel } from '@/lib/ampss-urai'
 import { LencanaYatim } from '@/components/lencana-yatim'
 import type { DetailTunggakan, RekapKeuangan, SiswaTunggakan, StatusBayar } from '@/lib/keuangan-tipe'
+import type { RekapSyaratAsas } from '@/lib/syarat-asas'
 
 const UKURAN_HALAMAN = 20
 
@@ -45,11 +47,18 @@ export function ModulKeuangan({ unit }: { unit: string }) {
   const [detailGalat, setDetailGalat] = useState('')
   const [panel, setPanel] = useState<PanelRingkas | null>(null)
   const [surat, setSurat] = useState<SiswaTunggakan | null>(null)
+  const [kelasCetakAsas, setKelasCetakAsas] = useState('semua')
+  const [syaratAsas, setSyaratAsas] = useState<RekapSyaratAsas | null>(null)
+  const [syaratAsasMuat, setSyaratAsasMuat] = useState(false)
+  const [syaratAsasGalat, setSyaratAsasGalat] = useState('')
+  const [pratinjauAsas, setPratinjauAsas] = useState<JenisCetakSyaratAsas | null>(null)
   const permintaanDetail = useRef(0)
+  const permintaanSyaratAsas = useRef(0)
 
   const muat = (segar = false) => {
     setMemuat(true)
     setGalat('')
+    if (segar) setSyaratAsas(null)
     const params = new URLSearchParams({ unit })
     if (segar) params.set('segar', '1')
     fetch(`/api/kepsek/keuangan?${params}`)
@@ -63,6 +72,9 @@ export function ModulKeuangan({ unit }: { unit: string }) {
   }
 
   useEffect(() => {
+    setSyaratAsas(null)
+    setPratinjauAsas(null)
+    setKelasCetakAsas('semua')
     muat(false)
     // unit menentukan sekolah AMPSS yang dimuat
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +112,40 @@ export function ModulKeuangan({ unit }: { unit: string }) {
     setHalaman(0)
     setStatus(berikutnya === 'lunas' ? 'Lunas' : 'Menunggak')
     setPanel(berikutnya)
+  }
+
+  const muatSyaratAsas = (segar = false) => {
+    const tiket = ++permintaanSyaratAsas.current
+    setSyaratAsasMuat(true)
+    setSyaratAsasGalat('')
+    const params = new URLSearchParams({ unit })
+    if (segar) params.set('segar', '1')
+    return fetch(`/api/kepsek/keuangan/syarat-asas?${params}`)
+      .then(async (respon) => {
+        const json = await respon.json()
+        if (!respon.ok) throw new Error(json.pesan || 'Rekap syarat ASAS belum dapat dimuat.')
+        if (permintaanSyaratAsas.current === tiket) setSyaratAsas(json as RekapSyaratAsas)
+        return json as RekapSyaratAsas
+      })
+      .catch((error: Error) => {
+        if (permintaanSyaratAsas.current === tiket) {
+          setSyaratAsasGalat(error.message || 'Rekap syarat ASAS belum dapat dimuat.')
+        }
+        throw error
+      })
+      .finally(() => {
+        if (permintaanSyaratAsas.current === tiket) setSyaratAsasMuat(false)
+      })
+  }
+
+  const bukaCetakAsas = (jenis: JenisCetakSyaratAsas) => {
+    if (syaratAsas) {
+      setPratinjauAsas(jenis)
+      return
+    }
+    muatSyaratAsas(false)
+      .then(() => setPratinjauAsas(jenis))
+      .catch(() => undefined)
   }
 
   const bukaDetail = (nis: string) => {
@@ -150,6 +196,17 @@ export function ModulKeuangan({ unit }: { unit: string }) {
 
       {galat && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{galat}</p>}
       {memuat && !data && <p className="text-sm text-slate-500">Mengambil tagihan dan penerimaan dari AMPSS...</p>}
+
+      {data && (
+        <BarisAksiSyaratAsas
+          kelas={kelasCetakAsas}
+          kelasPilihan={kelasPilihan}
+          onKelas={setKelasCetakAsas}
+          onCetak={bukaCetakAsas}
+          memuat={syaratAsasMuat}
+          galat={syaratAsasGalat}
+        />
+      )}
 
       {data && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -273,6 +330,16 @@ export function ModulKeuangan({ unit }: { unit: string }) {
               onRincian={bukaDetail}
               onCetak={panel === 'menunggak' ? setSurat : undefined}
               labelYatim={panel === 'lunas' ? 'Anak Yatim' : undefined}
+              aksiSyaratAsas={
+                <BarisAksiSyaratAsas
+                  kelas={kelasCetakAsas}
+                  kelasPilihan={kelasPilihan}
+                  onKelas={setKelasCetakAsas}
+                  onCetak={bukaCetakAsas}
+                  memuat={syaratAsasMuat}
+                  galat={syaratAsasGalat}
+                />
+              }
             />
           )}
         </ModalKerangka>
@@ -342,6 +409,15 @@ export function ModulKeuangan({ unit }: { unit: string }) {
       )}
     </section>
     {surat && <SuratTunggakan siswa={surat} onTutup={() => setSurat(null)} />}
+    {pratinjauAsas && syaratAsas && (
+      <PratinjauCetakSyaratAsas
+        data={syaratAsas}
+        jenis={pratinjauAsas}
+        kelas={kelasCetakAsas}
+        unit={unit}
+        onTutup={() => setPratinjauAsas(null)}
+      />
+    )}
     </>
   )
 }
@@ -376,6 +452,7 @@ function DaftarSiswa({
   onRincian,
   onCetak,
   labelYatim,
+  aksiSyaratAsas,
 }: {
   cari: string
   kelas: string
@@ -390,9 +467,11 @@ function DaftarSiswa({
   onRincian: (nis: string) => void
   onCetak?: (siswa: SiswaTunggakan) => void
   labelYatim?: string
+  aksiSyaratAsas?: ReactNode
 }) {
   return (
     <div className="space-y-3">
+      {aksiSyaratAsas}
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs font-bold">
           Kelas
