@@ -136,19 +136,36 @@ export async function hapusMateriUjianTahfidz(idSiswa: string, asesmen: string) 
   return { error: null as string | null }
 }
 
-/** Salin daftar surah dan indikator yang sama ke banyak siswa binaan untuk satu asesmen. */
+/** Salin daftar surah dan indikator ke siswa binaan. Siswa lain yang sudah punya materi tidak ditimpa. */
 export async function terapkanMateriUjianKeSiswa(payload: {
   siswa: { idSiswa: string; kelas: string }[]
   asesmen: AsesmenTahfidz | string
   materi: MateriSurah[]
   keterangan: string
   guru: string
+  idSiswaUtama?: string
+  lewatiYangSudahAda?: boolean
 }) {
   const siswa = payload.siswa.filter((item) => teks(item.idSiswa))
-  if (siswa.length === 0) return { error: 'Tidak ada siswa binaan.', jumlah: 0 }
-  if (!teks(payload.asesmen)) return { error: 'Pilih jenis asesmen.', jumlah: 0 }
+  if (siswa.length === 0) return { error: 'Tidak ada siswa binaan.', jumlah: 0, idDiterapkan: [] as string[], idDilewati: [] as string[] }
+  if (!teks(payload.asesmen)) return { error: 'Pilih jenis asesmen.', jumlah: 0, idDiterapkan: [] as string[], idDilewati: [] as string[] }
 
-  const baris: BarisMateriUjian[] = siswa.flatMap((item) =>
+  const lewati = payload.lewatiYangSudahAda !== false
+  const idUtama = teks(payload.idSiswaUtama)
+  const existing = lewati ? await fetchMateriUjianTahfidz(siswa.map((item) => item.idSiswa)) : []
+  const sudahAda = new Set(
+    (existing as BarisMateriUjian[])
+      .filter((row) => row.asesmen === payload.asesmen && teks(row.surah))
+      .map((row) => row.id_siswa),
+  )
+
+  const sasaran = siswa.filter((item) => item.idSiswa === idUtama || !lewati || !sudahAda.has(item.idSiswa))
+  const dilewati = siswa.filter((item) => !sasaran.some((row) => row.idSiswa === item.idSiswa))
+  if (sasaran.length === 0) {
+    return { error: null as string | null, jumlah: 0, idDiterapkan: [] as string[], idDilewati: dilewati.map((item) => item.idSiswa) }
+  }
+
+  const baris: BarisMateriUjian[] = sasaran.flatMap((item) =>
     payload.materi.map((materi) => ({
       id_siswa: item.idSiswa,
       kelas: item.kelas,
@@ -160,18 +177,27 @@ export async function terapkanMateriUjianKeSiswa(payload: {
     })),
   )
 
-  for (let index = 0; index < siswa.length; index += 80) {
-    const bagian = siswa.slice(index, index + 80).map((item) => item.idSiswa)
+  for (let index = 0; index < sasaran.length; index += 80) {
+    const bagian = sasaran.slice(index, index + 80).map((item) => item.idSiswa)
     const hapus = await supabase.from('materi_ujian_tahfidz').delete().in('id_siswa', bagian).eq('asesmen', payload.asesmen)
-    if (hapus.error && hapus.error.code !== 'PGRST116') return { error: hapus.error.message, jumlah: 0 }
+    if (hapus.error && hapus.error.code !== 'PGRST116') {
+      return { error: hapus.error.message, jumlah: 0, idDiterapkan: [] as string[], idDilewati: dilewati.map((item) => item.idSiswa) }
+    }
   }
 
   for (let index = 0; index < baris.length; index += 200) {
     const { error } = await supabase.from('materi_ujian_tahfidz').insert(baris.slice(index, index + 200))
-    if (error) return { error: error.message, jumlah: 0 }
+    if (error) {
+      return { error: error.message, jumlah: 0, idDiterapkan: [] as string[], idDilewati: dilewati.map((item) => item.idSiswa) }
+    }
   }
 
-  return { error: null as string | null, jumlah: siswa.length }
+  return {
+    error: null as string | null,
+    jumlah: sasaran.length,
+    idDiterapkan: sasaran.map((item) => item.idSiswa),
+    idDilewati: dilewati.map((item) => item.idSiswa),
+  }
 }
 
 export function gabungMateriSiswa(baris: BarisMateriUjian[]) {

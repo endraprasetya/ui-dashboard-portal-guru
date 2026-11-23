@@ -333,7 +333,7 @@ export function NilaiUjianTahfidz({
       setDasarSurah(sidikBaris(baris))
       setGalat(false)
       setPesan(
-        `Nilai ujian ${target.nama} tersimpan. Daftar surah diterapkan ke ${terapan.jumlah} siswa binaan. Nilai pada surah yang sama tetap dipertahankan.`,
+        `Nilai ujian ${target.nama} tersimpan. Daftar surah disalin ke siswa binaan yang belum memiliki materi ujian (${terapan.jumlah} siswa). Materi yang sudah tersimpan pada siswa lain tidak diubah.`,
       )
       onSelesai?.()
       return
@@ -779,7 +779,10 @@ export function NilaiUjianTahfidz({
                   Terapkan ke semua murid binaan?
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-slate-700">
-                  Apa pilihan surah yang diujikan akan berlaku untuk semua murid binaan?
+                  Apakah pilihan materi/surah ujian ini akan diterapkan ke semua siswa binaan?
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Siswa yang sudah memiliki materi ujian tersimpan tidak akan ditimpa.
                 </p>
                 <div className="mt-4 flex flex-col gap-2">
                   <button
@@ -788,7 +791,7 @@ export function NilaiUjianTahfidz({
                     onClick={() => void simpanDengan(true)}
                     className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50"
                   >
-                    {menyimpan ? 'Menyimpan…' : 'Ya, Terapkan ke Semua'}
+                    {menyimpan ? 'Menyimpan…' : 'Ya, Terapkan ke Semua Siswa Binaan'}
                   </button>
                   <button
                     type="button"
@@ -797,6 +800,14 @@ export function NilaiUjianTahfidz({
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
                   >
                     Tidak, Hanya Siswa Ini
+                  </button>
+                  <button
+                    type="button"
+                    disabled={menyimpan}
+                    onClick={() => setKonfirmasiSurah(false)}
+                    className="rounded-xl px-4 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Batal
                   </button>
                 </div>
               </div>
