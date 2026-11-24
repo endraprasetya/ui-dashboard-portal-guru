@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BookCheck,
+  BookOpen,
   CalendarCheck2,
   ChevronRight,
   ClipboardCheck,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { ModalHasilUjianKepsek } from '@/components/kepsek/modal-hasil-ujian'
 import { ModalGuruBantu, ModalRaporHq } from '@/components/kepsek/modul-rapor-guru-bantu'
+import { ModalRaporKurmer } from '@/components/kepsek/modal-rapor-kurmer'
 import {
   ModalJurnal,
   ModalPresensiLengkap,
@@ -47,7 +49,7 @@ import { supabase } from '@/lib/supabase'
 import { KANAL_REVISI_RAPOR_HQ, NAMA_SETTING_KIRIM_RAPOR } from '@/lib/rapor-hq-kirim'
 
 type Panel = 'absensi' | 'absensi_guru_bantu' | 'qiroah' | 'skl' | null
-type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'guru_bantu' | 'hasil_ujian' | null
+type ModalKpi = 'presensi' | 'setoran' | 'tertib' | 'jurnal' | 'rapor_hq' | 'rapor_kurmer' | 'guru_bantu' | 'hasil_ujian' | null
 
 const BATAS_TABEL = 6
 
@@ -56,6 +58,7 @@ const kelasKartu =
 
 const ID_PINTASAN = {
   raporHq: 'pintasan-rapor-hq',
+  raporKurmer: 'pintasan-rapor-kurmer',
   sidia: 'pintasan-absensi-sidia',
   guruBantu: 'pintasan-guru-bantu',
   jurnal: 'pintasan-jurnal',
@@ -343,6 +346,10 @@ export function DashboardKepalaSekolah() {
                   <GraduationCap className="size-3.5 shrink-0 opacity-90" />
                   Rapor HQ
                 </button>
+                <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.raporKurmer)} className={kelasTombolNav}>
+                  <BookOpen className="size-3.5 shrink-0 opacity-90" />
+                  Rapor Kurmer
+                </button>
                 <button type="button" onClick={() => lompatKePintasan(ID_PINTASAN.sidia)} className={kelasTombolNav}>
                   <UserCheck className="size-3.5 shrink-0 opacity-90" />
                   Absensi SIDIA
@@ -491,7 +498,7 @@ export function DashboardKepalaSekolah() {
               <MonitoringSidiaAbsensiReguler tanggal={laporan.tanggalLaporan} />
             </div>
 
-            <section className="no-print grid gap-3 sm:grid-cols-2">
+            <section className="no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <article
                 id={ID_PINTASAN.raporHq}
                 role="button"
@@ -530,6 +537,42 @@ export function DashboardKepalaSekolah() {
                     Ketuk untuk rincian per siswa dan kelas yang belum menyetorkan.
                   </p>
                 )}
+              </article>
+              <article
+                id={ID_PINTASAN.raporKurmer}
+                role="button"
+                tabIndex={0}
+                className={`${kelasKartu} scroll-mt-28 transition-shadow`}
+                onClick={() => setModalKpi('rapor_kurmer')}
+                onKeyDown={(e) => e.key === 'Enter' && setModalKpi('rapor_kurmer')}
+              >
+                <div className="flex items-center justify-between gap-2 text-indigo-900">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="size-4" />
+                    <p className="text-xs font-extrabold uppercase">Rapor Kurmer</p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-400" />
+                </div>
+                <p className="mt-2 text-xs font-bold text-indigo-800">
+                  Asesmen {laporan.raporKurmerRingkas.asesmen} · Semester {laporan.raporKurmerMentah.labelSemester}{' '}
+                  {laporan.raporKurmerMentah.tahunAjaran}
+                </p>
+                <p className="mt-2 text-sm text-slate-800">
+                  <strong className="text-2xl font-black text-emerald-800">{laporan.raporKurmerRingkas.siswaSudah}</strong>{' '}
+                  siswa sudah menyetorkan
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                  Kelas masuk: {teksKelasRapor(laporan.raporKurmerRingkas.kelasSudah)}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  <strong className="text-amber-800">{laporan.raporKurmerRingkas.belum}</strong> kelas belum lengkap ·{' '}
+                  {laporan.raporKurmerRingkas.total} kelas
+                </p>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  {laporan.raporKurmerRingkas.siswaSudah > 0
+                    ? 'Ketuk untuk status per wali kelas dan pratinjau rapor.'
+                    : 'Belum ada kiriman. Ketuk untuk daftar kelas yang siap menerima nilai.'}
+                </p>
               </article>
               <article
                 id={ID_PINTASAN.guruBantu}
@@ -800,6 +843,7 @@ export function DashboardKepalaSekolah() {
       {laporan && modalKpi === 'tertib' && <ModalTertib laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'jurnal' && <ModalJurnal laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'rapor_hq' && <ModalRaporHq laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'rapor_kurmer' && <ModalRaporKurmer laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'guru_bantu' && (
         <ModalGuruBantu rekap={laporan.guruBantu} unit={laporan.unit} onTutup={() => setModalKpi(null)} />
       )}

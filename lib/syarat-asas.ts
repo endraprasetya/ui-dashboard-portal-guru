@@ -4,7 +4,10 @@ import type { RincianTagihan, SiswaTunggakan } from '@/lib/keuangan-tipe'
 /** Batas bulan SPP/Syahriah dan catering untuk kelayakan ujian ASAS. */
 export const BATAS_BULAN_SYARAT_ASAS = '2026-11'
 export const LABEL_BATAS_SYARAT_ASAS = 'November 2026'
-export const RASIO_PSB_KELAS_1 = 0.6
+/** Teks syarat di UI tetap “minimal 60%”. Kelolosan kelas 1 dihitung dari sisa tunggakan. */
+export const BATAS_TUNGGAKAN_PSB_KELAS_1_PUTRI = 2_400_000
+export const BATAS_TUNGGAKAN_PSB_KELAS_1_PUTRA = 2_312_000
+export const TEKS_SYARAT_PSB_KELAS_1 = 'PSB/daftar ulang belum 60%'
 
 export type StatusSyaratAsas = 'Lunas Syarat ASAS' | 'Belum Lunas Syarat ASAS'
 
@@ -52,6 +55,16 @@ export function dikecualikanSyaratAsas(kode: string, item: string): boolean {
   if (n.includes('test kemampuan akademik') || n.includes('tes kemampuan akademik')) return true
   if (n.includes('modul tka')) return true
   return false
+}
+
+/** Kelas putri SD memakai akhiran C/D; kelas putra memakai A/B. */
+export function jenisRombelAsas(kelas: string): 'Putra' | 'Putri' {
+  const rapat = String(kelas || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+  if (rapat.includes('putri') || /[cd]$/.test(rapat)) return 'Putri'
+  return 'Putra'
 }
 
 export function nomorJenjangKelas(kelas: string): number | null {
@@ -169,18 +182,12 @@ export function evaluasiSyaratAsas(
   const jenjang = nomorJenjangKelas(siswa.kelas)
   const kelas1 = jenjang === 1
   if (psb.length > 0) {
-    const totalTagihan = psb.reduce((jumlah, item) => {
-      const awal = item.tagihanAwal ?? (item.jumlah + (item.terbayar || 0))
-      return jumlah + Math.max(awal, 0)
-    }, 0)
-    const totalTerbayar = psb.reduce((jumlah, item) => jumlah + (item.terbayar || 0), 0)
-    const rasio = totalTagihan > 0 ? totalTerbayar / totalTagihan : 0
+    const sisa = psb.reduce((jumlah, item) => jumlah + Math.max(item.jumlah, 0), 0)
     if (kelas1) {
-      if (rasio < RASIO_PSB_KELAS_1) {
-        const persen = Math.round(rasio * 100)
-        itemBelum.push(`PSB/daftar ulang belum 60% (terbayar ${persen}%)`)
-      }
-    } else if (psb.some((item) => item.jumlah > 0)) {
+      const jenis = jenisRombelAsas(siswa.kelas)
+      const batas = jenis === 'Putri' ? BATAS_TUNGGAKAN_PSB_KELAS_1_PUTRI : BATAS_TUNGGAKAN_PSB_KELAS_1_PUTRA
+      if (sisa >= batas) itemBelum.push(TEKS_SYARAT_PSB_KELAS_1)
+    } else if (sisa > 0) {
       itemBelum.push('PSB belum lunas')
     }
   }

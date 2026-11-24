@@ -519,39 +519,25 @@ export async function fetchKelasDanJumlahSiswa(currentUser?: any) {
 export async function fetchSiswaKelas(kelas: string, currentUser?: any): Promise<SiswaKelas[]> {
   if (!kelas) return []
   const unit = unitLogin(currentUser) || teacherUnit(currentUser)
-  const pageSize = 1000
-  const all: SiswaKelas[] = []
-  let from = 0
+  const { data, error } = await supabase
+    .from('siswa')
+    .select('id_siswa,nama_siswa,kelas,unit')
+    .eq('kelas', kelas)
+    .order('nama_siswa', { ascending: true })
+    .limit(300)
 
-  while (true) {
-    let query = supabase
-      .from('siswa')
-      .select('id_siswa,nama_siswa,kelas,unit')
-      .eq('kelas', kelas)
-      .not('kelas', 'ilike', '%Alumni%')
-      .order('nama_siswa', { ascending: true })
-      .range(from, from + pageSize - 1)
-
-    if (unit) query = query.eq('unit', unit)
-
-    const { data, error } = await query
-    if (error) {
-      console.error('Gagal mengambil siswa kelas:', error.message)
-      break
-    }
-
-    const rows = excludeAlumniSiswa((data || []) as SiswaKelas[])
-    for (const row of rows) {
-      if (isKelasAlumni(row.kelas)) continue
-      if (unit && !unitSama(row.unit, unit)) continue
-      all.push(row)
-    }
-
-    if (rows.length < pageSize) break
-    from += pageSize
+  if (error) {
+    console.error('Gagal mengambil siswa kelas:', error.message)
+    return []
   }
 
-  return all
+  const rows = excludeAlumniSiswa((data || []) as SiswaKelas[])
+  const milik = rows.filter((row) => {
+    if (isKelasAlumni(row.kelas)) return false
+    if (!unit) return true
+    return unitSama(row.unit, unit)
+  })
+  return milik
 }
 
 export async function fetchJurnalHari(kelas: string, tanggal: string, unit?: string | null) {
@@ -639,6 +625,88 @@ export async function fetchJurnalRentang(opts: {
   const mentah = opts.unit ? await saringJurnalUntukUnit(all, opts.unit) : all.map(normalkanKelasJurnal)
   const rows = gabungBarisJurnalPerSlot(mentah, opts.unit)
   return { rows, error: null }
+}
+
+const KOLOM_KEHADIRAN = 'tanggal,jam,kelas,semester,mapel,hadir,tidak_hadir,siswa_tidak_hadir'
+const KOLOM_JURNAL_RINGKAS = 'tanggal,jam,kelas,mapel,materi,kegiatan,tugas,siswa_tidak_hadir'
+
+function barisKelasUnitCocok(
+  row: { kelas?: string | null },
+  opts: { kelas?: string; unit?: string | null; kelasDikenal?: string[] },
+) {
+  const mentah = String(row.kelas || '')
+  const tampil = kelasJurnalTampil(mentah)
+  if (opts.kelas && tampil !== kelasJurnalTampil(opts.kelas)) return false
+  const dari = unitDariKelasJurnal(mentah)
+  if (opts.unit && dari) return unitSama(dari, opts.unit)
+  if (opts.unit && !dari && !opts.kelas) {
+    const dikenal = new Set((opts.kelasDikenal || []).map((nama) => kelasJurnalTampil(nama)))
+    if (dikenal.size > 0) return dikenal.has(tampil)
+  }
+  return true
+}
+
+/** Rekap absensi: satu kelas + rentang tanggal, tanpa kolom TTD/tautan dan tanpa pindai seluruh siswa. */
+export async function fetchJurnalKehadiran(opts: {
+  kelas?: string
+  start: string
+  end: string
+  semester?: string
+  unit?: string | null
+  kelasDikenal?: string[]
+}) {
+  if (!opts.start || !opts.end) return { rows: [] as any[], error: null }
+  const pageSize = 400
+  const batas = opts.kelas ? 2000 : 1600
+  const all: any[] = []
+  let from = 0
+
+  while (from < batas) {
+    let query = supabase
+      .from('jurnal_pembelajaran')
+      .select(KOLOM_KEHADIRAN)
+      .gte('tanggal', opts.start)
+      .lte('tanggal', opts.end)
+      .order('tanggal', { ascending: true })
+      .order('jam', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (opts.kelas) query = query.in('kelas', kelasDicari(opts.kelas, opts.unit))
+    if (opts.semester) query = query.eq('semester', Number(opts.semester))
+
+    const { data, error } = await query
+    if (error) return { rows: [] as any[], error }
+    const batch = data || []
+    all.push(...batch)
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+
+  const milik = all.filter((row) => barisKelasUnitCocok(row, opts))
+  return { rows: gabungBarisJurnalPerSlot(milik, opts.unit), error: null }
+}
+
+/** Riwayat jurnal satu kelas untuk wali: kolom teks saja, dibatasi tanggal. */
+export async function fetchJurnalRingkasKelas(opts: {
+  kelas: string
+  start: string
+  end: string
+  unit?: string | null
+}) {
+  if (!opts.kelas || !opts.start || !opts.end) return { rows: [] as any[], error: null }
+  const { data, error } = await supabase
+    .from('jurnal_pembelajaran')
+    .select(KOLOM_JURNAL_RINGKAS)
+    .in('kelas', kelasDicari(opts.kelas, opts.unit))
+    .gte('tanggal', opts.start)
+    .lte('tanggal', opts.end)
+    .order('tanggal', { ascending: false })
+    .order('jam', { ascending: true })
+    .limit(150)
+
+  if (error) return { rows: [] as any[], error }
+  const milik = (data || []).filter((row) => barisKelasUnitCocok(row, opts))
+  return { rows: gabungBarisJurnalPerSlot(milik, opts.unit), error: null }
 }
 
 function normalizeLinks(value: unknown): JurnalLink[] {

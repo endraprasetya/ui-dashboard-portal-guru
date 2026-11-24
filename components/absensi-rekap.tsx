@@ -5,7 +5,7 @@ import { ArrowLeft, BarChart2, CalendarDays, Printer, Table2 } from 'lucide-reac
 import { AbsensiMatriks } from '@/components/absensi-matriks'
 import { AbsensiRekapBulanan } from '@/components/absensi-rekap-bulanan'
 import {
-  fetchJurnalRentang,
+  fetchJurnalKehadiran,
   fetchKelasDanJumlahSiswa,
   fetchSiswaKelas,
   jenisAbsen,
@@ -45,6 +45,7 @@ export function AbsensiRekap({
   const [tahun, setTahun] = useState(String(new Date().getFullYear()))
   const [rows, setRows] = useState<any[]>([])
   const [siswa, setSiswa] = useState<SiswaKelas[]>([])
+  const [siswaSiap, setSiswaSiap] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -58,26 +59,64 @@ export function AbsensiRekap({
   }, [mode, periode, bulan, semester, tahun])
 
   useEffect(() => {
-    async function load() {
+    let batal = false
+    async function muatSiswa() {
+      if (!kelas) {
+        setSiswa([])
+        setSiswaSiap(true)
+        return
+      }
+      setSiswaSiap(false)
+      const roster = await fetchSiswaKelas(kelas, currentUser)
+      if (batal) return
+      setSiswa(roster)
+      setSiswaSiap(true)
+    }
+    void muatSiswa()
+    return () => {
+      batal = true
+    }
+  }, [kelas, currentUser])
+
+  useEffect(() => {
+    let batal = false
+    async function muatJurnal() {
+      const wajibKelas = mode === 'bulanan' || mode === 'matriks'
+      if (wajibKelas && !kelas) {
+        setRows([])
+        setError('')
+        setLoading(false)
+        return
+      }
       setLoading(true)
       setError('')
-      const [{ rows: jurnalRows, error: jurnalError }, roster] = await Promise.all([
-        fetchJurnalRentang({
-          kelas: kelas || undefined,
-          start,
-          end,
-          semester: periode === 'semester' ? semester : undefined,
-          unit: teacherUnit(currentUser),
-        }),
-        kelas ? fetchSiswaKelas(kelas, currentUser) : Promise.resolve([] as SiswaKelas[]),
-      ])
-      if (jurnalError) setError(jurnalError.message)
-      setRows(teacherUnit(currentUser) ? jurnalRows : [])
-      setSiswa(roster)
+      const { rows: jurnalRows, error: jurnalError } = await fetchJurnalKehadiran({
+        kelas: kelas || undefined,
+        start,
+        end,
+        semester: !wajibKelas && periode === 'semester' ? semester : undefined,
+        unit: teacherUnit(currentUser),
+        kelasDikenal: kelasList,
+      })
+      if (batal) return
+      if (jurnalError) {
+        const pesan = String(jurnalError.message || '')
+        setError(
+          /timeout/i.test(pesan)
+            ? 'Rekap absensi terlalu lama dimuat. Pilih satu kelas dan satu bulan, lalu muat ulang.'
+            : `Gagal memuat rekap absensi. ${pesan}`,
+        )
+        setRows([])
+      } else {
+        setRows(jurnalRows)
+      }
       setLoading(false)
     }
-    load()
-  }, [kelas, start, end, periode, semester, currentUser])
+    void muatJurnal()
+    return () => {
+      batal = true
+    }
+  }, [kelas, start, end, periode, semester, mode, currentUser, kelasList])
 
   const ringkasan = useMemo(() => {
     let sesi = 0
@@ -405,6 +444,7 @@ export function AbsensiRekap({
               siswa={siswa}
               rows={rows}
               loading={loading}
+              memuatSiswa={Boolean(kelas) && !siswaSiap}
               guruNama={teacherName(currentUser)}
               guruNip={teacherNip(currentUser)}
             />
@@ -417,6 +457,7 @@ export function AbsensiRekap({
               siswa={siswa}
               rows={rows}
               loading={loading}
+              memuatSiswa={Boolean(kelas) && !siswaSiap}
             />
           )}
         </div>

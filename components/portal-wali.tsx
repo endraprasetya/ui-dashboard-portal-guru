@@ -8,6 +8,7 @@ import { PengingatAsasWali } from '@/components/pengingat-asas-wali'
 import {
   ArrowRight,
   Award,
+  BookOpen,
   CalendarDays,
   Camera,
   LayoutDashboard,
@@ -18,12 +19,14 @@ import TertibPointWali from '@/components/tertib-point-wali'
 import { PrestasiSiswaWali } from '@/components/prestasi-siswa-wali'
 import { EkskulWali } from '@/components/ekskul-wali'
 import { DaftarPengumuman } from '@/components/daftar-pengumuman'
+import { JurnalWali } from '@/components/jurnal-wali'
 import { educationCalendar } from '@/lib/teacher-data'
 
-type ViewWali = 'dashboard' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul' | 'qiroah' | 'keuangan'
+type ViewWali = 'dashboard' | 'jurnal' | 'tertib_point' | 'pengumuman' | 'prestasi' | 'ekskul' | 'qiroah' | 'keuangan'
 
 const NAV: { id: ViewWali; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'jurnal', label: 'Jurnal' },
   { id: 'tertib_point', label: 'Tertib Poin' },
   { id: 'pengumuman', label: 'Pengumuman' },
   { id: 'prestasi', label: 'Prestasi' },
@@ -120,6 +123,15 @@ export function PortalWali({
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
+                onClick={() => setView('jurnal')}
+                className="rounded-2xl bg-teal-700 p-4 text-left text-white shadow transition hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <BookOpen className="size-5 opacity-90" />
+                <h3 className="mt-6 text-sm font-extrabold">Jurnal</h3>
+                <p className="mt-1 text-[11px] opacity-80">Jurnal pembelajaran &amp; kehadiran</p>
+              </button>
+              <button
+                type="button"
                 onClick={() => setView('tertib_point')}
                 className="rounded-2xl bg-red-500 p-4 text-left text-white shadow transition hover:-translate-y-0.5 hover:shadow-lg"
               >
@@ -178,6 +190,13 @@ export function PortalWali({
               </div>
               <DaftarPengumuman batas={4} ringkas />
             </section>
+          </div>
+        )}
+
+        {view === 'jurnal' && (
+          <div>
+            <TombolKembali onClick={() => setView('dashboard')} />
+            <JurnalWali currentUser={currentUser} />
           </div>
         )}
 

@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CheckCircle2, Plus, Printer, Save, Trash2, UserX, X } from 'lucide-react'
+import { BannerPeriodeJurnal } from '@/components/banner-periode-jurnal'
 import { BidangSuara, useDikte } from '@/components/input-suara'
 import {
   DAFTAR_MAPEL,
@@ -26,6 +27,12 @@ import {
   type SiswaKelas,
   type SiswaTidakHadir,
 } from '@/lib/jurnal'
+import {
+  LABEL_UJIAN_ASAS,
+  mapelAsasHari,
+  mapelAsasUntukKelas,
+  modePeriodeSekolah,
+} from '@/lib/periode-sekolah'
 
 const TombolSimpanJurnal = memo(function TombolSimpanJurnal({
   disabled,
@@ -231,6 +238,8 @@ export function JurnalPembelajaran({
   const selectedDate = tanggal ? new Date(`${tanggal}T00:00:00`) : null
   const hariIndex = selectedDate && !Number.isNaN(selectedDate.getTime()) ? selectedDate.getDay() : -1
   const jadwal = selectedDate && !Number.isNaN(selectedDate.getTime()) ? JADWAL_PELAJARAN : null
+  const modeTanggal = modePeriodeSekolah(tanggal)
+  const opsiMapelAsas = modeTanggal === 'asas' ? mapelAsasHari(tanggal, kelas) : []
   const jumlahKelas = siswaKelas.length || (kelas ? jumlahSiswa[kelas] || 0 : 0)
 
   const getEntry = (jam: number, source = entries) =>
@@ -349,25 +358,66 @@ export function JurnalPembelajaran({
       const { rows, error } = await fetchJurnalHari(kelasMuat, tanggalMuat, unit)
       if (batal) return
 
+      const modeMuat = modePeriodeSekolah(tanggalMuat)
+      const mapelAsas = mapelAsasUntukKelas(tanggalMuat, kelasMuat)
+      const jamAktif = jamAktifDariJadwal(JADWAL_PELAJARAN)
+      const lengkapiAsas = (sumber: Record<number, JurnalJam>) => {
+        if (modeMuat !== 'asas') return { entri: sumber, diubah: new Set<number>() }
+        const entri = { ...sumber }
+        const diubah = new Set<number>()
+        for (const jam of jamAktif) {
+          const ada = entri[jam] || emptyJurnalJam(total ? String(total) : '')
+          const mapelKosong = !String(ada.mapel || '').trim()
+          const materiKosong = !String(ada.materi || '').trim()
+          const kegiatanKosong = !String(ada.kegiatan || '').trim()
+          if (!mapelKosong && !materiKosong && !kegiatanKosong) {
+            entri[jam] = ada
+            continue
+          }
+          entri[jam] = {
+            ...ada,
+            mapel: mapelKosong ? mapelAsas : ada.mapel,
+            materi: materiKosong ? LABEL_UJIAN_ASAS : ada.materi,
+            kegiatan: kegiatanKosong ? LABEL_UJIAN_ASAS : ada.kegiatan,
+            guru: ada.guru || teacherName(currentUserRef.current),
+          }
+          diubah.add(jam)
+        }
+        return { entri, diubah }
+      }
+
       if (error) {
         setStatus('Gagal memuat jurnal dari Supabase. ' + error.message)
         setStatusError(true)
         setEntries({})
       } else if (rows.length > 0) {
-        const loaded = rowsToEntries(rows, total, roster)
-        jamDiubahRef.current = new Set()
+        const loaded = lengkapiAsas(rowsToEntries(rows, total, roster))
+        jamDiubahRef.current = loaded.diubah
         absenKustomRef.current = new Set()
         absenSajaRef.current = new Set()
-        setEntries(loaded)
+        setEntries(loaded.entri)
         const smt = rows.find((row) => row.semester != null)?.semester
         if (smt) setSemester(String(smt))
-        setStatus('Jurnal tanggal ini dimuat dari Supabase.')
+        setStatus(
+          modeMuat === 'asas'
+            ? 'Jurnal tersimpan dimuat. Jam yang masih kosong memakai UJIAN ASAS. Absensi tetap dicatat seperti biasa, lalu tekan Simpan jurnal.'
+            : modeMuat === 'libur'
+              ? 'Jurnal yang sudah tersimpan tetap ditampilkan. Masa libur semester: pengisian rutin tidak diwajibkan.'
+              : 'Jurnal tanggal ini dimuat dari Supabase.',
+        )
       } else {
-        jamDiubahRef.current = new Set()
+        const kosong = lengkapiAsas({})
+        jamDiubahRef.current = kosong.diubah
         absenKustomRef.current = new Set()
         absenSajaRef.current = new Set()
-        setEntries({})
-        setStatus('Semua siswa dihitung hadir. Isi jurnal lalu tekan tombol Simpan jurnal.')
+        setEntries(kosong.entri)
+        setStatus(
+          modeMuat === 'asas'
+            ? 'Masa Ujian ASAS I. Absensi murid tetap diisi seperti biasa. Jurnal memakai UJIAN ASAS sesuai jadwal ujian, lalu tekan Simpan jurnal.'
+            : modeMuat === 'libur'
+              ? 'Masa libur semester 1. Pengisian jurnal dan absensi rutin tidak diwajibkan.'
+              : 'Semua siswa dihitung hadir. Isi jurnal lalu tekan tombol Simpan jurnal.',
+        )
       }
 
       setLoading(false)
@@ -638,6 +688,17 @@ export function JurnalPembelajaran({
           <p className="text-xs text-emerald-100">Catatan KBM harian dan presensi per jam pelajaran</p>
         </div>
 
+        {modeTanggal !== 'efektif' && (
+          <div className="no-print space-y-2 px-5 pt-4">
+            <BannerPeriodeJurnal tanggal={tanggal} />
+            {modeTanggal === 'asas' && opsiMapelAsas.length > 0 && (
+              <p className="text-xs text-slate-600">
+                Jadwal ujian tanggal ini: <b>{opsiMapelAsas.join(', ')}</b>. Mapel bisa diganti dari daftar, absensi tetap disimpan normal.
+              </p>
+            )}
+          </div>
+        )}
+
         <JurnalMetaBar
           kelas={kelas}
           kelasList={kelasList}
@@ -882,6 +943,10 @@ export function JurnalPembelajaran({
                 </tbody>
               </table>
               <datalist id="daftar-mapel">
+                {modeTanggal === 'asas' && <option value={LABEL_UJIAN_ASAS} />}
+                {opsiMapelAsas.map((mapel) => (
+                  <option key={`asas-${mapel}`} value={mapel} />
+                ))}
                 {DAFTAR_MAPEL.map((mapel) => (
                   <option key={mapel} value={mapel} />
                 ))}

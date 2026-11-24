@@ -43,12 +43,14 @@ export function AbsensiRekapBulanan({
   siswa,
   rows,
   loading,
+  memuatSiswa = false,
 }: {
   kelas: string
   labelPeriode: string
   siswa: SiswaKelas[]
   rows: { tanggal?: string; siswa_tidak_hadir?: unknown }[]
   loading: boolean
+  memuatSiswa?: boolean
 }) {
   const [detail, setDetail] = useState<RekapSiswaPerHari | null>(null)
 
@@ -86,8 +88,8 @@ export function AbsensiRekapBulanan({
     )
   }
 
-  if (loading) {
-    return <p className="text-xs text-slate-500">Memuat rekap bulanan kelas {kelas}...</p>
+  if (memuatSiswa) {
+    return <p className="text-xs text-slate-500">Memuat daftar siswa kelas {kelas}...</p>
   }
 
   if (siswa.length === 0) {
@@ -100,6 +102,7 @@ export function AbsensiRekapBulanan({
 
   return (
     <div className="space-y-4">
+      {loading && <p className="text-xs text-slate-500">Memuat kehadiran kelas {kelas}...</p>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl bg-slate-50 p-3">
           <p className="text-[11px] font-bold uppercase text-slate-500">Hari efektif</p>

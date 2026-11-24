@@ -52,6 +52,7 @@ export function AbsensiMatriks({
   siswa,
   rows,
   loading,
+  memuatSiswa = false,
   guruNama,
   guruNip,
   kepsekTetap,
@@ -62,6 +63,7 @@ export function AbsensiMatriks({
   siswa: { id_siswa: string; nama_siswa: string }[]
   rows: { tanggal?: string; semester?: number | string | null; siswa_tidak_hadir?: unknown }[]
   loading: boolean
+  memuatSiswa?: boolean
   guruNama: string
   guruNip: string
   kepsekTetap?: { nama: string; niy: string }
@@ -217,7 +219,7 @@ export function AbsensiMatriks({
         <h3 className="text-base font-black text-slate-900">Rekap Absensi Bulanan</h3>
         <p className="text-[11px] text-slate-600">
           Kelas {kelas} · Bulan {labelBulan(bulan)}
-          {semester ? ` · Semester ${semester}` : ''} · {siswa.length} siswa · Hari efektif {rekap.hariEfektif}
+          {semester ? ` · Semester ${semester}` : ''} · {memuatSiswa ? 'memuat siswa' : `${siswa.length} siswa`} · Hari efektif {rekap.hariEfektif}
         </p>
       </div>
 
@@ -227,19 +229,20 @@ export function AbsensiMatriks({
         Jika dalam satu hari ada lebih dari satu keterangan, yang dipakai berurutan adalah Alpa, Sakit, lalu Izin.
       </p>
 
-      {loading && <p className="text-xs text-slate-500">Menyusun rekap matriks...</p>}
-      {!loading && siswa.length === 0 && (
+      {memuatSiswa && <p className="text-xs text-slate-500">Memuat daftar siswa kelas {kelas}...</p>}
+      {loading && !memuatSiswa && <p className="text-xs text-slate-500">Menyusun rekap matriks...</p>}
+      {!memuatSiswa && siswa.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
           Daftar siswa kelas {kelas} belum tersedia.
         </p>
       )}
-      {!loading && siswa.length > 0 && rekap.hariEfektif === 0 && (
+      {!memuatSiswa && siswa.length > 0 && !loading && rekap.hariEfektif === 0 && (
         <p className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           Belum ada jurnal pada bulan ini. Tanggal tetap ditampilkan, dan simbol terisi setelah presensi disimpan dari Jurnal Pembelajaran.
         </p>
       )}
 
-      {!loading && siswa.length > 0 && (
+      {!memuatSiswa && siswa.length > 0 && (
         <div className="rekap-scroll overflow-x-auto rounded-xl border border-slate-200">
           <table className="rekap-table text-[10px] text-slate-700">
             <caption className="sr-only">

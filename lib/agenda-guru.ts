@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { fetchJurnalRentang, JADWAL_PELAJARAN, jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
+import { modePeriodeSekolah } from '@/lib/periode-sekolah'
 import { fetchAllSiswa } from '@/lib/siswa'
 
 export type BarisJadwalHari = {
@@ -150,7 +151,7 @@ export async function muatAgendaGuru(currentUser?: { target_id?: string; nama_le
     }))
 
   const tugas: TugasGuru[] = []
-  if (slot.length > 0) {
+  if (slot.length > 0 && modePeriodeSekolah(hariIni) === 'efektif') {
     for (const namaKelas of kelas) {
       const kosongJam = slot
         .map((item) => Number(item.j))

@@ -37,6 +37,16 @@ import {
   waktuDariStatus,
 } from '@/lib/qiroah'
 import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+import {
+  dataKurmerKosong,
+  hitungPemantauanRaporKurmer,
+  kumpulanSiswaKurmerMasuk,
+  muatDataRaporKurmerKepsek,
+  pilihAsesmenRaporKurmer,
+  ringkasPemantauanRaporKurmer,
+  type DataMentahRaporKurmer,
+  type RingkasRaporKurmer,
+} from '@/lib/kepsek-rapor-kurmer'
 import { formatMurojaahRecord, formatZiyadahRecord, rincianTugasRumah } from '@/lib/tahfidz'
 import { cariRekapan } from '@/lib/ujian-relasi'
 
@@ -184,6 +194,8 @@ export type LaporanKepsek = {
   siswa: { id_siswa: string; nama_siswa: string; kelas: string; unit: string; id_pembimbing?: string | null }[]
   raporHqMentah: DataMentahRaporHq
   raporHqRingkas: RingkasRaporHq
+  raporKurmerMentah: DataMentahRaporKurmer
+  raporKurmerRingkas: RingkasRaporKurmer
   guruBantu: RekapAbsensiGuruBantuKepsek
   jurnalHariIni: BarisJurnal[]
   jurnalBulan: {
@@ -714,7 +726,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     id_pembimbing,
   }))
 
-  const [raporHqHasil, guruBantu] = await Promise.all([
+  const [raporHqHasil, raporKurmerHasil, guruBantu] = await Promise.all([
     muatDataRaporHqKepsek(siswaLaporan, unit).catch((error: Error) => {
       catatan.push('Pemantauan Rapor HQ belum dapat dimuat.')
       console.error(error.message)
@@ -728,13 +740,21 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
         catatan: [] as string[],
       }
     }),
+    muatDataRaporKurmerKepsek(
+      siswaLaporan.map(({ id_siswa, nama_siswa, kelas }) => ({ id_siswa, nama_siswa, kelas })),
+      jurnalUnit.map((row) => ({ kelas: row.kelas, guru: row.guru })),
+    ).catch((error: Error) => {
+      catatan.push('Pemantauan rapor Kurmer belum dapat dimuat.')
+      console.error(error.message)
+      return { mentah: dataKurmerKosong(), catatan: [] as string[] }
+    }),
     muatAbsensiGuruBantuKepsek(hari, unit).catch((error: Error) => {
       catatan.push('Absensi guru bantu belum dapat dimuat.')
       console.error(error.message)
       return rekapAbsensiGuruBantuKosong(hari)
     }),
   ])
-  catatan.push(...raporHqHasil.catatan)
+  catatan.push(...raporHqHasil.catatan, ...raporKurmerHasil.catatan)
 
   const asesmenAwal = pilihAsesmenRaporHq(raporHqHasil.mentah)
   const barisRaporHq = hitungPemantauanRaporHq(raporHqHasil.mentah, asesmenAwal)
@@ -744,6 +764,14 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     kumpulanSiswaMasuk(raporHqHasil.mentah, asesmenAwal).size,
     kelasDariKiriman(raporHqHasil.mentah, asesmenAwal),
     jumlahDiperiksaHq(raporHqHasil.mentah, asesmenAwal),
+  )
+
+  const asesmenKurmer = pilihAsesmenRaporKurmer(raporKurmerHasil.mentah)
+  const barisKurmer = hitungPemantauanRaporKurmer(raporKurmerHasil.mentah, asesmenKurmer)
+  const raporKurmerRingkas = ringkasPemantauanRaporKurmer(
+    barisKurmer,
+    asesmenKurmer,
+    kumpulanSiswaKurmerMasuk(raporKurmerHasil.mentah, asesmenKurmer).size,
   )
 
   return {
@@ -776,6 +804,8 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     siswa: siswaLaporan,
     raporHqMentah: raporHqHasil.mentah,
     raporHqRingkas,
+    raporKurmerMentah: raporKurmerHasil.mentah,
+    raporKurmerRingkas,
     guruBantu,
     jurnalHariIni,
     jurnalBulan: jurnalUnit,

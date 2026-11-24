@@ -176,10 +176,15 @@ export function QiroahPenguji({ onBack, currentUser }: { onBack: () => void; cur
     muatBerjalan.current = true
     if (!senyap) setLoading(true)
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('pengajuan')
-        .select('*')
+        .select('id_pengajuan,tanggal_diajukan,tanggal_pelaksanaan,unit,id_siswa,nama_siswa,kelas,jilid_diujikan,diajukan_oleh,nama_penguji,status')
         .order('tanggal_diajukan', { ascending: false })
+      if (error && /column|schema cache|does not exist|Could not find/i.test(error.message || '')) {
+        const ulang = await supabase.from('pengajuan').select('*').order('tanggal_diajukan', { ascending: false })
+        data = ulang.data
+        error = ulang.error
+      }
 
       if (error) {
         if (!senyap) {

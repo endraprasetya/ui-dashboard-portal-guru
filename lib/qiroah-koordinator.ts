@@ -178,8 +178,11 @@ export async function muatDataKoordinatorQQ(
   const jenisKelamin = lingkup ? await muatPetaJenisKelamin() : new Map<string, 'Putra' | 'Putri'>()
   const siswa = lingkup ? siswaUnit.filter((s) => masukLingkup(s.nama_siswa, s.kelas, lingkup, jenisKelamin)) : siswaUnit
 
-  const [{ data: pengajuanRaw, error: errPengajuan }, { data: rekapanRaw, error: errRekapan }] = await Promise.all([
-    supabase.from('pengajuan').select('*').order('tanggal_diajukan', { ascending: false }),
+  const kolomPengajuan =
+    'id_pengajuan,tanggal_diajukan,tanggal_pelaksanaan,unit,id_siswa,nama_siswa,kelas,jilid_diujikan,diajukan_oleh,nama_penguji,status'
+  const mintaPengajuan = supabase.from('pengajuan').select(kolomPengajuan).order('tanggal_diajukan', { ascending: false })
+  const [{ data: pengajuanAwal, error: galatPengajuan }, { data: rekapanRaw, error: errRekapan }] = await Promise.all([
+    mintaPengajuan,
     supabase
       .from('rekapan')
       .select(
@@ -188,6 +191,13 @@ export async function muatDataKoordinatorQQ(
       .order('tanggal_ujian', { ascending: false }),
   ])
 
+  let pengajuanRaw = pengajuanAwal
+  let errPengajuan = galatPengajuan
+  if (galatPengajuan && /column|schema cache|does not exist|Could not find/i.test(galatPengajuan.message || '')) {
+    const ulang = await supabase.from('pengajuan').select('*').order('tanggal_diajukan', { ascending: false })
+    pengajuanRaw = ulang.data
+    errPengajuan = ulang.error
+  }
   if (errPengajuan) throw new Error(errPengajuan.message)
   if (errRekapan) throw new Error(errRekapan.message)
 

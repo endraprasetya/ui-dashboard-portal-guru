@@ -300,7 +300,16 @@ export async function ajukanKeringanan(input: InputPengajuanKeringanan) {
 }
 
 async function nomorRekomendasiBerikutnya(sekarang: Date) {
-  const { data, error } = await supabase.from(TABEL).select('*').eq('status_persetujuan', 'Disetujui').order('dibuat_pada', { ascending: false }).limit(1000)
+  const sempit = await supabase
+    .from(TABEL)
+    .select('tanggal_persetujuan,diputuskan_pada,dibuat_pada')
+    .eq('status_persetujuan', 'Disetujui')
+    .order('dibuat_pada', { ascending: false })
+    .limit(1000)
+  const longgar = sempit.error
+    ? await supabase.from(TABEL).select('dibuat_pada').eq('status_persetujuan', 'Disetujui').order('dibuat_pada', { ascending: false }).limit(1000)
+    : sempit
+  const { data, error } = longgar.error ? sempit : longgar
   if (error) lempar(error, 'Nomor surat rekomendasi belum dapat disusun.')
   const bagian = bagianJakarta(sekarang)
   const awalan = `${bagian.tahun}-${bagian.bulan}`

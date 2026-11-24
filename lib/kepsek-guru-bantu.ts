@@ -176,7 +176,11 @@ export async function muatAbsensiGuruBantuKepsek(tanggal = todayInputValue(), un
 
   if (ids.length) {
     const [absRes, izinRes] = await Promise.all([
-      supabase.from(TABEL_ABSENSI).select('*').eq('tanggal', tanggal).in('id_induk', ids),
+      supabase
+        .from(TABEL_ABSENSI)
+        .select('id_absen,id_induk,tanggal,jam_masuk,jam_pulang,foto_masuk,foto_pulang,status')
+        .eq('tanggal', tanggal)
+        .in('id_induk', ids),
       supabase
         .from(TABEL_IZIN)
         .select('id_induk,jenis_izin,detail_izin')
@@ -277,10 +281,15 @@ export async function muatRekapBulananGuruBantuKepsek(bulan: string, unit?: stri
   let izin: Perizinan[] = []
   if (ids.length) {
     const [absRes, izinRes] = await Promise.all([
-      supabase.from(TABEL_ABSENSI).select('*').gte('tanggal', start).lte('tanggal', end).in('id_induk', ids),
+      supabase
+        .from(TABEL_ABSENSI)
+        .select('id_absen,id_induk,tanggal,jam_masuk,jam_pulang,foto_masuk,foto_pulang,status')
+        .gte('tanggal', start)
+        .lte('tanggal', end)
+        .in('id_induk', ids),
       supabase
         .from(TABEL_IZIN)
-        .select('*')
+        .select('id_izin,id_induk,tgl_pengajuan,jenis_izin,detail_izin,tgl_mulai,tgl_selesai,keterangan,status')
         .eq('status', 'Disetujui')
         .in('id_induk', ids)
         .lte('tgl_mulai', end)

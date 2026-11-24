@@ -135,7 +135,14 @@ export function DataSiswaBuku() {
         }
       }
 
-      const { data, error } = await supabase.from('data_diri_siswa').select('*').limit(1000)
+      const kolomBuku =
+        'nama_lengkap,kelas,nomor_induk_sekolah,nisn,nik,jenis_kelamin,tempat_tanggal_lahir,agama,anak_ke,telepon,pendidikan_sebelumnya,diterima_di_sekolah_ini_di_kelas,diterima_di_sekolah_ini_pada_tanggal,nama_ayah,pekerjaan_ayah,nama_ibu,nik_ibu,pekerjaan_ibu,jalan,desa_kelurahan,kecamatan,kabupaten,propinsi,nama_wali,alamat_wali,pekerjaan_wali'
+      let { data, error } = await supabase.from('data_diri_siswa').select(kolomBuku).limit(1000)
+      if (error && /column|schema cache|does not exist|Could not find/i.test(error.message || '')) {
+        const ulang = await supabase.from('data_diri_siswa').select('*').limit(1000)
+        data = ulang.data
+        error = ulang.error
+      }
       if (batal) return
       if (error) {
         setGalat('Data siswa belum dapat dimuat.')

@@ -27,7 +27,7 @@ export async function fetchAllSurah(): Promise<Surah[]> {
 
   const { data, error } = await supabase
     .from('surah')
-    .select('*')
+    .select('id,nomor_surat,nama_surat,jumlah_ayat,juz')
     .order('nomor_surat', { ascending: false })
 
   if (error) {

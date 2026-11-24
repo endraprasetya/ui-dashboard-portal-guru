@@ -32,7 +32,7 @@ const pesanError = (e: unknown) => (e instanceof Error ? e.message : (e as { mes
 export async function getAbsensiHariIni(idInduk: string, tanggal: string): Promise<Absensi | null> {
   const { data, error } = await supabase
     .from(TABEL_ABSENSI)
-    .select("*")
+    .select("id_absen,id_induk,tanggal,jam_masuk,jam_pulang,foto_masuk,foto_pulang,latlong_masuk,latlong_pulang,status")
     .eq("id_induk", idInduk)
     .eq("tanggal", tanggal)
     .maybeSingle();
@@ -114,7 +114,7 @@ export async function absenPulang(user: GuruUser, posisi: Posisi, foto: Blob): P
 export async function getRiwayat(idInduk: string, mulai: string, selesai: string): Promise<Absensi[]> {
   const { data, error } = await supabase
     .from(TABEL_ABSENSI)
-    .select("*")
+    .select("id_absen,id_induk,tanggal,jam_masuk,jam_pulang,foto_masuk,foto_pulang,latlong_masuk,latlong_pulang,status")
     .eq("id_induk", idInduk)
     .gte("tanggal", mulai)
     .lte("tanggal", selesai)
@@ -167,7 +167,7 @@ export async function ajukanIzin(user: GuruUser, f: FormIzin): Promise<Result> {
 export async function getIzinSaya(idInduk: string): Promise<Perizinan[]> {
   const { data, error } = await supabase
     .from(TABEL_IZIN)
-    .select("*")
+    .select("id_izin,id_induk,tgl_pengajuan,jenis_izin,detail_izin,tgl_mulai,tgl_selesai,keterangan,link_dokumen,status")
     .eq("id_induk", idInduk)
     .order("tgl_pengajuan", { ascending: false })
     .limit(30);
@@ -192,7 +192,10 @@ async function getDaftarGuruBantu(): Promise<{ target_id: string; nama_lengkap: 
 export async function getMonitoring(tanggal: string): Promise<{ baris: BarisMonitor[]; rekap: RekapHarian }> {
   const [guru, absRes, izinRes] = await Promise.all([
     getDaftarGuruBantu(),
-    supabase.from(TABEL_ABSENSI).select("*").eq("tanggal", tanggal),
+    supabase
+      .from(TABEL_ABSENSI)
+      .select("id_absen,id_induk,tanggal,jam_masuk,jam_pulang,foto_masuk,foto_pulang,status")
+      .eq("tanggal", tanggal),
     supabase
       .from(TABEL_IZIN)
       .select("id_induk, jenis_izin")
@@ -239,7 +242,11 @@ export async function getMonitoring(tanggal: string): Promise<{ baris: BarisMoni
 }
 
 export async function getDaftarIzin(filter: "Pending" | "Semua"): Promise<PerizinanDenganNama[]> {
-  let q = supabase.from(TABEL_IZIN).select("*").order("tgl_pengajuan", { ascending: false }).limit(100);
+  let q = supabase
+    .from(TABEL_IZIN)
+    .select("id_izin,id_induk,tgl_pengajuan,jenis_izin,detail_izin,tgl_mulai,tgl_selesai,keterangan,link_dokumen,status")
+    .order("tgl_pengajuan", { ascending: false })
+    .limit(100);
   if (filter === "Pending") q = q.eq("status", "Pending");
   const { data, error } = await q;
   if (error) throw error;
