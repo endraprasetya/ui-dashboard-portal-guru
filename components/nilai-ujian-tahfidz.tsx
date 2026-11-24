@@ -29,12 +29,12 @@ import {
   predikatNilai,
   bacaCadanganNilaiTarget,
   pulihkanNilaiTarget,
-  simpanNilaiTargetUjian,
-  simpanNilaiUjianTahfidz,
   tulisCadanganNilaiTarget,
   type MateriNilaiUjian,
   type NilaiSurahUjian,
 } from '@/lib/rapor-tahfidz-nilai'
+import { cariDrafHq, simpanNilaiTargetUjianAman, simpanNilaiUjianTahfidzAman, STATUS_DRAF_HQ } from '@/lib/antrean-draf-hq'
+import { BannerDrafHq } from '@/components/status-draf-hq'
 import {
   formatRentangAyat,
   sidikMateriUjian,
@@ -142,19 +142,31 @@ export function NilaiUjianTahfidz({
     setMemuat(true)
     fetchNilaiUjianTahfidz(target.idSiswa, target.asesmen).then((hasil) => {
       if (batal) return
-      if (hasil.error && !targetDiubah.current) {
+      const draf = cariDrafHq(target.idSiswa, target.asesmen)
+      const detailDraf = draf?.payloadNilai?.baris
+      const narasiDraf = draf?.payloadNilai?.narasi
+      if (hasil.error && !draf && !targetDiubah.current) {
         setPesan(`Gagal memuat nilai tersimpan: ${hasil.error}`)
         setGalat(true)
       }
-      const gabungan = gabungBaris(target.surahs, hasil.detail)
-      detailAwal.current = hasil.detail
+      const sumberDetail = detailDraf && detailDraf.length > 0 ? detailDraf : hasil.detail
+      const materiDasar =
+        detailDraf && detailDraf.length > 0
+          ? detailDraf.map((row) => ({ nama: row.namaSurat, ayat: row.rentangAyat }))
+          : target.surahs
+      const gabungan = gabungBaris(materiDasar.length ? materiDasar : target.surahs, sumberDetail)
+      detailAwal.current = sumberDetail
       setBaris(gabungan)
       setDasarSurah(sidikBaris(gabungan))
-      setCapaianKompetensi(hasil.header?.capaianKompetensi || '')
-      setMotivasi(hasil.header?.motivasi || '')
+      setCapaianKompetensi(narasiDraf?.capaianKompetensi ?? hasil.header?.capaianKompetensi ?? '')
+      setMotivasi(narasiDraf?.motivasi ?? hasil.header?.motivasi ?? '')
+      if (draf) {
+        setGalat(false)
+        setPesan(`${STATUS_DRAF_HQ}. Penilaian ini tersimpan di perangkat dan akan dikirim otomatis saat sinyal kembali.`)
+      }
       const pulih = pulihkanNilaiTarget({
-        dariBasis: hasil.header?.nilaiTarget,
-        capaianBasis: hasil.header?.capaianTarget || '',
+        dariBasis: narasiDraf?.nilaiTarget ?? draf?.payloadTarget?.nilaiTarget ?? hasil.header?.nilaiTarget,
+        capaianBasis: narasiDraf?.capaianTarget ?? draf?.payloadTarget?.capaianTarget ?? hasil.header?.capaianTarget ?? '',
         cadangan: bacaCadanganNilaiTarget(target.idSiswa, target.asesmen),
       })
       if (!targetDiubah.current) {
@@ -163,7 +175,10 @@ export function NilaiUjianTahfidz({
       }
       setMemuat(false)
       const sudahAdaNarasi = Boolean(
-        hasil.header?.capaianTarget ||
+        narasiDraf?.capaianTarget ||
+          narasiDraf?.capaianKompetensi ||
+          narasiDraf?.motivasi ||
+          hasil.header?.capaianTarget ||
           hasil.header?.capaianKompetensi ||
           hasil.header?.motivasi ||
           pulih.capaianTarget,
@@ -251,19 +266,26 @@ export function NilaiUjianTahfidz({
     setGalat(false)
     tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, poin, teksCapaian)
     setPesan(`Nilai target ${poin} poin disimpan.`)
-    void simpanNilaiTargetUjian({
-      idSiswa: target.idSiswa,
-      jenisAsesmen: target.asesmen,
-      nilaiTarget: poin,
-      capaianTarget: teksCapaian,
-    }).then((hasil) => {
+    void simpanNilaiTargetUjianAman(
+      {
+        idSiswa: target.idSiswa,
+        jenisAsesmen: target.asesmen,
+        nilaiTarget: poin,
+        capaianTarget: teksCapaian,
+      },
+      { namaSiswa: target.nama, kelas: target.kelas },
+    ).then((hasil) => {
       if (hasil.error) {
         setPesan(`Nilai target ${poin} poin tersimpan di perangkat ini, tetapi gagal ditulis ke server: ${hasil.error}`)
         setGalat(true)
         return
       }
       setGalat(false)
-      setPesan(`Nilai target ${poin} poin tersimpan untuk ${target.nama}.`)
+      setPesan(
+        hasil.lokal
+          ? `Nilai target ${poin} poin ${STATUS_DRAF_HQ.toLowerCase()}. Akan dikirim otomatis saat sinyal kembali.`
+          : `Nilai target ${poin} poin tersimpan untuk ${target.nama}.`,
+      )
     })
   }
 
@@ -302,21 +324,35 @@ export function NilaiUjianTahfidz({
     setPesan('')
     setKonfirmasiSurah(false)
     if (targetTahfidzAktif) tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, nilaiTarget, capaianTarget)
-    const hasil = await simpanNilaiUjianTahfidz({
-      idSiswa: target.idSiswa,
-      jenisAsesmen: target.asesmen,
-      baris,
-      narasi: {
-        capaianKompetensi,
-        capaianTarget,
-        motivasi,
-        nilaiTarget: targetTahfidzAktif ? nilaiTarget : '',
+    const hasil = await simpanNilaiUjianTahfidzAman(
+      {
+        idSiswa: target.idSiswa,
+        jenisAsesmen: target.asesmen,
+        baris,
+        narasi: {
+          capaianKompetensi,
+          capaianTarget,
+          motivasi,
+          nilaiTarget: targetTahfidzAktif ? nilaiTarget : '',
+        },
       },
-    })
+      { namaSiswa: target.nama, kelas: target.kelas },
+    )
     if (hasil.error) {
       setMenyimpan(false)
       setPesan(hasil.error)
       setGalat(true)
+      return
+    }
+    if (hasil.lokal) {
+      setMenyimpan(false)
+      setDasarSurah(sidikBaris(baris))
+      setGalat(false)
+      setPesan(
+        `Nilai ujian ${target.nama} ${STATUS_DRAF_HQ.toLowerCase()}. Penilaian tersimpan di perangkat ini dan akan dikirim otomatis ke server saat sinyal kembali.${
+          hasil.nilaiAkhir != null ? ` Nilai akhir ${hasil.nilaiAkhir} (${hasil.predikat}).` : ''
+        }`,
+      )
       return
     }
 
@@ -400,6 +436,7 @@ export function NilaiUjianTahfidz({
         </div>
 
         <div className="space-y-4 p-5">
+          <BannerDrafHq ringkas />
           <p className="text-xs text-slate-500">
             NA = (Kelancaran + Tajwid + Adab) ÷ {PEMBAGI_NILAI_AKHIR}. Kelancaran {MIN_NILAI_KELANCAN}–{MAKS_NILAI_KELANCAN}
             (contoh At-Tiin −13, An-Naba −4). Tajwid {MIN_NILAI_TAJWID}–{MAKS_NILAI_TAJWID} = 100 − (Mad+Dengung+Makhraj) ×

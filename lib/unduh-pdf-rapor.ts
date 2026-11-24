@@ -170,7 +170,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   pdf.text(`${data.lokasi}, ${data.tanggalCetak}`, 160, y, { align: 'center' })
   y += 8
   pdf.text('Orang Tua / Wali Siswa', 40, y, { align: 'center' })
-  pdf.text('Ustadz Pembimbing / Wali Kelas', 105, y, { align: 'center' })
+  pdf.text(siswa.labelPembimbing || 'Ustadz Pembimbing', 105, y, { align: 'center' })
   pdf.text('Kepala Sekolah', 165, y, { align: 'center' })
   y += 28
   pdf.setFont('times', 'bold')

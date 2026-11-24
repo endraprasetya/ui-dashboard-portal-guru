@@ -1,3 +1,4 @@
+import { labelPembimbingDariDaftarPeran, labelPembimbingDariRole, roleDariSesiPengguna } from '@/lib/label-pembimbing'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
 import { supabase } from '@/lib/supabase'
 import { namaSuratArab } from '@/lib/surah-arab'
@@ -34,7 +35,7 @@ export type BarisCetakRaporTahfidz = {
   nilaiSurat: number | null
 }
 
-export function denganPenandatanganSesi<T extends { siswa: { pembimbing: string } }>(data: T): T {
+export function denganPenandatanganSesi<T extends { siswa: { pembimbing: string; labelPembimbing?: string } }>(data: T): T {
   if (typeof window === 'undefined') return data
   try {
     const mentah = window.localStorage.getItem('user_session')
@@ -43,7 +44,14 @@ export function denganPenandatanganSesi<T extends { siswa: { pembimbing: string 
     if (!user || peran.includes('kepala')) return data
     const nama = String(user.nama_lengkap || user.nama || '').trim()
     if (!nama) return data
-    return { ...data, siswa: { ...data.siswa, pembimbing: nama } }
+    return {
+      ...data,
+      siswa: {
+        ...data.siswa,
+        pembimbing: nama,
+        labelPembimbing: labelPembimbingDariRole(user.role || roleDariSesiPengguna()),
+      },
+    }
   } catch {
     return data
   }
@@ -60,6 +68,7 @@ export type DataCetakRaporTahfidz = {
     kelasTampil: string
     unit: string
     pembimbing: string
+    labelPembimbing: string
   }
   asesmen: string
   judulAsesmen: string
@@ -194,9 +203,24 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     .filter(Boolean)
 
   let pembimbing = ''
+  let labelPembimbing = labelPembimbingDariRole(roleDariSesiPengguna())
   if (idsPembimbing.length > 0) {
-    const { data: guru } = await supabase.from('users').select('target_id,nama_lengkap').in('target_id', idsPembimbing)
-    pembimbing = (guru || []).map((row) => teks(row.nama_lengkap)).filter(Boolean).join(', ')
+    const ambilGuru = async (kolom: 'target_id' | 'username', denganRole: boolean) => {
+      const pilih = denganRole ? 'target_id,username,nama_lengkap,role' : 'target_id,username,nama_lengkap'
+      return supabase.from('users').select(pilih).in(kolom, idsPembimbing)
+    }
+    let hasil = await ambilGuru('target_id', true)
+    if (hasil.error && /role/i.test(hasil.error.message || '')) hasil = await ambilGuru('target_id', false)
+    if ((hasil.data || []).length === 0) {
+      let cadangan = await ambilGuru('username', true)
+      if (cadangan.error && /role/i.test(cadangan.error.message || '')) cadangan = await ambilGuru('username', false)
+      if ((cadangan.data || []).length > 0) hasil = cadangan
+    }
+    const guru = (hasil.data || []) as { nama_lengkap?: string | null; role?: unknown }[]
+    pembimbing = guru.map((row) => teks(row.nama_lengkap)).filter(Boolean).join(', ')
+    if (guru.some((row) => row.role != null && String(row.role).trim())) {
+      labelPembimbing = labelPembimbingDariDaftarPeran(guru.map((row) => row.role))
+    }
   }
 
   const pejabat = await fetchPejabatUntukCetak({
@@ -269,6 +293,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
       kelasTampil: formatKelasRapor(teks(siswaRow.kelas)),
       unit: teks(siswaRow.unit),
       pembimbing,
+      labelPembimbing,
     },
     asesmen: teks(header?.jenis_asesmen) || teks(asesmen),
     judulAsesmen: judulAsesmenTahfidz(teks(header?.jenis_asesmen) || teks(asesmen), teks(header?.semester) || semester),

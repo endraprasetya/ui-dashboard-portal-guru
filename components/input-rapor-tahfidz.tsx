@@ -42,6 +42,8 @@ import {
 } from '@/lib/materi-ujian-tahfidz'
 import { hapusNilaiUjianTahfidz, selaraskanNilaiDenganMateri } from '@/lib/rapor-tahfidz-nilai'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
+import { BannerDrafHq } from '@/components/status-draf-hq'
+import { PERISTIWA_DRAF_HQ, PERISTIWA_SINKRON_HQ, STATUS_DRAF_HQ, cariDrafHq } from '@/lib/antrean-draf-hq'
 
 function kunciBarisUjian(row: { idSiswa: string; asesmen: string }) {
   return `${row.idSiswa}|${row.asesmen}`
@@ -91,8 +93,19 @@ export function InputRaporTahfidz({
   const [menghapus, setMenghapus] = useState(false)
   const [tanyaTerapkan, setTanyaTerapkan] = useState(false)
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<{ idSiswa: string; nama: string; asesmen: string } | null>(null)
+  const [versiDraf, setVersiDraf] = useState(0)
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
+
+  useEffect(() => {
+    const muat = () => setVersiDraf((nilai) => nilai + 1)
+    window.addEventListener(PERISTIWA_DRAF_HQ, muat)
+    window.addEventListener(PERISTIWA_SINKRON_HQ, muat)
+    return () => {
+      window.removeEventListener(PERISTIWA_DRAF_HQ, muat)
+      window.removeEventListener(PERISTIWA_SINKRON_HQ, muat)
+    }
+  }, [])
 
   useEffect(() => {
     let batal = false
@@ -583,6 +596,7 @@ export function InputRaporTahfidz({
       </div>
 
       <ToggleTargetTahfidz aktif={targetTahfidzAktif} onUbah={setTargetTahfidzAktif} />
+      <BannerDrafHq />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {targetTahfidzAktif && (
@@ -850,6 +864,7 @@ export function InputRaporTahfidz({
                   const kunci = kunciBarisUjian(row)
                   const kirim = petaKirim.get(kunci)
                   const sorot = kunciFokus === kunci
+                  const drafLokal = versiDraf >= 0 ? cariDrafHq(row.idSiswa, row.asesmen) : null
                   return (
                     <tr
                       key={kunci}
@@ -871,7 +886,11 @@ export function InputRaporTahfidz({
                       <td className="px-3 py-2 text-slate-600">{row.keterangan || '-'}</td>
                       <td className="px-3 py-2 text-slate-700">{row.guru || '-'}</td>
                       <td className="px-3 py-2">
-                        {!kirim ? (
+                        {drafLokal ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-950">
+                            {STATUS_DRAF_HQ}
+                          </span>
+                        ) : !kirim ? (
                           <span className="text-xs font-semibold text-slate-400">Belum dikirim</span>
                         ) : kirim.status === 'Revisi' ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Ada koreksi</span>

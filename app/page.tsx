@@ -28,6 +28,8 @@ import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { kunciUserGuru, unitDariAkun } from '@/lib/siswa'
 import { adalahPemeriksaHq, muatHakPemeriksaHq } from '@/lib/pemeriksa-hq'
+import { pasangPenjagaDrafHq } from '@/lib/antrean-draf-hq'
+import { BannerDrafHq } from '@/components/status-draf-hq'
 import { muatAktivitasGuruTerbaru, type BarisAktivitasGuru } from '@/lib/aktivitas-guru'
 import {
   keteranganJadwal,
@@ -79,6 +81,11 @@ export default function Home() {
     const view = params.get('view')
     if (view) setCurrentView(view)
   }, [])
+
+  useEffect(() => {
+    if (!currentUser) return
+    return pasangPenjagaDrafHq()
+  }, [kunciUserGuru(currentUser)])
 
   useEffect(() => {
     try {
@@ -299,6 +306,7 @@ export default function Home() {
               </div>
             </div>
 
+            <BannerDrafHq />
             <JadwalAsasI />
 
             {/* Grid Card Menu Utama (Termasuk Card Merah Cerah Tertib Point) */}

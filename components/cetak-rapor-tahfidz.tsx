@@ -258,7 +258,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
           </tr>
           <tr>
             <td>Orang Tua / Wali Siswa</td>
-            <td>Ustadz Pembimbing / Wali Kelas</td>
+            <td>{siswa.labelPembimbing || 'Ustadz Pembimbing'}</td>
             <td>Kepala Sekolah</td>
           </tr>
           <tr>
