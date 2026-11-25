@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModalKerangka } from '@/components/kepsek/modal-kerangka'
 import type { LaporanKepsek } from '@/lib/kepala-sekolah'
 import { RekapMatriksGuruBantu } from '@/components/guru-bantu/RekapMatriksGuruBantu'
@@ -17,9 +17,19 @@ import {
   hitungPemantauanRaporHq,
   type KodeAsesmenRaporHq,
 } from '@/lib/kepsek-rapor-hq'
-import { lengkapiTampilanKirim, muatKirimRaporHq, NAMA_SETTING_KIRIM_RAPOR, simpanCatatanRevisiRaporHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import {
+  formatWaktuPemeriksaanHq,
+  lengkapiTampilanKirim,
+  muatKirimRaporHq,
+  NAMA_SETTING_KIRIM_RAPOR,
+  simpanCatatanRevisiRaporHq,
+  teksRiwayatRingkasCatatanHq,
+  type KirimRaporHq,
+} from '@/lib/rapor-hq-kirim'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
 import { BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
+import { CatatanPemeriksaHq } from '@/components/catatan-pemeriksa-hq'
+import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import { adalahKelasPutraHq, adalahKelasPutriHq, daftarKelasHq, kelasTampilHq, NAMA_PEMERIKSA_HQ_CADANGAN } from '@/lib/pemeriksa-hq'
 import { supabase } from '@/lib/supabase'
 
@@ -55,12 +65,6 @@ function ThumbnailFoto({ url, label }: { url: string | null; label: string }) {
       <span className="text-[10px] font-bold text-emerald-800 underline">{label}</span>
     </a>
   )
-}
-
-function waktuKirim(iso: string) {
-  const tanggal = new Date(iso)
-  if (Number.isNaN(tanggal.getTime())) return ''
-  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
 function sudahDiperiksa(row: KirimRaporHq) {
@@ -102,6 +106,7 @@ export function ModalRaporHq({
   const [memuatMasuk, setMemuatMasuk] = useState(true)
   const [penyegar, setPenyegar] = useState(0)
   const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
+  const lewatiMuat = useRef(false)
 
   useEffect(() => {
     let batal = false
@@ -134,7 +139,13 @@ export function ModalRaporHq({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
-        () => setPenyegar((nilai) => nilai + 1),
+        () => {
+          if (lewatiMuat.current) {
+            lewatiMuat.current = false
+            return
+          }
+          setPenyegar((nilai) => nilai + 1)
+        },
       )
     kanal.subscribe()
     return () => {
@@ -159,6 +170,33 @@ export function ModalRaporHq({
   const putriKelas = penilaianPutri.filter(cocokKelas)
   const putriTabel = putriKelas.filter(cocokStatus)
   const putriLolos = putriKelas.filter(sudahDiperiksa).length
+
+  const simpanCatatan = async (row: KirimRaporHq) => {
+    const kunci = `${row.idSiswa}|${row.asesmen}`
+    setMenyimpan(kunci)
+    setPesan('')
+    setGalatCatatan(false)
+    lewatiMuat.current = true
+    const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '', {
+      id: penulis?.id,
+      nama: penulis?.nama || 'Kepala Sekolah',
+    })
+    setMenyimpan('')
+    if (hasil.error || !hasil.data) {
+      lewatiMuat.current = false
+      setGalatCatatan(true)
+      setPesan(hasil.error || 'Catatan belum tersimpan.')
+      return
+    }
+    const tersimpan = hasil.data
+    setMasuk((semua) => semua.map((item) => (`${item.idSiswa}|${item.asesmen}` === kunci ? { ...item, ...tersimpan } : item)))
+    setCatatan((semua) => ({ ...semua, [kunci]: tersimpan.catatanRevisi }))
+    setPesan(
+      tersimpan.jenisCatatan === 'konfirmasi'
+        ? `Rapor HQ ${row.namaSiswa} tersimpan siap cetak.`
+        : `Catatan revisi ${row.namaSiswa} tersimpan dan terkirim ke guru pengampu.`,
+    )
+  }
 
   return (
     <>
@@ -295,7 +333,7 @@ export function ModalRaporHq({
                     <tbody>
                       {putraTabel.map((row) => {
                         const kunci = `${row.idSiswa}|${row.asesmen}`
-                        const waktu = waktuKirim(row.dikirimPada)
+                        const waktu = formatWaktuPemeriksaanHq(row.dikirimPada)
                         return (
                           <tr key={kunci} className="align-top">
                             <td className="border-b p-2">
@@ -314,47 +352,22 @@ export function ModalRaporHq({
                               <div className="mt-1">
                                 <BadgeLolosPemeriksaan lolos={sudahDiperiksa(row)} />
                               </div>
+                              <RiwayatWaktuPemeriksaanHq baris={row} />
                             </td>
                             <td className="border-b p-2 text-slate-700">{row.materi || 'Belum ada materi'}</td>
                             <td className="border-b p-2 font-semibold text-slate-800">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>
                             <td className="border-b p-2">{row.namaGuru || 'Guru'}</td>
                             <td className="border-b p-2">
-                              <textarea
-                                value={catatan[kunci] ?? ''}
-                                onChange={(event) => setCatatan((semua) => ({ ...semua, [kunci]: event.target.value }))}
-                                rows={3}
-                                placeholder="Tuliskan kekurangan atau kekeliruan yang perlu diperbaiki guru"
-                                aria-label={`Catatan Kepala Sekolah untuk ${row.namaSiswa}`}
-                                className="w-full min-w-[16rem] rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                              <CatatanPemeriksaHq
+                                nilai={catatan[kunci] ?? ''}
+                                onUbah={(teks) => setCatatan((semua) => ({ ...semua, [kunci]: teks }))}
+                                menyimpan={menyimpan === kunci}
+                                onSimpan={() => void simpanCatatan(row)}
+                                labelAria={`Catatan Kepala Sekolah untuk ${row.namaSiswa}`}
+                                ringkas={teksRiwayatRingkasCatatanHq(row)}
+                                jenisTersimpan={row.jenisCatatan}
+                                aksen="hijau"
                               />
-                              <button
-                                type="button"
-                                disabled={menyimpan === kunci}
-                                onClick={async () => {
-                                  setMenyimpan(kunci)
-                                  setPesan('')
-                                  setGalatCatatan(false)
-                                  const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '', {
-                                    id: penulis?.id,
-                                    nama: penulis?.nama || 'Kepala Sekolah',
-                                  })
-                                  setMenyimpan('')
-                                  if (hasil.error) {
-                                    setGalatCatatan(true)
-                                    setPesan(hasil.error)
-                                    return
-                                  }
-                                  setPesan(
-                                    catatan[kunci]?.trim()
-                                      ? `Catatan koreksi untuk ${row.namaSiswa} terkirim ke lonceng guru pengampu.`
-                                      : 'Catatan koreksi dihapus.',
-                                  )
-                                  setPenyegar((nilai) => nilai + 1)
-                                }}
-                                className="mt-2 rounded-lg bg-[#143d32] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-                              >
-                                {menyimpan === kunci ? 'Menyimpan…' : 'Simpan catatan'}
-                              </button>
                             </td>
                             <td className="border-b p-2">
                               <button
@@ -400,13 +413,18 @@ export function ModalRaporHq({
                     </thead>
                     <tbody>
                       {putriTabel.map((row) => {
+                        const waktu = formatWaktuPemeriksaanHq(row.dikirimPada)
+                        const ringkas = teksRiwayatRingkasCatatanHq(row)
                         return (
-                          <tr key={`${row.idSiswa}|${row.asesmen}`}>
+                          <tr key={`${row.idSiswa}|${row.asesmen}`} className="align-top">
                             <td className="border-b p-2">
                               <p className="font-bold text-slate-800">{row.namaSiswa}</p>
                               <p className="text-xs text-slate-500">
                                 {row.kelas || '-'} · {row.asesmen}
                               </p>
+                              <p className="mt-1 text-[10px] font-semibold text-sky-800">Terkirim{waktu ? ` · ${waktu}` : ''}</p>
+                              {ringkas ? <p className="mt-1 text-[10px] font-semibold leading-snug text-slate-700">{ringkas}</p> : null}
+                              <RiwayatWaktuPemeriksaanHq baris={row} />
                             </td>
                             <td className="border-b p-2">{row.namaGuru || 'Guru'}</td>
                             <td className="border-b p-2">

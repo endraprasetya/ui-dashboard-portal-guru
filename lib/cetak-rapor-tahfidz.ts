@@ -114,8 +114,12 @@ function posisiDariSetoran(surahs: Awaited<ReturnType<typeof fetchAllSurah>>, ro
   return posisiDariNama(surahs, nama, ayat)
 }
 
-function tanggalPanjang(date = new Date()) {
-  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+/** Tanggal pengesahan seragam pada tanda tangan cetak Rapor HQ. Perbarui tiap periode asesmen. */
+export const TANGGAL_PENGESAHAN_RAPOR_HQ = '19 Desember 2026'
+
+export function tempatTanggalPengesahanRaporHq(lokasi?: string) {
+  const tempat = String(lokasi || '').trim() || 'Nogosari'
+  return `${tempat}, ${TANGGAL_PENGESAHAN_RAPOR_HQ}`
 }
 
 async function ambilDataDiri(nama: string, kelas: string, nis: string) {
@@ -300,7 +304,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     semester: teks(header?.semester) || semester,
     tahunAjaran: teks(header?.tahun_ajaran) || tahunAjaran,
     judulTahunAjaran: `TAHUN AJARAN ${teks(header?.tahun_ajaran) || tahunAjaran}`,
-    tanggalCetak: tanggalPanjang(),
+    tanggalCetak: TANGGAL_PENGESAHAN_RAPOR_HQ,
     nilaiRataRata,
     nilaiTarget,
     nilaiRapor,

@@ -1,4 +1,4 @@
-import type { DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import { tempatTanggalPengesahanRaporHq, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
 export function namaBerkasRaporTahfidz(nama: string, asesmen: string) {
@@ -172,7 +172,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   y += 10
   pdf.setFont('times', 'normal')
   pdf.setFontSize(10)
-  pdf.text(`${data.lokasi}, ${data.tanggalCetak}`, 160, y, { align: 'center' })
+  pdf.text(tempatTanggalPengesahanRaporHq(data.lokasi), 160, y, { align: 'center' })
   y += 8
   pdf.text('Orang Tua / Wali Siswa', 40, y, { align: 'center' })
   pdf.text(siswa.labelPembimbing || 'Ustadz Pembimbing', 105, y, { align: 'center' })

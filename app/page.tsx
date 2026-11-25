@@ -324,7 +324,7 @@ export default function Home() {
                 </button>
                 {revisiRapor.length > 0 && (
                   <div className="mt-3 rounded-xl bg-black/10 p-2.5">
-                    <p className="text-[10px] font-extrabold uppercase tracking-wide">Revisi / koreksi rapor HQ</p>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide">Hasil pemeriksaan rapor HQ</p>
                     <ul className="mt-1.5 space-y-1.5">
                       {revisiRapor.slice(0, 3).map((item) => (
                         <li key={item.id}>

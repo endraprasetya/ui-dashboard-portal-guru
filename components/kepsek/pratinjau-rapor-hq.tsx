@@ -5,7 +5,8 @@ import { Printer, X } from 'lucide-react'
 import { cetakLembarRapor, GAYA_CETAK_RAPOR_TAHFIDZ, LembarRaporTahfidz } from '@/components/cetak-rapor-tahfidz'
 import { fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
-import type { KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { formatWaktuPemeriksaanHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import { supabase } from '@/lib/supabase'
 
 function teksNilai(nilai: number | null | undefined) {
@@ -120,6 +121,10 @@ export function PratinjauRaporHqKepsek({ baris, onTutup }: { baris: KirimRaporHq
                 <dd>{baris.namaGuru || data?.siswa.pembimbing || '-'}</dd>
               </div>
             </dl>
+            <p className="mt-3 text-[11px] font-semibold text-sky-800">
+              Terkirim{formatWaktuPemeriksaanHq(baris.dikirimPada) ? ` · ${formatWaktuPemeriksaanHq(baris.dikirimPada)}` : ''}
+            </p>
+            <RiwayatWaktuPemeriksaanHq baris={baris} />
             <p className="mt-3 text-xs font-bold uppercase text-slate-500">Materi / surah dan indikator</p>
             <p className="mt-1 text-slate-800">{materi || 'Belum ada materi'}</p>
             <p className="mt-1 text-slate-600">{indikator || 'Indikator penilaian belum diisi.'}</p>

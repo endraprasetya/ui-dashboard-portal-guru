@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer } from 'lucide-react'
-import { denganPenandatanganSesi, fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import {
+  denganPenandatanganSesi,
+  fetchCetakRaporTahfidz,
+  tempatTanggalPengesahanRaporHq,
+  type DataCetakRaporTahfidz,
+} from '@/lib/cetak-rapor-tahfidz'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
 function garis(value: string, panjang = 22) {
@@ -138,7 +143,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
     : 'SD ISLAM TERPADU AL MADINAH'
   const nisNisn = [siswa.nis, siswa.nisn].filter(Boolean).join('/') || '-'
-  const tempatTanggal = `${data.lokasi}, ${data.tanggalCetak}`
+  const tempatTanggal = tempatTanggalPengesahanRaporHq(data.lokasi)
 
   return (
     <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-6 py-4 text-[10.5pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none">

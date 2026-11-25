@@ -3,7 +3,7 @@ import { educationCalendar } from '@/lib/teacher-data'
 import { fetchJurnalRentang, jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { barisUntukPenguji, labelRentangKenaikanJilid, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
-import { guruPenerimaRevisi, kunciKirimRaporHq, muatKirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { guruPenerimaRevisi, kunciKirimRaporHq, muatKirimRaporHq, teksRiwayatRingkasCatatanHq } from '@/lib/rapor-hq-kirim'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib' | 'rapor'
 
@@ -194,10 +194,14 @@ export async function muatNotifikasi(currentUser?: any) {
 
   if (!kirimRapor.error) {
     for (const row of kirimRapor.data) {
-      if (row.status !== 'Revisi' || !row.catatanRevisi || !guruPenerimaRevisi(row, currentUser)) continue
+      const ringkas = teksRiwayatRingkasCatatanHq(row)
+      if (!ringkas || !guruPenerimaRevisi(row, currentUser)) continue
+      const konfirmasi = row.jenisCatatan === 'konfirmasi'
       const materi = row.materi ? ` · ${row.materi}` : ''
       const penulis = row.catatanOleh || row.pemeriksaNama || 'Pemeriksa'
-      const detailMentah = `${row.kelas || '-'} · ${row.asesmen}${materi} · Catatan ${penulis}: ${row.catatanRevisi}. Ketuk untuk memperbaiki penilaian.`
+      const detailMentah = konfirmasi
+        ? `${row.kelas || '-'} · ${row.asesmen}${materi} · ${ringkas}`
+        : `${row.kelas || '-'} · ${row.asesmen}${materi} · Catatan ${penulis}: ${row.catatanRevisi}. Ketuk untuk memperbaiki penilaian.`
       const idRevisi = `rapor-revisi:${kunciKirimRaporHq(row)}:${row.diperbaruiPada}`
       revisiRapor.push({
         id: idRevisi,
@@ -205,13 +209,13 @@ export async function muatNotifikasi(currentUser?: any) {
         asesmen: row.asesmen,
         nama: row.namaSiswa,
         kelas: row.kelas || '-',
-        catatan: row.catatanRevisi,
+        catatan: ringkas,
         penulis,
       })
       lain.push({
         id: idRevisi,
         kategori: 'rapor',
-        judul: `Koreksi penilaian ${row.namaSiswa}`,
+        judul: konfirmasi ? `Rapor HQ ${row.namaSiswa} siap cetak` : `Koreksi penilaian ${row.namaSiswa}`,
         detail: detailMentah.length > 180 ? `${detailMentah.slice(0, 179)}…` : detailMentah,
         tujuan: 'tahfidz_rapor',
         idSiswa: row.idSiswa,

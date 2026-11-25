@@ -1,16 +1,20 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, BadgeCheck, ClipboardCheck, Search } from 'lucide-react'
 import { BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
+import { CatatanPemeriksaHq } from '@/components/catatan-pemeriksa-hq'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
+import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import {
   NAMA_SETTING_KIRIM_RAPOR,
+  formatWaktuPemeriksaanHq,
   idGuruAktif,
   lengkapiTampilanKirim,
   simpanCatatanRevisiRaporHq,
   tandaiDiperiksaHq,
+  teksRiwayatRingkasCatatanHq,
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
 import { PILIHAN_ASESMEN_RAPOR_HQ, type KodeAsesmenRaporHq } from '@/lib/kepsek-rapor-hq'
@@ -25,12 +29,6 @@ import {
 import { teacherDisplayName } from '@/lib/qiroah'
 import { supabase } from '@/lib/supabase'
 import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
-
-function waktuTampil(iso: string) {
-  const tanggal = new Date(iso)
-  if (Number.isNaN(tanggal.getTime())) return ''
-  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-}
 
 function teksCapaian(nilai: number | null, predikat: string) {
   if (nilai == null || !Number.isFinite(nilai)) return 'Belum dinilai'
@@ -59,6 +57,7 @@ export function PemeriksaPenilaianHq({
   const [catatan, setCatatan] = useState<Record<string, string>>({})
   const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
   const [konfirmasi, setKonfirmasi] = useState<KirimRaporHq | null>(null)
+  const lewatiMuat = useRef(false)
   const { tahunAjaran, semester } = periodeAjaranSekarang()
 
   useEffect(() => {
@@ -98,6 +97,10 @@ export function PemeriksaPenilaianHq({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
         () => {
+          if (lewatiMuat.current) {
+            lewatiMuat.current = false
+            return
+          }
           void muat()
         },
       )
@@ -154,22 +157,25 @@ export function PemeriksaPenilaianHq({
     setMenyimpanCatatan(kunci)
     setStatus('')
     setGalat('')
-    const teks = catatan[kunci] || ''
-    const hasil = await simpanCatatanRevisiRaporHq(row, teks, {
+    lewatiMuat.current = true
+    const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '', {
       id: idGuruAktif(currentUser),
       nama: teacherDisplayName(currentUser),
     })
     setMenyimpanCatatan('')
-    if (hasil.error) {
-      setGalat(hasil.error)
+    if (hasil.error || !hasil.data) {
+      lewatiMuat.current = false
+      setGalat(hasil.error || 'Catatan belum tersimpan.')
       return
     }
+    const tersimpan = hasil.data
+    setDaftar((semua) => semua.map((item) => (kunciBaris(item) === kunci ? { ...item, ...tersimpan } : item)))
+    setCatatan((semua) => ({ ...semua, [kunci]: tersimpan.catatanRevisi }))
     setStatus(
-      teks.trim()
-        ? `Catatan koreksi untuk ${row.namaSiswa} terkirim ke lonceng guru pengampu.`
-        : `Catatan koreksi untuk ${row.namaSiswa} dihapus.`,
+      tersimpan.jenisCatatan === 'konfirmasi'
+        ? `Rapor HQ ${row.namaSiswa} tersimpan siap cetak.`
+        : `Catatan revisi ${row.namaSiswa} tersimpan dan terkirim ke guru pengampu.`,
     )
-    await muat()
   }
 
   if (!izin) {
@@ -206,8 +212,9 @@ export function PemeriksaPenilaianHq({
       <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
         <p className="font-extrabold">Siswa putri unit Nogosari (kelas berakhiran C dan D)</p>
         <p className="mt-1 text-xs leading-relaxed">
-          Periksa hasil penilaian rapor HQ yang dikirim guru pengampu. Tuliskan catatan koreksi bila ada kekeliruan, lalu
-          tandai sudah diperiksa agar Kepala Sekolah menerima tanda pada pemantauan Rapor HQ. {semester} {tahunAjaran}.
+          Periksa hasil penilaian rapor HQ yang dikirim guru pengampu. Catatan dapat berisi kekeliruan yang perlu
+          diperbaiki, atau konfirmasi bahwa rapor HQ sudah sesuai dan siap cetak. Tandai sudah diperiksa agar Kepala
+          Sekolah menerima tanda pada pemantauan Rapor HQ. {semester} {tahunAjaran}.
         </p>
       </section>
 
@@ -312,6 +319,7 @@ export function PemeriksaPenilaianHq({
                 {tampil.map((row) => {
                   const kunci = kunciBaris(row)
                   const diperiksa = sudahDiperiksaHq(row)
+                  const waktu = formatWaktuPemeriksaanHq(row.dikirimPada)
                   return (
                     <tr key={kunci} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2">
@@ -319,33 +327,25 @@ export function PemeriksaPenilaianHq({
                         <p className="text-xs text-slate-500">
                           {row.kelas} · {row.asesmen}
                         </p>
+                        <p className="mt-1 text-[10px] font-semibold text-sky-800">Terkirim{waktu ? ` · ${waktu}` : ''}</p>
+                        <RiwayatWaktuPemeriksaanHq baris={row} />
                       </td>
                       <td className="px-3 py-2 text-slate-700">{row.materi || 'Belum ada materi'}</td>
                       <td className="px-3 py-2 font-semibold">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>
                       <td className="px-3 py-2">{row.namaGuru || '-'}</td>
                       <td className="px-3 py-2">
-                        <textarea
-                          value={catatan[kunci] ?? ''}
-                          onChange={(event) => setCatatan((semua) => ({ ...semua, [kunci]: event.target.value }))}
-                          rows={3}
-                          placeholder="Tuliskan kekurangan atau kekeliruan yang perlu diperbaiki guru"
-                          aria-label={`Catatan koreksi untuk ${row.namaSiswa}`}
-                          className="w-full min-w-[16rem] rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                        <CatatanPemeriksaHq
+                          nilai={catatan[kunci] ?? ''}
+                          onUbah={(teks) => setCatatan((semua) => ({ ...semua, [kunci]: teks }))}
+                          menyimpan={menyimpanCatatan === kunci}
+                          onSimpan={() => void simpanCatatan(row)}
+                          labelAria={`Catatan pemeriksa untuk ${row.namaSiswa}`}
+                          ringkas={teksRiwayatRingkasCatatanHq(row)}
+                          jenisTersimpan={row.jenisCatatan}
                         />
-                        <button
-                          type="button"
-                          disabled={menyimpanCatatan === kunci}
-                          onClick={() => void simpanCatatan(row)}
-                          className="mt-2 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-800 disabled:opacity-50"
-                        >
-                          {menyimpanCatatan === kunci ? 'Menyimpan…' : 'Simpan catatan'}
-                        </button>
                       </td>
                       <td className="px-3 py-2">
                         <BadgeLolosPemeriksaan lolos={diperiksa} />
-                        {diperiksa && row.diperiksaPada ? (
-                          <p className="mt-1 text-[10px] text-slate-500">{waktuTampil(row.diperiksaPada)}</p>
-                        ) : null}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex flex-wrap justify-end gap-1">

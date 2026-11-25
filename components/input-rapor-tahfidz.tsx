@@ -15,6 +15,7 @@ import {
   kirimRaporKeKepsek,
   muatKirimRaporHq,
   NAMA_SETTING_KIRIM_RAPOR,
+  teksRiwayatRingkasCatatanHq,
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
@@ -51,6 +52,7 @@ import {
 } from '@/lib/materi-ujian-tahfidz'
 import { hapusNilaiUjianTahfidz, selaraskanNilaiDenganMateri } from '@/lib/rapor-tahfidz-nilai'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
+import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import { BannerDrafHq } from '@/components/status-draf-hq'
 import { PERISTIWA_DRAF_HQ, PERISTIWA_SINKRON_HQ, STATUS_DRAF_HQ, cariDrafHq } from '@/lib/antrean-draf-hq'
 
@@ -950,6 +952,7 @@ export function InputRaporTahfidz({
                 {rekap.map((row) => {
                   const kunci = kunciBarisUjian(row)
                   const kirim = petaKirim.get(kunci)
+                  const ringkasKirim = kirim ? teksRiwayatRingkasCatatanHq(kirim) : ''
                   const sorot = kunciFokus === kunci
                   const drafLokal = versiDraf >= 0 ? cariDrafHq(row.idSiswa, row.asesmen) : null
                   return (
@@ -990,16 +993,17 @@ export function InputRaporTahfidz({
                         ) : kirim.status === 'Revisi' ? (
                           <div>
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Ada koreksi</span>
-                            {kirim.catatanRevisi ? (
-                              <p className="mt-1 max-w-xs text-xs leading-snug text-amber-950">
-                                {kirim.catatanOleh || 'Pemeriksa'}: {kirim.catatanRevisi}
-                              </p>
-                            ) : null}
+                            {ringkasKirim ? <p className="mt-1 max-w-xs text-xs leading-snug text-amber-950">{ringkasKirim}</p> : null}
+                            <RiwayatWaktuPemeriksaanHq baris={kirim} />
                           </div>
                         ) : (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                            Terkirim{waktuKirim(kirim.dikirimPada) ? ` · ${waktuKirim(kirim.dikirimPada)}` : ''}
-                          </span>
+                          <div>
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                              Terkirim{waktuKirim(kirim.dikirimPada) ? ` · ${waktuKirim(kirim.dikirimPada)}` : ''}
+                            </span>
+                            {ringkasKirim ? <p className="mt-1 max-w-xs text-xs leading-snug text-emerald-900">{ringkasKirim}</p> : null}
+                            <RiwayatWaktuPemeriksaanHq baris={kirim} />
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right">

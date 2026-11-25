@@ -7,6 +7,38 @@ export const KANAL_REVISI_RAPOR_HQ = 'rapor-hq-revisi'
 
 export type StatusKirimRaporHq = 'Terkirim' | 'Revisi'
 export type StatusPemeriksaHq = 'Belum' | 'Diperiksa'
+export type JenisRiwayatWaktuHq = 'pengajuan' | 'selesai_diperiksa' | 'kirim_ulang'
+export type JenisCatatanPemeriksaHq = 'revisi' | 'konfirmasi' | ''
+export type ModeCatatanPemeriksaHq = 'revisi' | 'konfirmasi'
+
+export const PLACEHOLDER_CATATAN_PEMERIKSA_HQ =
+  'Tuliskan kekeliruan yang perlu diperbaiki atau konfirmasi rapor HQ siap cetak'
+
+export const TEKS_KONFIRMASI_RAPOR_HQ_SIAP_CETAK = 'Rapor HQ sudah diperiksa dan siap cetak'
+
+export function tentukanCatatanPemeriksaHq(catatan: string): { mode: ModeCatatanPemeriksaHq; teks: string } {
+  const teks = catatan.trim()
+  if (!teks || kalimatKonfirmasiSiapCetak(teks)) {
+    return { mode: 'konfirmasi', teks: teks || TEKS_KONFIRMASI_RAPOR_HQ_SIAP_CETAK }
+  }
+  return { mode: 'revisi', teks }
+}
+
+function kalimatKonfirmasiSiapCetak(teks: string) {
+  const normal = teks.toLowerCase().replace(/\s+/g, ' ')
+  if (/\b(belum|jangan|tidak\s+siap|belum\s+sesuai)\b/.test(normal)) return false
+  const adaKoreksi = /\b(kekeliruan|kesalahan|koreksi|perbaiki|diperbaiki|kurang|salah|keliru|revisi)\b/.test(normal)
+  const sangkalKoreksi = /tidak\s+ada\s+(kekeliruan|kesalahan|koreksi|kekurangan)/.test(normal)
+  if (adaKoreksi && !sangkalKoreksi) return false
+  return /siap\s*cetak|\bsiap\b|sudah\s+sesuai|\bsesuai\b|lolos|boleh\s+dicetak|layak\s+cetak|sudah\s+diperiksa|konfirmasi/.test(
+    normal,
+  )
+}
+
+export type RiwayatWaktuHq = {
+  jenis: JenisRiwayatWaktuHq
+  pada: string
+}
 
 export type KirimRaporHq = {
   idSiswa: string
@@ -22,7 +54,10 @@ export type KirimRaporHq = {
   predikat: string
   status: StatusKirimRaporHq
   catatanRevisi: string
+  jenisCatatan: JenisCatatanPemeriksaHq
   dikirimPada: string
+  diajukanPada: string
+  riwayatWaktu: RiwayatWaktuHq[]
   diperbaruiPada: string
   statusPemeriksa: StatusPemeriksaHq
   pemeriksaId: string
@@ -80,6 +115,118 @@ function angkaAtauNull(nilai: unknown) {
   return Number.isFinite(n) ? n : null
 }
 
+const JENIS_RIWAYAT_WAKTU = new Set<JenisRiwayatWaktuHq>(['pengajuan', 'selesai_diperiksa', 'kirim_ulang'])
+const URUTAN_RIWAYAT_WAKTU: Record<JenisRiwayatWaktuHq, number> = {
+  pengajuan: 0,
+  selesai_diperiksa: 1,
+  kirim_ulang: 2,
+}
+const LABEL_RIWAYAT_WAKTU: Record<JenisRiwayatWaktuHq, string> = {
+  pengajuan: 'Pengajuan',
+  selesai_diperiksa: 'Selesai diperiksa',
+  kirim_ulang: 'Kirim ulang',
+}
+
+function urutRiwayatWaktu(riwayat: RiwayatWaktuHq[]) {
+  return [...riwayat].sort(
+    (a, b) => a.pada.localeCompare(b.pada) || URUTAN_RIWAYAT_WAKTU[a.jenis] - URUTAN_RIWAYAT_WAKTU[b.jenis],
+  )
+}
+
+function sudahAdaRiwayat(riwayat: RiwayatWaktuHq[], jenis: JenisRiwayatWaktuHq, pada: string) {
+  return riwayat.some((item) => item.jenis === jenis && item.pada === pada)
+}
+
+function bacaRiwayatWaktu(nilai: unknown): RiwayatWaktuHq[] {
+  if (!Array.isArray(nilai)) return []
+  const hasil: RiwayatWaktuHq[] = []
+  for (const item of nilai) {
+    if (!item || typeof item !== 'object') continue
+    const jenis = String((item as { jenis?: unknown }).jenis || '') as JenisRiwayatWaktuHq
+    const pada = String((item as { pada?: unknown }).pada || '')
+    if (!JENIS_RIWAYAT_WAKTU.has(jenis) || !pada) continue
+    if (sudahAdaRiwayat(hasil, jenis, pada)) continue
+    hasil.push({ jenis, pada })
+  }
+  return hasil
+}
+
+export function formatWaktuPemeriksaanHq(iso: string) {
+  const tanggal = new Date(iso)
+  if (Number.isNaN(tanggal.getTime())) return ''
+  return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Riwayat waktu yang tampil: pengajuan pertama, selesai diperiksa, dan tiap kirim ulang. */
+export function gabungRiwayatWaktuHq(
+  baris: Pick<KirimRaporHq, 'diajukanPada' | 'dikirimPada' | 'diperiksaPada' | 'riwayatWaktu'>,
+) {
+  const hasil = [...(baris.riwayatWaktu || [])]
+  const awal = baris.diajukanPada || baris.dikirimPada
+  if (awal && !hasil.some((item) => item.jenis === 'pengajuan')) {
+    hasil.unshift({ jenis: 'pengajuan', pada: awal })
+  }
+  if (baris.diperiksaPada && !sudahAdaRiwayat(hasil, 'selesai_diperiksa', baris.diperiksaPada)) {
+    hasil.push({ jenis: 'selesai_diperiksa', pada: baris.diperiksaPada })
+  }
+  if (
+    baris.diajukanPada &&
+    baris.dikirimPada &&
+    baris.dikirimPada !== baris.diajukanPada &&
+    !sudahAdaRiwayat(hasil, 'kirim_ulang', baris.dikirimPada)
+  ) {
+    hasil.push({ jenis: 'kirim_ulang', pada: baris.dikirimPada })
+  }
+  return urutRiwayatWaktu(hasil)
+}
+
+export function daftarTampilanRiwayatHq(
+  baris: Pick<KirimRaporHq, 'diajukanPada' | 'dikirimPada' | 'diperiksaPada' | 'riwayatWaktu'>,
+) {
+  return gabungRiwayatWaktuHq(baris)
+    .map((item) => ({ ...item, label: LABEL_RIWAYAT_WAKTU[item.jenis], waktu: formatWaktuPemeriksaanHq(item.pada) }))
+    .filter((item) => item.waktu)
+}
+
+export function teksRiwayatRingkasCatatanHq(
+  baris: Pick<KirimRaporHq, 'jenisCatatan' | 'catatanRevisi' | 'catatanPada'>,
+) {
+  if (!baris.catatanRevisi || (baris.jenisCatatan !== 'revisi' && baris.jenisCatatan !== 'konfirmasi')) return ''
+  const waktu = formatWaktuPemeriksaanHq(baris.catatanPada)
+  const judul = baris.jenisCatatan === 'konfirmasi' ? 'Siap cetak' : 'Revisi'
+  return `${judul}${waktu ? ` · ${waktu}` : ''} · ${baris.catatanRevisi}`
+}
+
+function riwayatSetelahKirim(sebelumnya: KirimRaporHq | undefined, sekarang: string) {
+  if (!sebelumnya) return [{ jenis: 'pengajuan' as const, pada: sekarang }]
+  const diajukanPada = sebelumnya.diajukanPada || sebelumnya.dikirimPada || sekarang
+  const riwayat = gabungRiwayatWaktuHq({
+    diajukanPada,
+    dikirimPada: diajukanPada,
+    diperiksaPada: sebelumnya.diperiksaPada,
+    riwayatWaktu: sebelumnya.riwayatWaktu,
+  })
+  if (!sudahAdaRiwayat(riwayat, 'kirim_ulang', sekarang)) riwayat.push({ jenis: 'kirim_ulang', pada: sekarang })
+  return urutRiwayatWaktu(riwayat)
+}
+
+function riwayatSetelahDiperiksa(lama: KirimRaporHq, sekarang: string) {
+  const riwayat = gabungRiwayatWaktuHq({
+    ...lama,
+    diajukanPada: lama.diajukanPada || lama.dikirimPada,
+  })
+  if (!sudahAdaRiwayat(riwayat, 'selesai_diperiksa', sekarang)) {
+    riwayat.push({ jenis: 'selesai_diperiksa', pada: sekarang })
+  }
+  return urutRiwayatWaktu(riwayat)
+}
+
+function bacaJenisCatatan(nilai: unknown, status: StatusKirimRaporHq, catatan: string): JenisCatatanPemeriksaHq {
+  if (nilai === 'konfirmasi' || nilai === 'revisi') return nilai
+  if (status === 'Revisi' && catatan) return 'revisi'
+  return ''
+}
+
 function bacaKirim(nilai: unknown): KirimRaporHq | null {
   try {
     const data = typeof nilai === 'string' ? JSON.parse(nilai) : nilai
@@ -89,6 +236,8 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
     if (!idSiswa || !asesmen) return null
     const status = data.status === 'Revisi' ? 'Revisi' : 'Terkirim'
     const statusPemeriksa = data.statusPemeriksa === 'Diperiksa' || data.diperiksaPada ? 'Diperiksa' : 'Belum'
+    const catatanRevisi = String(data.catatanRevisi || '').trim()
+    const dikirimPada = String(data.dikirimPada || '')
     return {
       idSiswa,
       namaSiswa: String(data.namaSiswa || idSiswa),
@@ -102,8 +251,11 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
       nilaiAkhir: angkaAtauNull(data.nilaiAkhir),
       predikat: String(data.predikat || ''),
       status,
-      catatanRevisi: String(data.catatanRevisi || '').trim(),
-      dikirimPada: String(data.dikirimPada || ''),
+      catatanRevisi,
+      jenisCatatan: bacaJenisCatatan(data.jenisCatatan, status, catatanRevisi),
+      dikirimPada,
+      diajukanPada: String(data.diajukanPada || dikirimPada),
+      riwayatWaktu: bacaRiwayatWaktu(data.riwayatWaktu),
       diperbaruiPada: String(data.diperbaruiPada || ''),
       statusPemeriksa,
       pemeriksaId: String(data.pemeriksaId || ''),
@@ -264,7 +416,10 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
       predikat: nilai ? nilai.predikat : sebelumnya?.predikat || '',
       status: 'Terkirim',
       catatanRevisi: sebelumnya?.catatanRevisi || '',
+      jenisCatatan: sebelumnya?.jenisCatatan || '',
       dikirimPada: sekarang,
+      diajukanPada: sebelumnya?.diajukanPada || sebelumnya?.dikirimPada || sekarang,
+      riwayatWaktu: riwayatSetelahKirim(sebelumnya, sekarang),
       diperbaruiPada: sebelumnya?.diperbaruiPada || sekarang,
       statusPemeriksa: 'Belum',
       pemeriksaId: '',
@@ -301,7 +456,7 @@ export async function simpanCatatanRevisiRaporHq(
   catatan: string,
   penulis?: { id?: string; nama?: string },
 ) {
-  const teks = catatan.trim()
+  const { mode, teks } = tentukanCatatanPemeriksaHq(catatan)
   const dokumen = await muatDokumenKirim()
   if (dokumen.error) return { error: dokumen.error }
   const kunci = kunciKirimRaporHq(baris)
@@ -309,29 +464,25 @@ export async function simpanCatatanRevisiRaporHq(
   const lama = peta.get(kunci)
   if (!lama) return { error: 'Data kiriman tidak ditemukan.' }
   const sekarang = new Date().toISOString()
+  const revisi = mode === 'revisi'
   const isi: KirimRaporHq = {
     ...lama,
     materi: baris.materi || lama.materi,
     nilaiAkhir: baris.nilaiAkhir ?? lama.nilaiAkhir,
     predikat: baris.predikat || lama.predikat,
     catatanRevisi: teks,
-    catatanOleh: teks ? penulis?.nama?.trim() || lama.catatanOleh || 'Pemeriksa' : '',
-    catatanOlehId: teks ? penulis?.id?.trim() || lama.catatanOlehId || '' : '',
-    catatanPada: teks ? sekarang : '',
-    status: teks ? 'Revisi' : 'Terkirim',
+    jenisCatatan: mode,
+    catatanOleh: penulis?.nama?.trim() || lama.catatanOleh || 'Pemeriksa',
+    catatanOlehId: penulis?.id?.trim() || lama.catatanOlehId || '',
+    catatanPada: sekarang,
+    status: revisi ? 'Revisi' : 'Terkirim',
     diperbaruiPada: sekarang,
   }
   peta.set(kunci, isi)
   const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
   if (galat) return { error: galat }
-  const segar = await muatDokumenKirim()
-  const tersimpan = segar.daftar.find((row) => kunciKirimRaporHq(row) === kunci)
-  if (segar.error) return { error: segar.error }
-  if (!tersimpan || tersimpan.catatanRevisi !== teks) {
-    return { error: 'Catatan belum tersimpan. Muat ulang, lalu simpan sekali lagi.' }
-  }
-  if (teks) await siarkanRevisiRaporHq(isi.idGuru)
-  return { error: null as string | null, data: tersimpan }
+  void siarkanRevisiRaporHq(isi.idGuru)
+  return { error: null as string | null, data: isi }
 }
 
 export async function tandaiDiperiksaHq(
@@ -350,6 +501,8 @@ export async function tandaiDiperiksaHq(
     materi: baris.materi || lama.materi,
     nilaiAkhir: baris.nilaiAkhir ?? lama.nilaiAkhir,
     predikat: baris.predikat || lama.predikat,
+    diajukanPada: lama.diajukanPada || lama.dikirimPada,
+    riwayatWaktu: riwayatSetelahDiperiksa(lama, sekarang),
     statusPemeriksa: 'Diperiksa',
     pemeriksaId: pemeriksa.id,
     pemeriksaNama: pemeriksa.nama,
