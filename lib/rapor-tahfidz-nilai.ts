@@ -274,50 +274,86 @@ type BarisHeaderRapor = {
   capaian_target?: string | null
   motivasi?: string | null
   nilai_target?: number | null
+  updated_at?: string | null
 }
 
-async function ambilHeaderRapor(idSiswa: string, jenisAsesmen: string, tahunAjaran: string, semester: string) {
-  const lengkap = await supabase
-    .from(TABEL_HEADER_RAPOR)
-    .select(
-      'id_ujian_tahfidz,id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat,capaian_kompetensi,capaian_target,motivasi,nilai_target',
-    )
-    .eq('id_siswa', idSiswa)
-    .eq('jenis_asesmen', jenisAsesmen)
-    .eq('tahun_ajaran', tahunAjaran)
-    .eq('semester', semester)
-    .maybeSingle()
-  if (!lengkap.error) return { data: lengkap.data as BarisHeaderRapor | null, error: lengkap.error }
-  if (!/nilai_target/i.test(lengkap.error.message || '')) return { data: null, error: lengkap.error }
+const KOLOM_HEADER_LENGKAP =
+  'id_ujian_tahfidz,id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat,capaian_kompetensi,capaian_target,motivasi,nilai_target,updated_at'
+const KOLOM_HEADER_DASAR =
+  'id_ujian_tahfidz,id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat,capaian_kompetensi,capaian_target,motivasi,updated_at'
 
-  const cadangan = await supabase
-    .from(TABEL_HEADER_RAPOR)
-    .select(
-      'id_ujian_tahfidz,id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat,capaian_kompetensi,capaian_target,motivasi',
-    )
-    .eq('id_siswa', idSiswa)
-    .eq('jenis_asesmen', jenisAsesmen)
-    .eq('tahun_ajaran', tahunAjaran)
-    .eq('semester', semester)
-    .maybeSingle()
-  return { data: (cadangan.data as BarisHeaderRapor | null) || null, error: cadangan.error }
+function pesanGalatRapor(error: { message?: string; details?: string; code?: string } | null, langkah: string) {
+  const pesan = String(error?.message || '').trim()
+  if (!pesan) return `Gagal ${langkah}.`
+  if (error?.code === 'PGRST116' || /JSON object requested/i.test(pesan)) {
+    return `Gagal ${langkah}: header ujian untuk siswa, asesmen, tahun ajaran, dan semester ini tidak tunggal (kosong atau lebih dari satu). Pembaruan memakai id header terbaru.`
+  }
+  const rinci = String(error?.details || '').trim()
+  return `Gagal ${langkah}: ${pesan}${rinci ? ` (${rinci})` : ''}`
+}
+
+function urutHeaderTerbaru<T extends { updated_at?: string | null; nilai_akhir?: number | null }>(baris: T[]) {
+  return [...baris].sort((a, b) => {
+    const waktu = String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+    if (waktu !== 0) return waktu
+    const adaA = Number(a.nilai_akhir) > 0 ? 1 : 0
+    const adaB = Number(b.nilai_akhir) > 0 ? 1 : 0
+    return adaB - adaA
+  })
+}
+
+/** Semua header periode ini. Kunci: id_siswa + jenis_asesmen + tahun_ajaran + semester. Boleh 0 atau banyak baris. */
+async function daftarHeaderPeriode(idSiswa: string, jenisAsesmen: string, tahunAjaran: string, semester: string) {
+  const minta = (kolom: string) =>
+    supabase
+      .from(TABEL_HEADER_RAPOR)
+      .select(kolom)
+      .eq('id_siswa', idSiswa)
+      .eq('jenis_asesmen', jenisAsesmen)
+      .eq('tahun_ajaran', tahunAjaran)
+      .eq('semester', semester)
+
+  let hasil = await minta(KOLOM_HEADER_LENGKAP)
+  if (hasil.error && /nilai_target/i.test(hasil.error.message || '')) hasil = await minta(KOLOM_HEADER_DASAR)
+  if (hasil.error) return { baris: [] as BarisHeaderRapor[], error: hasil.error }
+  return { baris: urutHeaderTerbaru((hasil.data || []) as BarisHeaderRapor[]), error: null }
+}
+
+async function rapikanHeaderGanda(idUtama: string, semua: { id_ujian_tahfidz?: string | null }[]) {
+  const lain = semua.map((row) => String(row.id_ujian_tahfidz || '').trim()).filter((id) => id && id !== idUtama)
+  if (lain.length === 0) return null
+  const hapusDetail = await supabase.from(TABEL_DETAIL_RAPOR).delete().in('header_id', lain)
+  if (hapusDetail.error) return hapusDetail.error
+  const hapusHeader = await supabase.from(TABEL_HEADER_RAPOR).delete().in('id_ujian_tahfidz', lain)
+  return hapusHeader.error
 }
 
 export async function fetchNilaiUjianTahfidz(idSiswa: string, jenisAsesmen: string) {
   const { tahunAjaran, semester } = periodeAjaranSekarang()
-  const { data: header, error: galatHeader } = await ambilHeaderRapor(idSiswa, jenisAsesmen, tahunAjaran, semester)
+  const { baris: headerSemua, error: galatHeader } = await daftarHeaderPeriode(idSiswa, jenisAsesmen, tahunAjaran, semester)
 
-  if (galatHeader) return { header: null, detail: [] as NilaiSurahUjian[], error: galatHeader.message }
-  if (!header) return { header: null, detail: [] as NilaiSurahUjian[], error: null }
+  if (galatHeader) return { header: null, detail: [] as NilaiSurahUjian[], error: pesanGalatRapor(galatHeader, 'memuat nilai ujian') }
+  if (headerSemua.length === 0) return { header: null, detail: [] as NilaiSurahUjian[], error: null }
 
+  const ids = headerSemua.map((row) => String(row.id_ujian_tahfidz || '')).filter(Boolean)
   const { data: detail, error: galatDetail } = await supabase
     .from(TABEL_DETAIL_RAPOR)
     .select(
-      'nama_surat,rentang_ayat,kesalahan_kelancaran,nilai_kelancaran,kesalahan_mad,kesalahan_dengung,kesalahan_makhraj,nilai_tajwid,nilai_adab',
+      'header_id,nama_surat,rentang_ayat,kesalahan_kelancaran,nilai_kelancaran,kesalahan_mad,kesalahan_dengung,kesalahan_makhraj,nilai_tajwid,nilai_adab',
     )
-    .eq('header_id', header.id_ujian_tahfidz)
+    .in('header_id', ids)
 
-  if (galatDetail) return { header: null, detail: [] as NilaiSurahUjian[], error: galatDetail.message }
+  if (galatDetail) return { header: null, detail: [] as NilaiSurahUjian[], error: pesanGalatRapor(galatDetail, 'memuat rincian surah') }
+
+  const perHeader = new Map<string, NonNullable<typeof detail>>()
+  for (const row of detail || []) {
+    const id = String(row.header_id || '')
+    const ada = perHeader.get(id) || []
+    ada.push(row)
+    perHeader.set(id, ada)
+  }
+  const header = headerSemua.find((row) => (perHeader.get(String(row.id_ujian_tahfidz)) || []).length > 0) || headerSemua[0]
+  const detailHeader = perHeader.get(String(header.id_ujian_tahfidz)) || []
 
   return {
     header: {
@@ -333,7 +369,7 @@ export async function fetchNilaiUjianTahfidz(idSiswa: string, jenisAsesmen: stri
       motivasi: String(header.motivasi || ''),
       nilaiTarget: angka(header.nilai_target),
     } satisfies HeaderRaporTahfidz,
-    detail: (detail || []).map((row) => ({
+    detail: detailHeader.map((row) => ({
       namaSurat: String(row.nama_surat || ''),
       rentangAyat: String(row.rentang_ayat || ''),
       kesalahanKelancaran: angka(row.kesalahan_kelancaran),
@@ -377,23 +413,19 @@ export async function simpanNilaiUjianTahfidz(payload: {
     }
   }
 
+  const idSiswa = String(payload.idSiswa || '').trim()
+  const jenisAsesmen = String(payload.jenisAsesmen || '').trim()
+  if (!idSiswa || !jenisAsesmen) return { error: 'Siswa atau asesmen belum dipilih.' }
+
   const nilaiList = payload.baris.map((row) => nilaiSurah(row) as number)
   const nilaiAkhir = Math.round((nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) * 100) / 100
   const predikat = predikatNilai(nilaiAkhir)
   const { tahunAjaran, semester } = periodeAjaranSekarang()
 
-  const { data: lama, error: galatCari } = await supabase
-    .from(TABEL_HEADER_RAPOR)
-    .select('id_ujian_tahfidz')
-    .eq('id_siswa', payload.idSiswa)
-    .eq('jenis_asesmen', payload.jenisAsesmen)
-    .eq('tahun_ajaran', tahunAjaran)
-    .eq('semester', semester)
-    .maybeSingle()
+  const { baris: headerAda, error: galatCari } = await daftarHeaderPeriode(idSiswa, jenisAsesmen, tahunAjaran, semester)
+  if (galatCari) return { error: pesanGalatRapor(galatCari, 'mencari header rapor') }
 
-  if (galatCari) return { error: galatCari.message }
-
-  let headerId = lama?.id_ujian_tahfidz ? String(lama.id_ujian_tahfidz) : ''
+  let headerId = headerAda[0]?.id_ujian_tahfidz ? String(headerAda[0].id_ujian_tahfidz) : ''
 
   const nilaiTarget = angkaAtauKosong(payload.narasi?.nilaiTarget)
   const narasi = {
@@ -411,33 +443,47 @@ export async function simpanNilaiUjianTahfidz(payload: {
   async function simpanHeader(denganTarget: boolean) {
     const isi = denganTarget ? { ...isiHeader, nilai_target: nilaiTarget } : isiHeader
     if (headerId) {
-      return supabase.from(TABEL_HEADER_RAPOR).update({ ...isi, updated_at: new Date().toISOString() }).eq('id_ujian_tahfidz', headerId)
+      return supabase
+        .from(TABEL_HEADER_RAPOR)
+        .update({ ...isi, updated_at: new Date().toISOString() })
+        .eq('id_ujian_tahfidz', headerId)
+        .select('id_ujian_tahfidz')
     }
     return supabase
       .from(TABEL_HEADER_RAPOR)
-      .insert([{ id_siswa: payload.idSiswa, jenis_asesmen: payload.jenisAsesmen, tahun_ajaran: tahunAjaran, semester, ...isi }])
+      .insert([{ id_siswa: idSiswa, jenis_asesmen: jenisAsesmen, tahun_ajaran: tahunAjaran, semester, ...isi }])
       .select('id_ujian_tahfidz')
-      .single()
   }
 
   if (headerId) {
-    let { error } = await simpanHeader(true)
-    if (error && /nilai_target/i.test(error.message || '')) error = (await simpanHeader(false)).error
-    if (error) return { error: error.message }
-    const hapus = await supabase.from(TABEL_DETAIL_RAPOR).delete().eq('header_id', headerId)
-    if (hapus.error) return { error: hapus.error.message }
-  } else {
     let hasil = await simpanHeader(true)
     if (hasil.error && /nilai_target/i.test(hasil.error.message || '')) hasil = await simpanHeader(false)
-    const data = hasil.data as { id_ujian_tahfidz?: string } | null
-    if (hasil.error || !data?.id_ujian_tahfidz) return { error: hasil.error?.message || 'Header rapor gagal dibuat.' }
+    if (hasil.error) return { error: pesanGalatRapor(hasil.error, 'memperbarui header rapor') }
+    const terkena = Array.isArray(hasil.data) ? hasil.data.length : 0
+    if (terkena === 0) headerId = ''
+    else {
+      const hapus = await supabase.from(TABEL_DETAIL_RAPOR).delete().eq('header_id', headerId)
+      if (hapus.error) return { error: pesanGalatRapor(hapus.error, 'mengganti rincian surah lama') }
+    }
+  }
+  if (!headerId) {
+    let hasil = await simpanHeader(true)
+    if (hasil.error && /nilai_target/i.test(hasil.error.message || '')) hasil = await simpanHeader(false)
+    const data = Array.isArray(hasil.data) ? hasil.data[0] : null
+    if (hasil.error || !data?.id_ujian_tahfidz) {
+      return {
+        error: hasil.error
+          ? pesanGalatRapor(hasil.error, 'membuat header rapor')
+          : `Header rapor tidak terbentuk untuk siswa ${idSiswa}, asesmen ${jenisAsesmen}, tahun ${tahunAjaran}, semester ${semester}.`,
+      }
+    }
     headerId = String(data.id_ujian_tahfidz)
   }
 
   const { error: galatDetail } = await supabase.from(TABEL_DETAIL_RAPOR).insert(
     payload.baris.map((row) => ({
       header_id: headerId,
-      id_siswa: payload.idSiswa,
+      id_siswa: idSiswa,
       nama_surat: row.namaSurat,
       rentang_ayat: row.rentangAyat,
       kesalahan_kelancaran: Number(row.kesalahanKelancaran || 0),
@@ -450,7 +496,13 @@ export async function simpanNilaiUjianTahfidz(payload: {
     })),
   )
 
-  if (galatDetail) return { error: galatDetail.message }
+  if (galatDetail) return { error: pesanGalatRapor(galatDetail, 'menyimpan rincian surah') }
+  const ganda = await rapikanHeaderGanda(headerId, headerAda)
+  if (ganda) {
+    return {
+      error: `Nilai sudah tertulis pada header ${headerId}, tetapi salinan header ganda untuk ${jenisAsesmen} ${tahunAjaran} ${semester} belum terhapus: ${ganda.message}`,
+    }
+  }
   return { error: null, nilaiAkhir, predikat }
 }
 
@@ -467,26 +519,27 @@ export async function simpanNilaiTargetUjian(payload: {
   if (!Number.isFinite(payload.nilaiTarget)) return { error: 'Nilai target tidak valid.' }
 
   const { tahunAjaran, semester } = periodeAjaranSekarang()
-  const { data: lama, error: galatCari } = await supabase
-    .from(TABEL_HEADER_RAPOR)
-    .select('id_ujian_tahfidz')
-    .eq('id_siswa', idSiswa)
-    .eq('jenis_asesmen', jenisAsesmen)
-    .eq('tahun_ajaran', tahunAjaran)
-    .eq('semester', semester)
-    .maybeSingle()
-  if (galatCari) return { error: galatCari.message }
+  const { baris: headerAda, error: galatCari } = await daftarHeaderPeriode(idSiswa, jenisAsesmen, tahunAjaran, semester)
+  if (galatCari) return { error: pesanGalatRapor(galatCari, 'mencari header rapor') }
 
   const waktu = new Date().toISOString()
   const denganAngka = { capaian_target: payload.capaianTarget, nilai_target: payload.nilaiTarget, updated_at: waktu }
   const tanpaAngka = { capaian_target: payload.capaianTarget, updated_at: waktu }
+  const headerId = headerAda[0]?.id_ujian_tahfidz ? String(headerAda[0].id_ujian_tahfidz) : ''
 
-  if (lama?.id_ujian_tahfidz) {
-    let { error } = await supabase.from(TABEL_HEADER_RAPOR).update(denganAngka).eq('id_ujian_tahfidz', lama.id_ujian_tahfidz)
+  if (headerId) {
+    let { error } = await supabase.from(TABEL_HEADER_RAPOR).update(denganAngka).eq('id_ujian_tahfidz', headerId).select('id_ujian_tahfidz')
     if (error && /nilai_target/i.test(error.message || '')) {
-      error = (await supabase.from(TABEL_HEADER_RAPOR).update(tanpaAngka).eq('id_ujian_tahfidz', lama.id_ujian_tahfidz)).error
+      error = (await supabase.from(TABEL_HEADER_RAPOR).update(tanpaAngka).eq('id_ujian_tahfidz', headerId).select('id_ujian_tahfidz')).error
     }
-    return { error: error?.message || null }
+    if (error) return { error: pesanGalatRapor(error, 'menyimpan nilai target') }
+    const ganda = await rapikanHeaderGanda(headerId, headerAda)
+    if (ganda) {
+      return {
+        error: `Nilai target sudah tertulis pada header ${headerId}, tetapi salinan header ganda untuk ${jenisAsesmen} ${tahunAjaran} ${semester} belum terhapus: ${ganda.message}`,
+      }
+    }
+    return { error: null }
   }
 
   const dasar = {
@@ -504,13 +557,20 @@ export async function simpanNilaiTargetUjian(payload: {
     const isi = denganTarget
       ? { ...dasar, nilai_akhir: nilaiAkhir, nilai_target: payload.nilaiTarget }
       : { ...dasar, nilai_akhir: nilaiAkhir }
-    return supabase.from(TABEL_HEADER_RAPOR).insert([isi]).select('id_ujian_tahfidz').single()
+    return supabase.from(TABEL_HEADER_RAPOR).insert([isi]).select('id_ujian_tahfidz')
   }
 
   let hasil = await sisip(true, null)
   if (hasil.error && /nilai_akhir|null value/i.test(hasil.error.message || '')) hasil = await sisip(true, 0)
   if (hasil.error && /nilai_target/i.test(hasil.error.message || '')) hasil = await sisip(false, 0)
-  if (hasil.error) return { error: hasil.error.message }
+  const data = Array.isArray(hasil.data) ? hasil.data[0] : null
+  if (hasil.error || !data?.id_ujian_tahfidz) {
+    return {
+      error: hasil.error
+        ? pesanGalatRapor(hasil.error, 'membuat header nilai target')
+        : `Header nilai target tidak terbentuk untuk siswa ${idSiswa}, asesmen ${jenisAsesmen}, tahun ${tahunAjaran}, semester ${semester}.`,
+    }
+  }
   return { error: null as string | null }
 }
 
