@@ -18,12 +18,20 @@ import {
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
 import { fetchRiwayatSetoranTahfidz, ringkasRiwayatTahfidz, type RiwayatSetoranTahfidz } from '@/lib/tahfidz-riwayat'
-import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+import {
+  fetchJenisAsesmenHeader,
+  fetchSurahDinilaiUjian,
+  kunciNamaSurah,
+  nilaiSurah,
+  periodeAjaranSekarang,
+  selaraskanAsesmenMateri,
+  tulisAsesmenMateriMengikutiHeader,
+  type PetaSurahDinilai,
+} from '@/lib/rapor-tahfidz-nilai'
 import { formatDateString } from '@/lib/qiroah'
 import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
 import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
-import { angkaKelas } from '@/lib/target-tahfidz'
 import {
   ASESMEN_TAHFIDZ,
   CONTOH_KETERANGAN_UJIAN,
@@ -56,30 +64,9 @@ function waktuKirim(iso: string) {
   return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-/** Nomor surat inklusif pada acuan Target Tahfidz. Kosong / di luar 1–6 artinya tidak disaring. */
-const RENTANG_NOMOR_TARGET: Record<number, readonly [number, number]> = {
-  1: [84, 114],
-  2: [67, 114],
-  3: [69, 77],
-  4: [58, 63],
-  5: [53, 64],
-  6: [54, 57],
-}
-
 function katalogSurah(surahs: Surah[]) {
-  const sumber = surahs.length > 0 ? surahs : daftarSurahBawaan()
+  const sumber = surahs.length >= 114 ? surahs : daftarSurahBawaan()
   return sumber.filter((item) => item?.nama_surat && item.nomor_surat)
-}
-
-function saringTargetKelas(semua: Surah[], aktif: boolean, kelas?: string | null) {
-  if (!aktif) return semua
-  const tingkat = angkaKelas(kelas)
-  const rentang = tingkat ? RENTANG_NOMOR_TARGET[tingkat] : undefined
-  if (!rentang) return semua
-  const min = Math.min(rentang[0], rentang[1])
-  const max = Math.max(rentang[0], rentang[1])
-  const cocok = semua.filter((item) => item.nomor_surat >= min && item.nomor_surat <= max)
-  return cocok.length > 0 ? cocok : semua
 }
 
 export function InputRaporTahfidz({
@@ -121,6 +108,7 @@ export function InputRaporTahfidz({
   const [tanyaTerapkan, setTanyaTerapkan] = useState(false)
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<{ idSiswa: string; nama: string; asesmen: string } | null>(null)
   const [versiDraf, setVersiDraf] = useState(0)
+  const [surahDinilai, setSurahDinilai] = useState<PetaSurahDinilai>(new Map())
 
   const terpilih = siswa.find((item) => item.id_siswa === idSiswa)
 
@@ -133,6 +121,17 @@ export function InputRaporTahfidz({
       window.removeEventListener(PERISTIWA_SINKRON_HQ, muat)
     }
   }, [])
+
+  useEffect(() => {
+    if (siswa.length === 0) return
+    let batal = false
+    fetchSurahDinilaiUjian(siswa.map((item) => item.id_siswa)).then((peta) => {
+      if (!batal) setSurahDinilai(peta)
+    })
+    return () => {
+      batal = true
+    }
+  }, [siswa, versiDraf])
 
   useEffect(() => {
     let batal = false
@@ -191,14 +190,35 @@ export function InputRaporTahfidz({
   useEffect(() => {
     if (siswa.length === 0) {
       setDaftar([])
+      setSurahDinilai(new Map())
       return
     }
     let batal = false
-    fetchMateriUjianTahfidz(siswa.map((item) => item.id_siswa)).then((baris) => {
-      if (!batal) setDaftar(baris as BarisMateriUjian[])
-    })
+    let urutan = 0
+    const muat = () => {
+      const tiket = ++urutan
+      const ids = siswa.map((item) => item.id_siswa)
+      Promise.all([fetchMateriUjianTahfidz(ids), fetchJenisAsesmenHeader(ids), fetchSurahDinilaiUjian(ids)]).then(
+        ([baris, header, dinilai]) => {
+          if (batal || tiket !== urutan) return
+          const sumber = baris as BarisMateriUjian[]
+          const selaras = selaraskanAsesmenMateri(sumber, header)
+          setDaftar(selaras)
+          setSurahDinilai(dinilai)
+          void tulisAsesmenMateriMengikutiHeader(sumber, selaras)
+        },
+      )
+    }
+    muat()
+    const saatTerlihat = () => {
+      if (document.visibilityState === 'visible') muat()
+    }
+    window.addEventListener('focus', muat)
+    document.addEventListener('visibilitychange', saatTerlihat)
     return () => {
       batal = true
+      window.removeEventListener('focus', muat)
+      document.removeEventListener('visibilitychange', saatTerlihat)
     }
   }, [siswa])
 
@@ -274,14 +294,13 @@ export function InputRaporTahfidz({
 
   const surahTampil = useMemo(() => {
     const kata = cariSurah.trim().toLowerCase()
-    const semua = [...katalogSurah(surahs)].sort((a, b) => b.nomor_surat - a.nomor_surat)
-    const sumber = saringTargetKelas(semua, targetTahfidzAktif, terpilih?.kelas)
+    const sumber = [...katalogSurah(surahs)].sort((a, b) => b.nomor_surat - a.nomor_surat)
     if (!kata) return sumber
     return sumber.filter((item) => {
       const nama = String(item.nama_surat || '').toLowerCase()
       return nama.includes(kata) || String(item.nomor_surat).includes(kata) || String(item.juz) === kata
     })
-  }, [surahs, cariSurah, targetTahfidzAktif, terpilih?.kelas])
+  }, [surahs, cariSurah])
 
   const rekap = useMemo(() => {
     const nama = new Map(siswa.map((item) => [item.id_siswa, item]))
@@ -289,6 +308,34 @@ export function InputRaporTahfidz({
       .map((row) => ({ ...row, nama: nama.get(row.idSiswa)?.nama_siswa || row.idSiswa }))
       .sort((a, b) => a.nama.localeCompare(b.nama, 'id') || a.asesmen.localeCompare(b.asesmen, 'id'))
   }, [daftar, siswa])
+
+  const ujianLengkap = useMemo(() => {
+    const materi = new Map<string, string[]>()
+    for (const row of daftar) {
+      const nama = kunciNamaSurah(row.surah)
+      if (!nama) continue
+      const kunci = kunciBarisUjian({ idSiswa: row.id_siswa, asesmen: row.asesmen })
+      const ada = materi.get(kunci) || []
+      if (!ada.includes(nama)) ada.push(nama)
+      materi.set(kunci, ada)
+    }
+    const lengkap = new Set<string>()
+    for (const [kunci, namaSurah] of materi) {
+      if (namaSurah.length === 0) continue
+      const [idSiswa, asesmen] = [kunci.slice(0, kunci.indexOf('|')), kunci.slice(kunci.indexOf('|') + 1)]
+      const barisDraf = cariDrafHq(idSiswa, asesmen)?.payloadNilai?.baris
+      if (barisDraf && barisDraf.length > 0) {
+        const semuaAda = namaSurah.every((nama) =>
+          barisDraf.some((item) => kunciNamaSurah(item.namaSurat) === nama && nilaiSurah(item) != null),
+        )
+        if (semuaAda) lengkap.add(kunci)
+        continue
+      }
+      const dinilai = surahDinilai.get(kunci)
+      if (dinilai && namaSurah.every((nama) => dinilai.has(nama))) lengkap.add(kunci)
+    }
+    return lengkap
+  }, [daftar, surahDinilai, versiDraf])
 
   const dampakTerapkan = useMemo(() => {
     const idUtama = terpilih?.id_siswa
@@ -452,8 +499,17 @@ export function InputRaporTahfidz({
 
   const muatUlangDaftar = async () => {
     if (siswa.length === 0) return
-    const segar = await fetchMateriUjianTahfidz(siswa.map((item) => item.id_siswa))
-    setDaftar(segar as BarisMateriUjian[])
+    const ids = siswa.map((item) => item.id_siswa)
+    const [segar, header, dinilai] = await Promise.all([
+      fetchMateriUjianTahfidz(ids),
+      fetchJenisAsesmenHeader(ids),
+      fetchSurahDinilaiUjian(ids),
+    ])
+    const sumber = segar as BarisMateriUjian[]
+    const selaras = selaraskanAsesmenMateri(sumber, header)
+    setDaftar(selaras)
+    setSurahDinilai(dinilai)
+    void tulisAsesmenMateriMengikutiHeader(sumber, selaras)
   }
 
   const tampilkanGalatMateri = (galatMateri: string) => {
@@ -909,7 +965,15 @@ export function InputRaporTahfidz({
                           className="size-4 accent-emerald-700"
                         />
                       </td>
-                      <td className="px-3 py-2 font-semibold text-slate-800">{row.nama}</td>
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-slate-800">{row.nama}</p>
+                        {ujianLengkap.has(kunci) ? (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                            <CheckCircle2 className="size-3" aria-hidden />
+                            Sudah lengkap
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2">{row.asesmen}</td>
                       <td className="px-3 py-2">{row.materi}</td>
                       <td className="px-3 py-2 text-slate-600">{row.keterangan || '-'}</td>

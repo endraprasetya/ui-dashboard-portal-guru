@@ -42,7 +42,7 @@ import {
   validasiMateriUjian,
   type MateriSurah,
 } from '@/lib/materi-ujian-tahfidz'
-import { cariSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
+import { cariSurah, daftarSurahBawaan, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import { ModalHitungTargetRapor } from '@/components/hitung-target-rapor-hq'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
@@ -212,7 +212,8 @@ export function NilaiUjianTahfidz({
 
   const surahTampil = useMemo(() => {
     const kata = cariSurah.trim().toLowerCase()
-    const sumber = [...surahs].sort((a, b) => b.nomor_surat - a.nomor_surat)
+    const katalog = surahs.length >= 114 ? surahs : daftarSurahBawaan()
+    const sumber = [...katalog].sort((a, b) => b.nomor_surat - a.nomor_surat)
     if (!kata) return sumber
     return sumber.filter(
       (item) =>
@@ -364,6 +365,7 @@ export function NilaiUjianTahfidz({
       if (terapan.error) {
         setPesan(`Nilai ${target.nama} tersimpan, tetapi daftar surah gagal diterapkan ke siswa lain: ${terapan.error}`)
         setGalat(true)
+        onSelesai?.()
         return
       }
       setDasarSurah(sidikBaris(baris))
@@ -388,14 +390,15 @@ export function NilaiUjianTahfidz({
         setMenyimpan(false)
         setPesan(`Nilai tersimpan, tetapi daftar surah gagal diperbarui: ${materiHasil.error}`)
         setGalat(true)
+        onSelesai?.()
         return
       }
-      onSelesai?.()
     }
     setMenyimpan(false)
     setDasarSurah(sidikBaris(baris))
     setGalat(false)
     setPesan(`Nilai ujian ${target.nama} tersimpan. Nilai akhir ${hasil.nilaiAkhir} (${hasil.predikat}).`)
+    onSelesai?.()
   }
 
   const handleSimpan = () => {

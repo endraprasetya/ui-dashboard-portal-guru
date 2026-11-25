@@ -15,6 +15,10 @@ import {
 
 const URUTAN: Record<StatusPengajuanKeringanan, number> = { Pending: 0, Disetujui: 1, Ditolak: 2 }
 
+function bandingKelas(a: string, b: string) {
+  return a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' })
+}
+
 function kelasStatus(status: StatusPengajuanKeringanan) {
   if (status === 'Disetujui') return 'bg-emerald-100 text-emerald-800'
   if (status === 'Ditolak') return 'bg-rose-100 text-rose-800'
@@ -26,6 +30,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
   const [saring, setSaring] = useState<'semua' | StatusPengajuanKeringanan>('semua')
+  const [kelas, setKelas] = useState('semua')
   const [aksi, setAksi] = useState<{ id: string; jenis: 'setuju' | 'tolak' } | null>(null)
   const [catatan, setCatatan] = useState('')
   const [menyimpan, setMenyimpan] = useState(false)
@@ -49,20 +54,39 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
   }
 
   useEffect(() => {
+    setKelas('semua')
     muat()
     const pengulangan = window.setInterval(() => muat(true), 20000)
     return () => window.clearInterval(pengulangan)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit])
 
+  const daftarKelas = useMemo(() => {
+    return [...new Set(data.map((item) => item.kelas.trim()).filter(Boolean))].sort(bandingKelas)
+  }, [data])
+
+  const menurutKelas = useMemo(() => {
+    if (kelas === 'semua') return data
+    return data.filter((item) => item.kelas.trim() === kelas)
+  }, [data, kelas])
+
   const tampil = useMemo(() => {
-    return data
+    return menurutKelas
       .filter((item) => saring === 'semua' || item.statusPersetujuan === saring)
       .slice()
       .sort((a, b) => URUTAN[a.statusPersetujuan] - URUTAN[b.statusPersetujuan] || b.dibuatPada.localeCompare(a.dibuatPada))
-  }, [data, saring])
+  }, [menurutKelas, saring])
 
-  const menunggu = data.filter((item) => item.statusPersetujuan === 'Pending').length
+  const ringkas = useMemo(() => {
+    const hitung = (status: StatusPengajuanKeringanan) =>
+      menurutKelas.filter((item) => item.statusPersetujuan === status).length
+    return {
+      total: menurutKelas.length,
+      pending: hitung('Pending'),
+      disetujui: hitung('Disetujui'),
+      ditolak: hitung('Ditolak'),
+    }
+  }, [menurutKelas])
 
   const putuskan = async (item: PengajuanKeringanan, status: 'Disetujui' | 'Ditolak') => {
     setMenyimpan(true)
@@ -90,7 +114,8 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
               <h2 className="text-sm font-extrabold">Pengajuan Mengikuti Kegiatan Sekolah</h2>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Permohonan dari wali murid unit {unit}. {menunggu} menunggu persetujuan.
+              Total {ringkas.total} pengajuan{kelas === 'semua' ? '' : ` kelas ${kelas}`} ({ringkas.pending} pending,{' '}
+              {ringkas.disetujui} disetujui, {ringkas.ditolak} ditolak)
             </p>
           </div>
           <button
@@ -103,7 +128,23 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+            Kelas
+            <select
+              value={kelas}
+              onChange={(event) => setKelas(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-sky-950"
+            >
+              <option value="semua">Semua Kelas</option>
+              {daftarKelas.map((nama) => (
+                <option key={nama} value={nama}>
+                  {nama}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
           {(['semua', 'Pending', 'Disetujui', 'Ditolak'] as const).map((nilai) => (
             <button
               key={nilai}
@@ -114,6 +155,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
               {nilai === 'semua' ? 'Semua' : nilai}
             </button>
           ))}
+          </div>
         </div>
 
         {galat ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{galat}</p> : null}

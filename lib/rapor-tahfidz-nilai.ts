@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { ambilBarisSiswa } from '@/lib/siswa'
 import {
   MAKS_NILAI_ADAB,
   MAKS_NILAI_AKHIR,
@@ -645,4 +646,176 @@ export async function selaraskanNilaiDenganMateri(idSiswa: string[], jenisAsesme
   }
 
   return { error: null as string | null }
+}
+
+export type HeaderAsesmenTahfidz = {
+  id_siswa: string
+  jenis_asesmen: string
+  tahun_ajaran: string
+  semester: string
+}
+
+/** Jenis asesmen terkini dari `rapor_tahfidz_header` untuk tahun ajaran berjalan. Tidak ada cache. */
+export async function fetchJenisAsesmenHeader(idSiswa: string[]) {
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const baris = await ambilBarisSiswa<HeaderAsesmenTahfidz>(idSiswa, (bagian, from, to) =>
+    supabase
+      .from(TABEL_HEADER_RAPOR)
+      .select('id_siswa,jenis_asesmen,tahun_ajaran,semester')
+      .in('id_siswa', bagian)
+      .eq('tahun_ajaran', tahunAjaran)
+      .range(from, to),
+  )
+  const sem = semester.trim().toLowerCase()
+  return baris.filter(
+    (row) => String(row.semester || '').trim().toLowerCase() === sem && String(row.jenis_asesmen || '').trim(),
+  )
+}
+
+/**
+ * Kolom asesmen di daftar ujian mengikuti `jenis_asesmen` header.
+ * Jika header tahun ini hanya punya satu jenis dan materi masih menyimpan label lama, label itu diganti.
+ */
+export function selaraskanAsesmenMateri<T extends { id_siswa: string; asesmen: string }>(
+  baris: T[],
+  header: Pick<HeaderAsesmenTahfidz, 'id_siswa' | 'jenis_asesmen'>[],
+) {
+  const perSiswa = new Map<string, Set<string>>()
+  for (const row of header) {
+    const jenis = String(row.jenis_asesmen || '').trim()
+    const id = String(row.id_siswa || '').trim()
+    if (!jenis || !id) continue
+    const ada = perSiswa.get(id) || new Set<string>()
+    ada.add(jenis)
+    perSiswa.set(id, ada)
+  }
+
+  return baris.map((row) => {
+    const jenis = perSiswa.get(String(row.id_siswa || '').trim())
+    const sekarang = String(row.asesmen || '').trim()
+    if (!jenis || jenis.size !== 1 || jenis.has(sekarang)) {
+      return sekarang === row.asesmen ? row : { ...row, asesmen: sekarang }
+    }
+    const [berlaku] = jenis
+    return { ...row, asesmen: berlaku }
+  })
+}
+
+/** Samakan `materi_ujian_tahfidz.asesmen` dengan header supaya simpan/hapus tidak menempel di label lama. */
+export async function tulisAsesmenMateriMengikutiHeader(
+  sebelum: { id_siswa: string; asesmen: string }[],
+  sesudah: { id_siswa: string; asesmen: string }[],
+) {
+  const kelompok = new Map<string, { dari: string; ke: string; ids: string[] }>()
+  const n = Math.min(sebelum.length, sesudah.length)
+  for (let i = 0; i < n; i += 1) {
+    const dari = String(sebelum[i]?.asesmen || '').trim()
+    const ke = String(sesudah[i]?.asesmen || '').trim()
+    const id = String(sebelum[i]?.id_siswa || '').trim()
+    if (!id || !dari || !ke || dari === ke) continue
+    const kunci = `${dari}\n${ke}`
+    const ada = kelompok.get(kunci) || { dari, ke, ids: [] }
+    if (!ada.ids.includes(id)) ada.ids.push(id)
+    kelompok.set(kunci, ada)
+  }
+  for (const { dari, ke, ids } of kelompok.values()) {
+    for (let i = 0; i < ids.length; i += 80) {
+      const bagian = ids.slice(i, i + 80)
+      const { error } = await supabase
+        .from('materi_ujian_tahfidz')
+        .update({ asesmen: ke })
+        .in('id_siswa', bagian)
+        .eq('asesmen', dari)
+      if (error) console.error('Gagal menyelaraskan asesmen materi ujian:', error.message)
+    }
+  }
+}
+
+export type PetaSurahDinilai = Map<string, Set<string>>
+
+/** Nama surah untuk mencocokkan materi ujian dengan baris `rapor_tahfidz_detail`. */
+export function kunciNamaSurah(nama: string) {
+  return String(nama || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+function detailSudahDinilai(row: Record<string, unknown>) {
+  return (
+    nilaiSurah({
+      namaSurat: String(row.nama_surat || ''),
+      rentangAyat: String(row.rentang_ayat || ''),
+      kesalahanKelancaran: angka(row.kesalahan_kelancaran),
+      nilaiKelancaran: angka(row.nilai_kelancaran),
+      kesalahanMad: angka(row.kesalahan_mad),
+      kesalahanDengung: angka(row.kesalahan_dengung),
+      kesalahanMakhraj: angka(row.kesalahan_makhraj),
+      nilaiTajwid: angka(row.nilai_tajwid),
+      nilaiAdab: angka(row.nilai_adab),
+    }) != null
+  )
+}
+
+/**
+ * Surah yang sudah memenuhi syarat nilai pada ujian tahun ajaran berjalan.
+ * Kunci peta: `id_siswa|jenis_asesmen`. Tidak ada cache.
+ */
+export async function fetchSurahDinilaiUjian(idSiswa: string[]): Promise<PetaSurahDinilai> {
+  const peta: PetaSurahDinilai = new Map()
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const header = await ambilBarisSiswa<{
+    id_ujian_tahfidz: string
+    id_siswa: string
+    jenis_asesmen: string
+    semester: string
+  }>(idSiswa, (bagian, from, to) =>
+    supabase
+      .from(TABEL_HEADER_RAPOR)
+      .select('id_ujian_tahfidz,id_siswa,jenis_asesmen,semester')
+      .in('id_siswa', bagian)
+      .eq('tahun_ajaran', tahunAjaran)
+      .range(from, to),
+  )
+  const sem = semester.trim().toLowerCase()
+  const idKeKunci = new Map<string, string>()
+  for (const row of header) {
+    if (String(row.semester || '').trim().toLowerCase() !== sem) continue
+    const id = String(row.id_ujian_tahfidz || '').trim()
+    const siswaId = String(row.id_siswa || '').trim()
+    const jenis = String(row.jenis_asesmen || '').trim()
+    if (!id || !siswaId || !jenis) continue
+    idKeKunci.set(id, `${siswaId}|${jenis}`)
+  }
+
+  const headerIds = [...idKeKunci.keys()]
+  for (let index = 0; index < headerIds.length; index += 80) {
+    const bagian = headerIds.slice(index, index + 80)
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from(TABEL_DETAIL_RAPOR)
+        .select(
+          'header_id,nama_surat,rentang_ayat,kesalahan_kelancaran,nilai_kelancaran,kesalahan_mad,kesalahan_dengung,kesalahan_makhraj,nilai_tajwid,nilai_adab',
+        )
+        .in('header_id', bagian)
+        .range(from, from + 999)
+      if (error) {
+        console.error('Gagal membaca kelengkapan nilai tahfidz:', error.message)
+        break
+      }
+      const rows = data || []
+      for (const row of rows) {
+        const kunci = idKeKunci.get(String(row.header_id || ''))
+        const nama = kunciNamaSurah(String(row.nama_surat || ''))
+        if (!kunci || !nama || !detailSudahDinilai(row as Record<string, unknown>)) continue
+        const ada = peta.get(kunci) || new Set<string>()
+        ada.add(nama)
+        peta.set(kunci, ada)
+      }
+      if (rows.length < 1000) break
+      from += 1000
+    }
+  }
+  return peta
 }

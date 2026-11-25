@@ -24,15 +24,21 @@ function juzSurah(nomor: number) {
   return JUZ_PER_NOMOR[nomor - 1] || 30
 }
 
-/** Katalog lokal 114 surat. Dipakai saat tabel `surah` kosong atau query gagal. */
+function urutSurahMenurun(daftar: Surah[]) {
+  return [...daftar].sort((a, b) => b.nomor_surat - a.nomor_surat)
+}
+
+/** Katalog lokal 114 surat, An-Naas (114) sampai Al-Fatihah (1). Dipakai saat tabel `surah` kosong atau query gagal. */
 export function daftarSurahBawaan(): Surah[] {
-  return DAFTAR_SURAH_RAPOR.map((item) => ({
-    id: item.n,
-    nomor_surat: item.n,
-    nama_surat: item.nama.trim(),
-    jumlah_ayat: item.a,
-    juz: juzSurah(item.n),
-  }))
+  return urutSurahMenurun(
+    DAFTAR_SURAH_RAPOR.map((item) => ({
+      id: item.n,
+      nomor_surat: item.n,
+      nama_surat: item.nama.trim(),
+      jumlah_ayat: item.a,
+      juz: juzSurah(item.n),
+    })),
+  )
 }
 
 function normalisasiBarisSurah(row: Partial<Surah>): Surah | null {
@@ -67,7 +73,9 @@ export async function fetchAllSurah(): Promise<Surah[]> {
     .select('nomor_surat,nama_surat,jumlah_ayat,juz')
     .order('nomor_surat', { ascending: false })
 
-  const surahList = (data || []).map((row) => normalisasiBarisSurah(row)).filter((row): row is Surah => Boolean(row))
+  const surahList = urutSurahMenurun(
+    (data || []).map((row) => normalisasiBarisSurah(row)).filter((row): row is Surah => Boolean(row)),
+  )
 
   if (error || surahList.length === 0) {
     console.error('Gagal mengambil data surah, memakai daftar bawaan:', error?.message || 'tabel kosong')
