@@ -53,10 +53,6 @@ function jumlahAyat(surahs: Surah[], nomor: number) {
   return surahs.find((item) => item.nomor_surat === nomor)?.jumlah_ayat || 1
 }
 
-function namaSuratNomor(surahs: Surah[], nomor: number) {
-  return surahs.find((item) => item.nomor_surat === nomor)?.nama_surat?.trim() || `Surat ${nomor}`
-}
-
 /**
  * Urutan capaian kurikulum HQ: semakin besar semakin maju.
  * Kelas 1–2: Juz 30 mundur (nomor surat lebih kecil = lebih maju).
@@ -131,34 +127,35 @@ export function hitungNilaiTarget(
   return { poin: 40, posisi, targetKurikulum, kelas }
 }
 
-function labelAsesmenPendek(asesmen: string) {
-  const k = String(asesmen || '').toUpperCase()
-  if (k.includes('ASTS II') || k.includes('ASTS 2')) return 'ASTS 2'
-  if (k.includes('ASTS')) return 'ASTS 1'
-  if (k === 'ASAT' || k.includes('AKHIR TAHUN')) return 'ASAT'
-  if (k === 'ASAS' || k.includes('AKHIR SEMESTER')) return 'ASAS'
-  return asesmen || 'ASTS 1'
+export function susunNarasiCapaianTarget(bagian: {
+  kelas?: string | number | null
+  asesmen?: string | null
+  surahTarget?: string | null
+  surahAktual?: string | null
+  nilaiTarget?: number | '' | null
+}) {
+  const kelas = String(bagian.kelas ?? '').trim() || '...'
+  const asesmen = String(bagian.asesmen ?? '').trim() || 'ASAS'
+  const surahTarget = String(bagian.surahTarget ?? '').trim() || '...'
+  const surahAktual = String(bagian.surahAktual ?? '').trim() || '...'
+  const angka = bagian.nilaiTarget
+  const nilai = angka === '' || angka == null || !Number.isFinite(Number(angka)) ? '...' : String(Number(angka))
+  return `Alhamdulillah ananda di kelas ${kelas} mampu menambah hafalan baru dengan baik. Target hafalan Al-Qur'an (${asesmen}) kelas ${kelas} sampai surat ${surahTarget}. Capaian aktual ananda surat ${surahAktual}, sehingga nilai target yang didapat ${nilai} poin.`
 }
 
-function labelCapaian(posisi: PosisiHafalan | null, surahs: Surah[]) {
-  if (!posisi) return 'hafalan awal Juz 30'
-  const nama = posisi.nama || namaSuratNomor(surahs, posisi.nomor)
-  const lengkap = jumlahAyat(surahs, posisi.nomor)
-  if (!posisi.ayat || posisi.ayat >= lengkap) return `surat ${nama}`
-  return `surat ${nama} ayat ${posisi.ayat}`
-}
-
-export function buatNarasiCapaianTarget(hasil: HasilNilaiTarget, asesmen: string, surahs: Surah[]) {
-  const capaian = labelCapaian(hasil.posisi, surahs)
-  const labelAsesmen = labelAsesmenPendek(asesmen)
-  const maju = hasil.poin >= 80
-  const sedang = hasil.poin >= 50
-  const pengantar = maju
-    ? `Alhamdulillah ananda di kelas ${hasil.kelas} mampu menambah hafalan baru dengan baik`
-    : sedang
-      ? `Alhamdulillah ananda di kelas ${hasil.kelas} mampu menambah hafalan baru`
-      : `Ananda di kelas ${hasil.kelas} masih tahap muroja'ah dari hafalan sebelumnya`
-  return `${pengantar}. Target hafalan Al-Qur'an (${labelAsesmen}) kelas ${hasil.kelas} sampai surat ${hasil.targetKurikulum}. Capaian aktual ananda ${capaian}, sehingga nilai target yang didapat ${hasil.poin} poin.`
+export function buatNarasiCapaianTarget(
+  hasil: HasilNilaiTarget,
+  asesmen: string,
+  _surahs: Surah[],
+  kelasTampil?: string,
+) {
+  return susunNarasiCapaianTarget({
+    kelas: String(kelasTampil || '').trim() || String(hasil.kelas),
+    asesmen,
+    surahTarget: hasil.targetKurikulum,
+    surahAktual: hasil.posisi?.nama,
+    nilaiTarget: hasil.poin,
+  })
 }
 
 export function buatNarasiMotivasi(hasil: HasilNilaiTarget) {

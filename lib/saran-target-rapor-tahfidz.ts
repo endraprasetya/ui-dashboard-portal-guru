@@ -30,6 +30,9 @@ export type SaranTargetTahfidz = {
   capaianTarget: string
   motivasi: string
   ringkas: string
+  kelasTampil: string
+  surahTarget: string
+  surahAktual: string
 }
 
 export async function hitungSaranTargetTahfidz(
@@ -53,8 +56,11 @@ export async function hitungSaranTargetTahfidz(
   const benar = hitungNilaiTarget(kelas, posisi, surahs)
   return {
     nilaiTarget: benar.poin,
-    capaianTarget: buatNarasiCapaianTarget(benar, asesmen, surahs),
+    capaianTarget: buatNarasiCapaianTarget(benar, asesmen, surahs, kelas),
     motivasi: buatNarasiMotivasi(benar),
     ringkas: `Target kurikulum: ${benar.targetKurikulum} · ${benar.poin} poin`,
+    kelasTampil: String(kelas || '').trim() || String(benar.kelas),
+    surahTarget: benar.targetKurikulum,
+    surahAktual: benar.posisi?.nama?.trim() || '',
   }
 }

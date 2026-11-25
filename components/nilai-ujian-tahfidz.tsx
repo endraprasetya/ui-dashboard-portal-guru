@@ -47,7 +47,7 @@ import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-di
 import { ModalHitungTargetRapor } from '@/components/hitung-target-rapor-hq'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
 import { kriteriaTargetKelas } from '@/lib/kriteria-target-rapor-hq'
-import { angkaKelas } from '@/lib/target-tahfidz'
+import { angkaKelas, susunNarasiCapaianTarget } from '@/lib/target-tahfidz'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 
 export type TargetNilaiUjian = {
@@ -135,10 +135,25 @@ export function NilaiUjianTahfidz({
   const detailAwal = useRef<NilaiSurahUjian[]>([])
   const panelRef = useRef<HTMLDivElement>(null)
   const targetDiubah = useRef(false)
+  const drafCapaian = useRef('')
+  const konteksDraf = useRef({ kelas: '', asesmen: '', surahTarget: '', surahAktual: '' })
+  const tokenHitung = useRef(0)
+
+  const ingatDrafCapaian = (
+    teks: string,
+    konteks: { kelas: string; asesmen: string; surahTarget: string; surahAktual: string },
+  ) => {
+    drafCapaian.current = teks
+    konteksDraf.current = konteks
+    setCapaianTarget(teks)
+    return teks
+  }
 
   useEffect(() => {
     let batal = false
     targetDiubah.current = false
+    drafCapaian.current = ''
+    konteksDraf.current = { kelas: '', asesmen: '', surahTarget: '', surahAktual: '' }
     setMemuat(true)
     fetchNilaiUjianTahfidz(target.idSiswa, target.asesmen).then((hasil) => {
       if (batal) return
@@ -192,7 +207,17 @@ export function NilaiUjianTahfidz({
         hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs).then((saran) => {
           if (!saran || batal || targetDiubah.current) return
           setNilaiTarget((sekarang) => (sekarang === '' ? saran.nilaiTarget : sekarang))
-          setCapaianTarget((sekarang) => (sekarang.trim() ? sekarang : saran.capaianTarget))
+          setCapaianTarget((sekarang) => {
+            if (sekarang.trim() && sekarang !== drafCapaian.current) return sekarang
+            drafCapaian.current = saran.capaianTarget
+            konteksDraf.current = {
+              kelas: saran.kelasTampil,
+              asesmen: target.asesmen,
+              surahTarget: saran.surahTarget,
+              surahAktual: saran.surahAktual,
+            }
+            return saran.capaianTarget
+          })
           setMotivasi((sekarang) => (sekarang.trim() ? sekarang : saran.motivasi))
         })
       }
@@ -257,12 +282,42 @@ export function NilaiUjianTahfidz({
     )
   }
 
+  const bukaHitungTarget = () => {
+    const token = ++tokenHitung.current
+    setModalTarget(true)
+    void hitungSaranTargetTahfidz(target.idSiswa, target.kelas, target.asesmen, target.surahs).then((saran) => {
+      if (!saran || token !== tokenHitung.current) return
+      targetDiubah.current = true
+      ingatDrafCapaian(saran.capaianTarget, {
+        kelas: saran.kelasTampil,
+        asesmen: String(target.asesmen || '').trim() || 'ASAS',
+        surahTarget: saran.surahTarget,
+        surahAktual: saran.surahAktual,
+      })
+      setNilaiTarget(saran.nilaiTarget)
+      tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, saran.nilaiTarget, saran.capaianTarget)
+    })
+  }
   const pakaiPoinTarget = (poin: number, capaian: string, kelas: number) => {
+    tokenHitung.current += 1
     const kriteria = kriteriaTargetKelas(kelas)
-    const teksCapaian = `${kriteria.judul}. Capaian yang dipakai: ${capaian}. Nilai target ${poin} poin.`
+    const teksCapaian = ingatDrafCapaian(
+      susunNarasiCapaianTarget({
+        kelas: String(target.kelas || '').trim() || String(kelas),
+        asesmen: target.asesmen,
+        surahTarget: kriteria.judul.replace(/^Target kelas /, ''),
+        surahAktual: capaian,
+        nilaiTarget: poin,
+      }),
+      {
+        kelas: String(target.kelas || '').trim() || String(kelas),
+        asesmen: String(target.asesmen || '').trim() || 'ASAS',
+        surahTarget: kriteria.judul.replace(/^Target kelas /, ''),
+        surahAktual: capaian,
+      },
+    )
     targetDiubah.current = true
     setNilaiTarget(poin)
-    setCapaianTarget(teksCapaian)
     setModalTarget(false)
     setGalat(false)
     tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, poin, teksCapaian)
@@ -687,7 +742,7 @@ export function NilaiUjianTahfidz({
                   <p className="text-[11px] font-bold text-emerald-900">Target tahfidz aktif</p>
                   <button
                     type="button"
-                    onClick={() => setModalTarget(true)}
+                    onClick={bukaHitungTarget}
                     className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-800"
                   >
                     Hitung Target
@@ -704,7 +759,15 @@ export function NilaiUjianTahfidz({
                       const angka = event.target.value === '' ? '' : Number(event.target.value)
                       targetDiubah.current = true
                       setNilaiTarget(angka)
-                      tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, angka, capaianTarget)
+                      const masihDraf = Boolean(drafCapaian.current) && capaianTarget === drafCapaian.current
+                      const teks = masihDraf
+                        ? susunNarasiCapaianTarget({ ...konteksDraf.current, nilaiTarget: angka })
+                        : capaianTarget
+                      if (masihDraf) {
+                        drafCapaian.current = teks
+                        setCapaianTarget(teks)
+                      }
+                      tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, angka, teks)
                     }}
                     placeholder="0–100"
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -724,9 +787,12 @@ export function NilaiUjianTahfidz({
                       tulisCadanganNilaiTarget(target.idSiswa, target.asesmen, nilaiTarget, teks)
                     }}
                     rows={3}
-                    placeholder="Deskripsi capaian terhadap target hafalan..."
+                    placeholder="Draf capaian target. Tinjau kalimat ini sebelum menyimpan."
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
+                  <span className="mt-1 block font-medium text-slate-500">
+                    Kalimat ini draf indikatif. Sunting bila perlu, lalu simpan setelah ditinjau. Tombol Hitung Target menulis ulang draf.
+                  </span>
                 </label>
               </>
             ) : (
