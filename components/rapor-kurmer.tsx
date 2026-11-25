@@ -9,7 +9,6 @@ import { RaporKurmerLedger } from '@/components/rapor-kurmer-ledger'
 import {
   barisNilaiKosong,
   clampJumlahTp,
-  DAFTAR_MAPEL_KURMER,
   fetchKelasKurmer,
   fetchNilaiKurmerKelas,
   fetchSetelanTpKurmer,
@@ -17,8 +16,7 @@ import {
   gabungRosterNilai,
   JENIS_ASESMEN_KURMER,
   JUMLAH_TP_BAWAAN,
-  MAPEL_DINIYYAH_KURMER,
-  MAPEL_UMUM_KURMER,
+  komponenPaiSiswa,
   normalisasiBarisNilai,
   fetchDataCetakKurmer,
   pasangLanggananRealtimeKurmer,
@@ -32,8 +30,10 @@ import {
   type DataCetakKurmer,
   type FilterKurmer,
   type JenisAsesmenKurmer,
+  type ModeLegerKurmer,
   type SiswaKurmer,
 } from '@/lib/rapor-kurmer'
+import { kkmMapelKurmer, mapelAktifKelas, mapelKurmer } from '@/lib/kkm-kurmer'
 import { teacherName } from '@/lib/jurnal'
 
 export type TabKurmer = 'nilai' | 'ledger' | 'cetak'
@@ -48,7 +48,7 @@ function filterAwal(): FilterKurmer {
   const periode = periodeKurmer()
   return {
     kelas: '',
-    kodeMapel: MAPEL_UMUM_KURMER[0]?.kode || 'bind',
+    kodeMapel: 'pkn',
     jenisAsesmen: 'ASTS',
     tahunAjaran: periode.tahunAjaran,
     semester: periode.semester,
@@ -138,6 +138,7 @@ export function RaporKurmer({
   const [namaKepsek, setNamaKepsek] = useState('')
   const [menyimpanCatatan, setMenyimpanCatatan] = useState(false)
   const [statusCatatan, setStatusCatatan] = useState('')
+  const [modeLeger, setModeLeger] = useState<ModeLegerKurmer>('ASTS')
 
   useEffect(() => {
     setTab(tabAwal)
@@ -160,13 +161,17 @@ export function RaporKurmer({
     setMemuat(true)
     const [roster, nilai] = await Promise.all([
       fetchSiswaKelasKurmer(filter.kelas, currentUser),
-      fetchNilaiKurmerKelas(filter),
+      fetchNilaiKurmerKelas({
+        kelas: filter.kelas,
+        tahunAjaran: filter.tahunAjaran,
+        semester: filter.semester,
+      }),
     ])
     setSiswa(roster)
     setNilaiKelas(nilai.data)
     if (nilai.error) console.error(nilai.error)
     setMemuat(false)
-  }, [currentUser, filter])
+  }, [currentUser, filter.kelas, filter.tahunAjaran, filter.semester])
 
   useEffect(() => {
     let batal = false
@@ -215,14 +220,25 @@ export function RaporKurmer({
     }
   }, [filter.kelas, filter.kodeMapel, filter.tahunAjaran, filter.semester])
 
-  const barisNilai = useMemo(
-    () => gabungRosterNilai(siswa, nilaiKelas, filter, jumlahTp),
-    [siswa, nilaiKelas, filter, jumlahTp],
-  )
+  const mapelKelas = useMemo(() => mapelAktifKelas(filter.kelas), [filter.kelas])
+  const mapelUmum = useMemo(() => mapelKelas.filter((item) => item.kelompok === 'umum'), [mapelKelas])
+  const mapelDiniyyah = useMemo(() => mapelKelas.filter((item) => item.kelompok === 'diniyyah'), [mapelKelas])
+  const mapelDipilih = mapelKurmer(filter.kodeMapel)
+  const kkmDipilih = kkmMapelKurmer(filter.kodeMapel, filter.kelas)
+  const paiOtomatis = mapelDipilih?.otomatis === true
+
+  const barisNilai = useMemo(() => {
+    if (!paiOtomatis) return gabungRosterNilai(siswa, nilaiKelas, filter, jumlahTp)
+    return siswa.map((item) => {
+      const pai = komponenPaiSiswa(item.id_siswa, nilaiKelas, filter.kelas, filter.jenisAsesmen)
+      const kosong = barisNilaiKosong(item, filter, jumlahTp)
+      return { ...kosong, nh: pai.nh, asts: pai.asts, asas: pai.asas, nilai_akhir: pai.na, tp: kosong.tp.map(() => null) }
+    })
+  }, [paiOtomatis, siswa, nilaiKelas, filter, jumlahTp])
 
   const ledger = useMemo(
-    () => susunLedgerKelas(siswa, nilaiKelas, filter.jenisAsesmen),
-    [siswa, nilaiKelas, filter.jenisAsesmen],
+    () => susunLedgerKelas(siswa, nilaiKelas, modeLeger, filter.kelas),
+    [siswa, nilaiKelas, modeLeger, filter.kelas],
   )
 
   const dataCetakTampil = useMemo(() => {
@@ -270,7 +286,16 @@ export function RaporKurmer({
   }, [siswa, idSiswaCetak])
 
   const ubahFilter = (patch: Partial<FilterKurmer>) => {
-    setFilter((current) => ({ ...current, ...patch }))
+    setFilter((current) => {
+      const berikutnya = { ...current, ...patch }
+      if (patch.kelas && patch.kelas !== current.kelas) {
+        const aktif = mapelAktifKelas(patch.kelas)
+        if (!aktif.some((item) => item.kode === berikutnya.kodeMapel)) {
+          berikutnya.kodeMapel = aktif.find((item) => !item.otomatis)?.kode || aktif[0]?.kode || 'pkn'
+        }
+      }
+      return berikutnya
+    })
     setStatus('')
   }
 
@@ -374,7 +399,7 @@ export function RaporKurmer({
         <div className="hidden w-16 sm:block" />
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+      <section className="print:hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2 text-indigo-700">
           <BookOpen className="size-4" />
           <p className="text-xs font-extrabold uppercase tracking-wide">Filter rapor kurmer</p>
@@ -404,16 +429,19 @@ export function RaporKurmer({
               className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold"
             >
               <optgroup label="Mapel Umum">
-                {MAPEL_UMUM_KURMER.map((item) => (
+                {mapelUmum.map((item) => (
                   <option key={item.kode} value={item.kode}>
                     {item.nama}
+                    {item.otomatis ? ' · otomatis' : ''}
+                    {kkmMapelKurmer(item.kode, filter.kelas) != null ? ` · KKM ${kkmMapelKurmer(item.kode, filter.kelas)}` : ''}
                   </option>
                 ))}
               </optgroup>
               <optgroup label="Mapel Diniyyah">
-                {MAPEL_DINIYYAH_KURMER.map((item) => (
+                {mapelDiniyyah.map((item) => (
                   <option key={item.kode} value={item.kode}>
                     {item.nama}
+                    {kkmMapelKurmer(item.kode, filter.kelas) != null ? ` · KKM ${kkmMapelKurmer(item.kode, filter.kelas)}` : ''}
                   </option>
                 ))}
               </optgroup>
@@ -455,11 +483,12 @@ export function RaporKurmer({
         </div>
         <p className="mt-3 text-[11px] leading-5 text-slate-500">
           NH = rata-rata TP terisi. NA ASTS = (NH + ASTS) / 2. NA ASAS = (2×NH + ASTS + ASAS) / bobot yang terisi.
-          Predikat: SB ≥ 90, B ≥ 80, C ≥ 70, PB &lt; 70.
+          Predikat memakai KKM mapel di kelas ini: di bawah KKM = PB, lalu C, B (≥ 80), dan SB (≥ 90).
+          PAI dihitung dari rata-rata mapel diniyyah yang aktif, bukan diisi manual.
         </p>
       </section>
 
-      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm print:hidden">
+      <nav className="print:hidden flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {TAB_KURMER.map((item) => {
           const Ikon = item.ikon
           const aktif = tab === item.id
@@ -491,11 +520,23 @@ export function RaporKurmer({
           onJumlahTp={ubahJumlahTp}
           onUbah={ubahBaris}
           onSimpan={simpan}
+          kkm={kkmDipilih}
+          hanyaBaca={paiOtomatis}
+          sumberPai={mapelDiniyyah.length}
         />
       ) : null}
 
       {tab === 'ledger' ? (
-        <RaporKurmerLedger filter={filter} baris={ledger.baris} rekap={ledger.rekap} memuat={memuat} />
+        <RaporKurmerLedger
+          filter={filter}
+          umum={ledger.umum}
+          diniyyah={ledger.diniyyah}
+          baris={ledger.baris}
+          rekap={ledger.rekap}
+          memuat={memuat}
+          mode={modeLeger}
+          onMode={setModeLeger}
+        />
       ) : null}
 
       {tab === 'cetak' ? (
@@ -520,7 +561,7 @@ export function RaporKurmer({
       ) : null}
 
       <p className="print:hidden text-[11px] text-slate-400">
-        {DAFTAR_MAPEL_KURMER.length} muatan pelajaran · kerangka awal Rapor Kurmer Portal Guru
+        {mapelKelas.length} mapel aktif di kelas ini · nilai dan catatan wali tersimpan di tabel terpisah
       </p>
     </div>
   )

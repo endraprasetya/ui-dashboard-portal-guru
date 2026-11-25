@@ -1,41 +1,40 @@
+import {
+  aliasMapelKurmer,
+  DAFTAR_MAPEL_KURMER,
+  diBawahKkm,
+  kodeMapelDariNama,
+  kkmMapelKurmer,
+  mapelAktifKelas,
+  mapelKurmer,
+  MAPEL_DINIYYAH_KURMER,
+  MAPEL_UMUM_KURMER,
+  namaSimpanMapel,
+  namaTampilMapel,
+  predikatDariKkm,
+  type MapelKurmer,
+} from '@/lib/kkm-kurmer'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
 import { excludeAlumniSiswa, isKelasAlumni, unitLogin, unitSama } from '@/lib/siswa'
 import { supabase } from '@/lib/supabase'
 
+export {
+  DAFTAR_MAPEL_KURMER,
+  diBawahKkm,
+  kkmMapelKurmer,
+  mapelAktifKelas,
+  MAPEL_DINIYYAH_KURMER,
+  MAPEL_UMUM_KURMER,
+  type MapelKurmer,
+}
+export type { KelompokMapelKurmer } from '@/lib/kkm-kurmer'
+
 export const JENIS_ASESMEN_KURMER = ['ASTS', 'ASAS'] as const
 export type JenisAsesmenKurmer = (typeof JENIS_ASESMEN_KURMER)[number]
+export const MODE_LEGER_KURMER = ['ASTS', 'ASAS', 'NA'] as const
+export type ModeLegerKurmer = (typeof MODE_LEGER_KURMER)[number]
 
-export const KELOMPOK_MAPEL_KURMER = ['umum', 'diniyyah'] as const
-export type KelompokMapelKurmer = (typeof KELOMPOK_MAPEL_KURMER)[number]
-
-export type MapelKurmer = {
-  kode: string
-  nama: string
-  kelompok: KelompokMapelKurmer
-}
-
-export const MAPEL_UMUM_KURMER: MapelKurmer[] = [
-  { kode: 'pai', nama: 'PAI', kelompok: 'umum' },
-  { kode: 'pkn', nama: 'PKN', kelompok: 'umum' },
-  { kode: 'bind', nama: 'Bahasa Indonesia', kelompok: 'umum' },
-  { kode: 'mtk', nama: 'Matematika', kelompok: 'umum' },
-  { kode: 'ipas', nama: 'IPAS', kelompok: 'umum' },
-  { kode: 'pjok', nama: 'PJOK', kelompok: 'umum' },
-  { kode: 'seni', nama: 'Seni Budaya', kelompok: 'umum' },
-  { kode: 'bing', nama: 'Bahasa Inggris', kelompok: 'umum' },
-  { kode: 'bjaw', nama: 'Bahasa Jawa', kelompok: 'umum' },
-]
-
-export const MAPEL_DINIYYAH_KURMER: MapelKurmer[] = [
-  { kode: 'aqidah', nama: 'Aqidah', kelompok: 'diniyyah' },
-  { kode: 'fiqih', nama: 'Fiqih Akhlak', kelompok: 'diniyyah' },
-  { kode: 'qq', nama: "Qiro'atul Qur'an / Tajwid", kelompok: 'diniyyah' },
-  { kode: 'barab', nama: 'Bahasa Arab', kelompok: 'diniyyah' },
-  { kode: 'hq', nama: "Hafalan Al-Qur'an", kelompok: 'diniyyah' },
-  { kode: 'hadits', nama: 'Hafalan Hadits', kelompok: 'diniyyah' },
-]
-
-export const DAFTAR_MAPEL_KURMER: MapelKurmer[] = [...MAPEL_UMUM_KURMER, ...MAPEL_DINIYYAH_KURMER]
+export const KOLOM_NILAI_KURMER =
+  'id_kurmer_nilai,id_siswa,nis,kelas,mata_pelajaran,jenis_asesmen,tahun_ajaran,semester,tp1,tp2,tp3,tp4,tp5,tp6,tp7,tp8,tp9,tp10,nilai_formatif,asts,asas,nilai_akhir,predikat'
 
 export const JUMLAH_TP_BAWAAN = 10
 export const JUMLAH_TP_MIN = 1
@@ -54,19 +53,26 @@ export type SiswaKurmer = {
   nama_siswa: string
   kelas: string
   nis: string
+  nisn?: string
   unit?: string
 }
 
 export type BarisNilaiKurmer = {
+  id_kurmer_nilai?: number | null
   id_siswa: string
+  nis?: string
   kelas: string
   kode_mapel: string
+  /** Ejaan `mata_pelajaran` yang sudah tersimpan, supaya update tidak mengganti nama lama. */
+  mata_pelajaran?: string
   tahun_ajaran: string
   semester: string
   tp: (number | null)[]
   nh: number | null
   asts: number | null
   asas: number | null
+  nilai_akhir: number | null
+  predikat?: string | null
   jumlah_tp: number
 }
 
@@ -129,6 +135,10 @@ export type StatistikLedger = {
 export type BarisLedgerKurmer = {
   siswa: SiswaKurmer
   nilai: Record<string, number | null>
+  jumlahUmum: number | null
+  jumlahDiniyyah: number | null
+  total: number | null
+  ranking: number
   statistik: StatistikLedger
 }
 
@@ -185,20 +195,10 @@ export function faseKurmer(kelas: string) {
   return 'C'
 }
 
-export function mapelKurmer(kode: string) {
-  return DAFTAR_MAPEL_KURMER.find((item) => item.kode === kode) || null
-}
+export { kodeMapelDariNama, mapelKurmer }
 
 export function namaMapelKurmer(kode: string) {
-  return mapelKurmer(kode)?.nama ?? teks(kode)
-}
-
-export function kodeMapelDariNama(nama: string) {
-  const isi = teks(nama)
-  const mapel =
-    DAFTAR_MAPEL_KURMER.find((item) => item.nama === isi) ||
-    DAFTAR_MAPEL_KURMER.find((item) => item.kode === isi.toLowerCase())
-  return mapel?.kode ?? isi.toLowerCase()
+  return namaTampilMapel(kode)
 }
 
 export function semesterKeDb(semester: string) {
@@ -231,12 +231,8 @@ export function formatNilaiKurmer(n: number | null | undefined) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
-export function predikatKurmer(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return '—'
-  if (n >= 90) return 'SB'
-  if (n >= 80) return 'B'
-  if (n >= 70) return 'C'
-  return 'PB'
+export function predikatKurmer(n: number | null | undefined, kkm: number | null = 70) {
+  return predikatDariKkm(n, kkm)
 }
 
 export function labelPredikatKurmer(kode: string) {
@@ -327,6 +323,7 @@ export function barisNilaiKosong(
     nh: null,
     asts: null,
     asas: null,
+    nilai_akhir: null,
     jumlah_tp: jumlah,
   }
 }
@@ -415,13 +412,18 @@ function dariBarisSupabase(row: Record<string, unknown>): BarisNilaiKurmer {
   return {
     id_siswa: teks(row.id_siswa),
     kelas: teks(row.kelas),
+    id_kurmer_nilai: angkaAtauNull(row.id_kurmer_nilai),
+    nis: teks(row.nis),
     kode_mapel: kodeMapelDariNama(teks(row.mata_pelajaran) || teks(row.kode_mapel)),
+    mata_pelajaran: teks(row.mata_pelajaran),
     tahun_ajaran: teks(row.tahun_ajaran),
     semester: semesterDariDb(row.semester),
     tp,
     nh,
     asts: angkaAtauNull(row.asts),
     asas: angkaAtauNull(row.asas),
+    nilai_akhir: angkaAtauNull(row.nilai_akhir),
+    predikat: teks(row.predikat) || null,
     jumlah_tp: jumlah,
   }
 }
@@ -536,15 +538,19 @@ export async function fetchSiswaKurmerById(
   }
 }
 
-export async function fetchNilaiKurmerKelas(filter: FilterKurmer) {
-  const { data, error } = await supabase
+export async function fetchNilaiKurmerKelas(filter: Pick<FilterKurmer, 'kelas' | 'tahunAjaran' | 'semester'> & { kodeMapel?: string }) {
+  let query = supabase
     .from('rapor_kurmer_nilai')
-    .select(
-      'id_siswa,kelas,mata_pelajaran,tahun_ajaran,semester,tp1,tp2,tp3,tp4,tp5,tp6,tp7,tp8,tp9,tp10,nilai_formatif,asts,asas',
-    )
+    .select(KOLOM_NILAI_KURMER)
     .eq('kelas', filter.kelas)
     .eq('tahun_ajaran', filter.tahunAjaran)
     .eq('semester', semesterKeDb(filter.semester))
+
+  if (filter.kodeMapel) {
+    query = query.in('mata_pelajaran', aliasMapelKurmer(filter.kodeMapel))
+  }
+
+  const { data, error } = await query
 
   if (error) {
     console.error('Gagal memuat nilai rapor kurmer:', error.message)
@@ -644,34 +650,38 @@ export async function simpanNilaiKurmer(
   if (baris.length === 0) return { ok: true }
   const jenis = opsi?.jenisAsesmen ?? 'ASTS'
   const contoh = baris[0]
-  const namaMapel = namaMapelKurmer(contoh.kode_mapel)
+  if (mapelKurmer(contoh.kode_mapel)?.otomatis) return { ok: true }
 
-  const { data: existingRows, error: galatMuat } = await supabase
-    .from('rapor_kurmer_nilai')
-    .select('id_kurmer_nilai,id_siswa')
-    .eq('kelas', contoh.kelas)
-    .eq('mata_pelajaran', namaMapel)
-    .eq('tahun_ajaran', contoh.tahun_ajaran)
-    .eq('semester', semesterKeDb(contoh.semester))
+  const perluCari = baris.some((row) => !row.id_kurmer_nilai)
+  const idMenurutSiswa = new Map<string, number>()
+  if (perluCari) {
+    const { data: existingRows, error: galatMuat } = await supabase
+      .from('rapor_kurmer_nilai')
+      .select('id_kurmer_nilai,id_siswa')
+      .eq('kelas', contoh.kelas)
+      .in('mata_pelajaran', aliasMapelKurmer(contoh.kode_mapel))
+      .eq('tahun_ajaran', contoh.tahun_ajaran)
+      .eq('semester', semesterKeDb(contoh.semester))
 
-  if (galatMuat) return { ok: false, error: pesanGalatSupabase(galatMuat) }
-
-  const idMenurutSiswa = new Map(
-    (existingRows || []).map((row) => [teks(row.id_siswa), Number(row.id_kurmer_nilai)] as const),
-  )
+    if (galatMuat) return { ok: false, error: pesanGalatSupabase(galatMuat) }
+    for (const row of existingRows || []) {
+      idMenurutSiswa.set(teks(row.id_siswa), Number(row.id_kurmer_nilai))
+    }
+  }
 
   for (const row of baris) {
     const normal = normalisasiBarisNilai(row, row.jumlah_tp)
     const nh = normal.nh
     const na = nilaiAkhirKurmer(nh, normal.asts, normal.asas, jenis)
-    const predikat = predikatKurmer(na)
-    const nis = teks(opsi?.nisMenurutSiswa?.[normal.id_siswa]) || normal.id_siswa
+    const kkm = kkmMapelKurmer(normal.kode_mapel, normal.kelas || contoh.kelas)
+    const predikat = predikatKurmer(na, kkm)
+    const nis = teks(opsi?.nisMenurutSiswa?.[normal.id_siswa]) || teks(normal.nis) || normal.id_siswa
     const kelas = teks(normal.kelas) || teks(contoh.kelas)
     const payload = {
       id_siswa: normal.id_siswa,
       nis,
       kelas,
-      mata_pelajaran: namaMapelKurmer(normal.kode_mapel),
+      mata_pelajaran: normal.mata_pelajaran || namaSimpanMapel(normal.kode_mapel),
       jenis_asesmen: jenis,
       tahun_ajaran: normal.tahun_ajaran,
       semester: semesterKeDb(normal.semester),
@@ -684,7 +694,7 @@ export async function simpanNilaiKurmer(
       updated_at: new Date().toISOString(),
     }
 
-    const idLama = idMenurutSiswa.get(normal.id_siswa)
+    const idLama = normal.id_kurmer_nilai || idMenurutSiswa.get(normal.id_siswa)
     const { error } = idLama
       ? await supabase.from('rapor_kurmer_nilai').update(payload).eq('id_kurmer_nilai', idLama)
       : await supabase.from('rapor_kurmer_nilai').insert(payload)
@@ -768,41 +778,101 @@ export function gabungRosterNilai(
   return siswa.map((item) => peta.get(item.id_siswa) || barisNilaiKosong(item, filter, jumlahTp))
 }
 
+function jumlahAngka(nilai: (number | null)[]) {
+  const isi = nilai.filter((n): n is number => n != null && Number.isFinite(n))
+  if (isi.length === 0) return null
+  return round1(isi.reduce((jumlah, n) => jumlah + n, 0))
+}
+
+export function rataBulat(nilai: (number | null)[]) {
+  const isi = nilai.filter((n): n is number => n != null && Number.isFinite(n))
+  if (isi.length === 0) return null
+  return Math.round(isi.reduce((jumlah, n) => jumlah + n, 0) / isi.length)
+}
+
+export function nilaiModeLeger(row: BarisNilaiKurmer | undefined, mode: ModeLegerKurmer): number | null {
+  if (!row) return null
+  if (mode === 'ASTS') return row.asts
+  if (mode === 'ASAS') return row.asas
+  if (row.nilai_akhir != null && Number.isFinite(row.nilai_akhir)) return row.nilai_akhir
+  return nilaiAkhirKurmer(row.nh, row.asts, row.asas, 'ASAS')
+}
+
 export function susunLedgerKelas(
   siswa: SiswaKurmer[],
   nilai: BarisNilaiKurmer[],
-  jenis: JenisAsesmenKurmer,
-): { baris: BarisLedgerKurmer[]; rekap: RekapMapelLedger[] } {
+  mode: ModeLegerKurmer,
+  kelas = siswa[0]?.kelas || '',
+): { baris: BarisLedgerKurmer[]; rekap: RekapMapelLedger[]; umum: MapelKurmer[]; diniyyah: MapelKurmer[] } {
+  const umum = mapelAktifKelas(kelas, 'umum')
+  const diniyyah = mapelAktifKelas(kelas, 'diniyyah')
   const peta = new Map<string, BarisNilaiKurmer>()
   for (const row of nilai) peta.set(`${row.id_siswa}::${row.kode_mapel}`, row)
 
-  const baris: BarisLedgerKurmer[] = siswa.map((item) => {
+  const nilaiSiswa = (id: string, kode: string) => {
+    if (kode === 'pai') {
+      return rataBulat(diniyyah.map((mapel) => nilaiModeLeger(peta.get(`${id}::${mapel.kode}`), mode)))
+    }
+    return nilaiModeLeger(peta.get(`${id}::${kode}`), mode)
+  }
+
+  const mentah = siswa.map((item) => {
     const nilaiMapel: Record<string, number | null> = {}
-    for (const mapel of DAFTAR_MAPEL_KURMER) {
-      const row = peta.get(`${item.id_siswa}::${mapel.kode}`)
-      nilaiMapel[mapel.kode] = row ? nilaiAkhirKurmer(row.nh, row.asts, row.asas, jenis) : null
-    }
-    return { siswa: item, nilai: nilaiMapel, statistik: statistikDariNilai(Object.values(nilaiMapel)) }
-  })
-
-  const rekap: RekapMapelLedger[] = DAFTAR_MAPEL_KURMER.map((mapel) => {
-    const angka = baris.map((item) => item.nilai[mapel.kode] ?? null)
-    const ringkas = statistikDariNilai(angka)
+    for (const mapel of [...umum, ...diniyyah]) nilaiMapel[mapel.kode] = nilaiSiswa(item.id_siswa, mapel.kode)
+    const jumlahUmum = jumlahAngka(umum.map((mapel) => nilaiMapel[mapel.kode] ?? null))
+    const jumlahDiniyyah = jumlahAngka(diniyyah.map((mapel) => nilaiMapel[mapel.kode] ?? null))
+    const total =
+      jumlahUmum == null && jumlahDiniyyah == null ? null : round1((jumlahUmum || 0) + (jumlahDiniyyah || 0))
     return {
-      mapel,
-      rata: ringkas.rata,
-      tertinggi: ringkas.tertinggi,
-      terendah: ringkas.terendah,
-      terisi: ringkas.terisi,
+      siswa: item,
+      nilai: nilaiMapel,
+      jumlahUmum,
+      jumlahDiniyyah,
+      total,
+      ranking: 0,
+      statistik: statistikDariNilai(Object.values(nilaiMapel)),
     }
   })
 
-  return { baris, rekap }
+  const urut = [...mentah].sort((a, b) => {
+    const umumA = a.jumlahUmum ?? -1
+    const umumB = b.jumlahUmum ?? -1
+    if (umumA !== umumB) return umumB - umumA
+    const totalA = a.total ?? -1
+    const totalB = b.total ?? -1
+    if (totalA !== totalB) return totalB - totalA
+    return a.siswa.nama_siswa.localeCompare(b.siswa.nama_siswa, 'id')
+  })
+  urut.forEach((item, index) => {
+    item.ranking = index + 1
+  })
+
+  const rekap: RekapMapelLedger[] = [...umum, ...diniyyah].map((mapel) => {
+    const angka = urut.map((item) => item.nilai[mapel.kode] ?? null)
+    const ringkas = statistikDariNilai(angka)
+    return { mapel, rata: ringkas.rata, tertinggi: ringkas.tertinggi, terendah: ringkas.terendah, terisi: ringkas.terisi }
+  })
+
+  return { baris: urut, rekap, umum, diniyyah }
+}
+
+export function komponenPaiSiswa(
+  idSiswa: string,
+  nilai: BarisNilaiKurmer[],
+  kelas: string,
+  jenis: JenisAsesmenKurmer,
+) {
+  const diniyyah = mapelAktifKelas(kelas, 'diniyyah')
+  const baris = diniyyah.map((mapel) => nilai.find((row) => row.id_siswa === idSiswa && row.kode_mapel === mapel.kode))
+  const nh = rataBulat(baris.map((row) => row?.nh ?? null))
+  const asts = rataBulat(baris.map((row) => row?.asts ?? null))
+  const asas = rataBulat(baris.map((row) => row?.asas ?? null))
+  const na = rataBulat(baris.map((row) => (row ? nilaiAkhirKurmer(row.nh, row.asts, row.asas, jenis) : null)))
+  return { nh, asts, asas, na, sumber: diniyyah.length }
 }
 
 /** Satu tabel rapor: mapel umum + sub-komponen diniyyah di bawah baris PAI (format lembar kerja sekolah). */
 export function susunBarisMuatanCetak(umum: RingkasMapelKurmer[], diniyyah: RingkasMapelKurmer[]): BarisMuatanCetak[] {
-  const petaDiniyyah = new Map(diniyyah.map((item) => [item.mapel.kode, item]))
   const baris: BarisMuatanCetak[] = [{ jenis: 'judul', teks: 'A. Kelompok Umum' }]
   let nomor = 0
 
@@ -810,15 +880,7 @@ export function susunBarisMuatanCetak(umum: RingkasMapelKurmer[], diniyyah: Ring
     nomor += 1
     baris.push({ jenis: 'mapel', nomor, data: item })
     if (item.mapel.kode === 'pai') {
-      for (const sub of MAPEL_DINIYYAH_KURMER) {
-        const data = petaDiniyyah.get(sub.kode) ?? {
-          mapel: sub,
-          nh: null,
-          asts: null,
-          asas: null,
-          na: null,
-          predikat: '—',
-        }
+      for (const data of diniyyah) {
         baris.push({ jenis: 'mapel', nomor: null, data, indent: true })
       }
     }
@@ -830,15 +892,30 @@ export function susunBarisMuatanCetak(umum: RingkasMapelKurmer[], diniyyah: Ring
 export function ringkasNilaiSiswa(
   nilai: BarisNilaiKurmer[],
   jenis: JenisAsesmenKurmer,
+  kelas = '',
 ): { umum: RingkasMapelKurmer[]; diniyyah: RingkasMapelKurmer[]; statistik: StatistikLedger } {
   const peta = new Map(nilai.map((row) => [row.kode_mapel, row]))
-  const semua = DAFTAR_MAPEL_KURMER.map((mapel) => {
+  const umumAktif = mapelAktifKelas(kelas, 'umum')
+  const diniyyahAktif = mapelAktifKelas(kelas, 'diniyyah')
+  const idSiswa = nilai[0]?.id_siswa || ''
+  const pai = komponenPaiSiswa(idSiswa, nilai, kelas, jenis)
+  const semua = [...umumAktif, ...diniyyahAktif].map((mapel) => {
+    if (mapel.kode === 'pai') {
+      return {
+        mapel,
+        nh: pai.nh,
+        asts: pai.asts,
+        asas: pai.asas,
+        na: pai.na,
+        predikat: predikatKurmer(pai.na, kkmMapelKurmer('pai', kelas)),
+      } satisfies RingkasMapelKurmer
+    }
     const row = peta.get(mapel.kode)
     const nh = row?.nh ?? null
     const asts = row?.asts ?? null
     const asas = row?.asas ?? null
     const na = nilaiAkhirKurmer(nh, asts, asas, jenis)
-    return { mapel, nh, asts, asas, na, predikat: predikatKurmer(na) } satisfies RingkasMapelKurmer
+    return { mapel, nh, asts, asas, na, predikat: predikatKurmer(na, kkmMapelKurmer(mapel.kode, kelas)) } satisfies RingkasMapelKurmer
   })
   return {
     umum: semua.filter((item) => item.mapel.kelompok === 'umum'),
@@ -856,7 +933,7 @@ export function susunDataCetakDariMemori(
   lokasi = '',
 ): DataCetakKurmer {
   const milik = nilai.filter((row) => row.id_siswa === siswa.id_siswa)
-  const ringkas = ringkasNilaiSiswa(milik, filter.jenisAsesmen)
+  const ringkas = ringkasNilaiSiswa(milik, filter.jenisAsesmen, siswa.kelas)
   return {
     siswa,
     filter: { ...filter, kelas: siswa.kelas },
@@ -903,7 +980,7 @@ export async function fetchDataCetakKurmer(
   ])
 
   const milik = nilai.filter((row) => row.id_siswa === idSiswa)
-  const ringkas = ringkasNilaiSiswa(milik, filterEfektif.jenisAsesmen)
+  const ringkas = ringkasNilaiSiswa(milik, filterEfektif.jenisAsesmen, siswa.kelas)
   const namaWali = catatan?.nama_wali || teks(currentUser?.nama_lengkap || currentUser?.nama || currentUser?.username)
   const namaKepsek = catatan?.nama_kepsek || pejabat.kepsek.nama
 

@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { Minus, Plus, Save } from 'lucide-react'
+import { diBawahKkm, predikatDariKkm } from '@/lib/kkm-kurmer'
 import {
   formatNilaiKurmer,
   JUMLAH_TP_MAX,
   JUMLAH_TP_MIN,
   nilaiAkhirKurmer,
   parseNilaiKurmer,
-  predikatKurmer,
   type BarisNilaiKurmer,
   type FilterKurmer,
   type SiswaKurmer,
@@ -63,6 +63,9 @@ export function RaporKurmerDaftar({
   onJumlahTp,
   onUbah,
   onSimpan,
+  kkm = null,
+  hanyaBaca = false,
+  sumberPai = 0,
 }: {
   siswa: SiswaKurmer[]
   baris: BarisNilaiKurmer[]
@@ -75,6 +78,9 @@ export function RaporKurmerDaftar({
   onJumlahTp: (n: number) => void
   onUbah: (idSiswa: string, patch: Partial<Pick<BarisNilaiKurmer, 'tp' | 'asts' | 'asas'>>) => void
   onSimpan: () => void
+  kkm?: number | null
+  hanyaBaca?: boolean
+  sumberPai?: number
 }) {
   const petaSiswa = new Map(siswa.map((item) => [item.id_siswa, item]))
 
@@ -84,10 +90,13 @@ export function RaporKurmerDaftar({
         <div>
           <h3 className="text-sm font-extrabold text-slate-900">Daftar Nilai &amp; Tujuan Pembelajaran</h3>
           <p className="text-[11px] text-slate-500">
-            NH = rata-rata TP terisi · NA {filter.jenisAsesmen} dihitung otomatis · disimpan ke Supabase (realtime)
+            {hanyaBaca
+              ? `PAI dihitung otomatis (pembulatan rata-rata ${sumberPai || 'mapel'} diniyyah aktif). KKM ${kkm ?? '—'}.`
+              : `NH = rata-rata TP terisi · NA ${filter.jenisAsesmen} dihitung otomatis · KKM ${kkm ?? '—'} · predikat PB jika di bawah KKM`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {hanyaBaca ? null : (
           <div className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1">
             <span className="px-1 text-[11px] font-bold text-slate-500">Jumlah TP</span>
             <button
@@ -110,6 +119,8 @@ export function RaporKurmerDaftar({
               <Plus className="size-3.5" />
             </button>
           </div>
+          )}
+          {hanyaBaca ? null : (
           <button
             type="button"
             onClick={onSimpan}
@@ -118,6 +129,7 @@ export function RaporKurmerDaftar({
           >
             <Save className="size-3.5" /> {menyimpan ? 'Menyimpan…' : 'Simpan Nilai'}
           </button>
+          )}
         </div>
       </div>
 
@@ -167,7 +179,9 @@ export function RaporKurmerDaftar({
             ) : (
               baris.map((row, index) => {
                 const profil = petaSiswa.get(row.id_siswa)
-                const na = nilaiAkhirKurmer(row.nh, row.asts, row.asas, filter.jenisAsesmen)
+                const na = row.nilai_akhir != null && hanyaBaca ? row.nilai_akhir : nilaiAkhirKurmer(row.nh, row.asts, row.asas, filter.jenisAsesmen)
+                const predikat = predikatDariKkm(na, kkm)
+                const latar = diBawahKkm(na, kkm) ? 'bg-rose-50 text-rose-700' : ''
                 return (
                   <tr key={row.id_siswa} className="hover:bg-indigo-50/40">
                     <td className="sticky left-0 z-10 bg-white px-3 py-1.5 text-center tabular-nums text-slate-500">
@@ -177,42 +191,60 @@ export function RaporKurmerDaftar({
                       <p className="font-bold text-slate-800">{profil?.nama_siswa || row.id_siswa}</p>
                       <p className="text-[10px] text-slate-500">NIS {profil?.nis || '—'}</p>
                     </td>
-                    {row.tp.map((nilai, tpIndex) => (
-                      <td key={`${row.id_siswa}-tp-${tpIndex}`} className="px-1 py-1">
-                        <InputNilai
-                          value={nilai}
-                          ariaLabel={`TP${tpIndex + 1} ${profil?.nama_siswa || ''}`}
-                          onChange={(berikutnya) => {
-                            const tp = [...row.tp]
-                            tp[tpIndex] = berikutnya
-                            onUbah(row.id_siswa, { tp })
-                          }}
-                        />
-                      </td>
-                    ))}
-                    <td className="px-2 py-1.5 text-center font-black tabular-nums text-slate-800">
+                    {hanyaBaca
+                      ? Array.from({ length: jumlahTp }, (_, tpIndex) => (
+                          <td key={`${row.id_siswa}-tp-${tpIndex}`} className="px-1 py-1 text-center text-slate-300">
+                            —
+                          </td>
+                        ))
+                      : row.tp.map((nilai, tpIndex) => (
+                          <td key={`${row.id_siswa}-tp-${tpIndex}`} className="px-1 py-1">
+                            <InputNilai
+                              value={nilai}
+                              ariaLabel={`TP${tpIndex + 1} ${profil?.nama_siswa || ''}`}
+                              onChange={(berikutnya) => {
+                                const tp = [...row.tp]
+                                tp[tpIndex] = berikutnya
+                                onUbah(row.id_siswa, { tp })
+                              }}
+                            />
+                          </td>
+                        ))}
+                    <td className={`px-2 py-1.5 text-center font-black tabular-nums ${diBawahKkm(row.nh, kkm) ? 'bg-rose-50 text-rose-700' : 'text-slate-800'}`}>
                       {formatNilaiKurmer(row.nh)}
                     </td>
                     <td className="px-1 py-1">
-                      <InputNilai
-                        value={row.asts}
-                        ariaLabel={`ASTS ${profil?.nama_siswa || ''}`}
-                        ditekankan={filter.jenisAsesmen === 'ASTS'}
-                        onChange={(asts) => onUbah(row.id_siswa, { asts })}
-                      />
+                      {hanyaBaca ? (
+                        <span className={`block text-center font-bold tabular-nums ${diBawahKkm(row.asts, kkm) ? 'rounded bg-rose-50 text-rose-700' : ''}`}>
+                          {formatNilaiKurmer(row.asts)}
+                        </span>
+                      ) : (
+                        <InputNilai
+                          value={row.asts}
+                          ariaLabel={`ASTS ${profil?.nama_siswa || ''}`}
+                          ditekankan={filter.jenisAsesmen === 'ASTS'}
+                          onChange={(asts) => onUbah(row.id_siswa, { asts })}
+                        />
+                      )}
                     </td>
                     <td className="px-1 py-1">
-                      <InputNilai
-                        value={row.asas}
-                        ariaLabel={`ASAS ${profil?.nama_siswa || ''}`}
-                        ditekankan={filter.jenisAsesmen === 'ASAS'}
-                        onChange={(asas) => onUbah(row.id_siswa, { asas })}
-                      />
+                      {hanyaBaca ? (
+                        <span className={`block text-center font-bold tabular-nums ${diBawahKkm(row.asas, kkm) ? 'rounded bg-rose-50 text-rose-700' : ''}`}>
+                          {formatNilaiKurmer(row.asas)}
+                        </span>
+                      ) : (
+                        <InputNilai
+                          value={row.asas}
+                          ariaLabel={`ASAS ${profil?.nama_siswa || ''}`}
+                          ditekankan={filter.jenisAsesmen === 'ASAS'}
+                          onChange={(asas) => onUbah(row.id_siswa, { asas })}
+                        />
+                      )}
                     </td>
-                    <td className="px-2 py-1.5 text-center font-black tabular-nums text-indigo-700">
+                    <td className={`px-2 py-1.5 text-center font-black tabular-nums ${latar || 'text-indigo-700'}`}>
                       {formatNilaiKurmer(na)}
                     </td>
-                    <td className="px-2 py-1.5 text-center font-bold text-slate-600">{predikatKurmer(na)}</td>
+                    <td className={`px-2 py-1.5 text-center font-bold ${latar || 'text-slate-600'}`}>{predikat}</td>
                   </tr>
                 )
               })

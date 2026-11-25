@@ -1,3 +1,4 @@
+import { DAFTAR_SURAH_RAPOR } from '@/lib/rubrik-tajwid-rapor-hq'
 import { supabase } from '@/lib/supabase'
 
 export type Surah = {
@@ -8,39 +9,73 @@ export type Surah = {
   juz: number
 }
 
-// Cache untuk data surah (10 menit)
+// Juz awal tiap surat (indeks 0 = surat 1), sesuai kolom `juz` di tabel `surah`.
+const JUZ_PER_NOMOR =
+  '1,1,4,6,7,8,9,10,11,11,12,13,13,13,14,14,15,16,16,16,17,17,18,18,19,19,20,20,21,21,21,21,22,22,22,23,23,23,24,24,25,25,25,25,26,26,26,26,26,26,27,27,27,27,27,27,27,28,28,28,28,28,28,28,28,28,29,29,29,29,29,29,29,29,29,29,29,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30'
+    .split(',')
+    .map(Number)
+
+// Cache untuk data surah (10 menit). Daftar bawaan tidak disimpan di sini supaya query yang gagal bisa dicoba lagi.
 let surahCache: Surah[] | null = null
 let surahCacheTime = 0
 const CACHE_DURATION = 10 * 60 * 1000 // 10 menit
 
+function juzSurah(nomor: number) {
+  return JUZ_PER_NOMOR[nomor - 1] || 30
+}
+
+/** Katalog lokal 114 surat. Dipakai saat tabel `surah` kosong atau query gagal. */
+export function daftarSurahBawaan(): Surah[] {
+  return DAFTAR_SURAH_RAPOR.map((item) => ({
+    id: item.n,
+    nomor_surat: item.n,
+    nama_surat: item.nama.trim(),
+    jumlah_ayat: item.a,
+    juz: juzSurah(item.n),
+  }))
+}
+
+function normalisasiBarisSurah(row: Partial<Surah>): Surah | null {
+  const nomor = Number(row.nomor_surat)
+  const nama = String(row.nama_surat || '').trim()
+  if (!Number.isFinite(nomor) || nomor < 1 || !nama) return null
+  const jumlah = Number(row.jumlah_ayat)
+  const juz = Number(row.juz)
+  return {
+    id: nomor,
+    nomor_surat: nomor,
+    nama_surat: nama,
+    jumlah_ayat: Number.isFinite(jumlah) && jumlah > 0 ? jumlah : 1,
+    juz: Number.isFinite(juz) && juz > 0 ? juz : juzSurah(nomor),
+  }
+}
+
 /**
- * Fetch semua surah dengan caching untuk performa
- * Urutan descending dari An-Naas (114) ke Al-Fatihah (1)
+ * Fetch semua surah dengan caching untuk performa.
+ * Tabel `surah` tidak punya kolom `id`; kunci baris adalah `nomor_surat`.
+ * Urutan descending dari An-Naas (114) ke Al-Fatihah (1).
  */
 export async function fetchAllSurah(): Promise<Surah[]> {
   const now = Date.now()
-  
-  // Return cached data jika masih valid
+
   if (surahCache && now - surahCacheTime < CACHE_DURATION) {
     return surahCache
   }
 
   const { data, error } = await supabase
     .from('surah')
-    .select('id,nomor_surat,nama_surat,jumlah_ayat,juz')
+    .select('nomor_surat,nama_surat,jumlah_ayat,juz')
     .order('nomor_surat', { ascending: false })
 
-  if (error) {
-    console.error('Gagal mengambil data surah:', error.message)
-    return []
+  const surahList = (data || []).map((row) => normalisasiBarisSurah(row)).filter((row): row is Surah => Boolean(row))
+
+  if (error || surahList.length === 0) {
+    console.error('Gagal mengambil data surah, memakai daftar bawaan:', error?.message || 'tabel kosong')
+    return daftarSurahBawaan()
   }
 
-  const surahList = (data || []) as Surah[]
-  
-  // Update cache
   surahCache = surahList
   surahCacheTime = now
-
   return surahList
 }
 

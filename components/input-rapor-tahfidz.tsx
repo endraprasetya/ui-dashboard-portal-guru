@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, Trash2, X } from 'lucide-react'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
-import { fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
+import { daftarSurahBawaan, fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
 import { teacherDisplayName } from '@/lib/qiroah'
 import { supabase } from '@/lib/supabase'
 import {
@@ -23,6 +23,7 @@ import { formatDateString } from '@/lib/qiroah'
 import { PanelStandarTargetTahfidz, ToggleTargetTahfidz } from '@/components/target-tahfidz-standar'
 import { PeringatanBatasAyatDialog } from '@/components/peringatan-batas-ayat-dialog'
 import { hitungSaranTargetTahfidz } from '@/lib/saran-target-rapor-tahfidz'
+import { angkaKelas } from '@/lib/target-tahfidz'
 import {
   ASESMEN_TAHFIDZ,
   CONTOH_KETERANGAN_UJIAN,
@@ -55,6 +56,32 @@ function waktuKirim(iso: string) {
   return tanggal.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
+/** Nomor surat inklusif pada acuan Target Tahfidz. Kosong / di luar 1–6 artinya tidak disaring. */
+const RENTANG_NOMOR_TARGET: Record<number, readonly [number, number]> = {
+  1: [84, 114],
+  2: [67, 114],
+  3: [69, 77],
+  4: [58, 63],
+  5: [53, 64],
+  6: [54, 57],
+}
+
+function katalogSurah(surahs: Surah[]) {
+  const sumber = surahs.length > 0 ? surahs : daftarSurahBawaan()
+  return sumber.filter((item) => item?.nama_surat && item.nomor_surat)
+}
+
+function saringTargetKelas(semua: Surah[], aktif: boolean, kelas?: string | null) {
+  if (!aktif) return semua
+  const tingkat = angkaKelas(kelas)
+  const rentang = tingkat ? RENTANG_NOMOR_TARGET[tingkat] : undefined
+  if (!rentang) return semua
+  const min = Math.min(rentang[0], rentang[1])
+  const max = Math.max(rentang[0], rentang[1])
+  const cocok = semua.filter((item) => item.nomor_surat >= min && item.nomor_surat <= max)
+  return cocok.length > 0 ? cocok : semua
+}
+
 export function InputRaporTahfidz({
   onBack,
   currentUser,
@@ -65,7 +92,7 @@ export function InputRaporTahfidz({
   fokus?: { idSiswa: string; asesmen: string } | null
 }) {
   const [siswa, setSiswa] = useState<Siswa[]>([])
-  const [surahs, setSurahs] = useState<Surah[]>([])
+  const [surahs, setSurahs] = useState<Surah[]>(() => daftarSurahBawaan())
   const [daftar, setDaftar] = useState<BarisMateriUjian[]>([])
   const [idSiswa, setIdSiswa] = useState('')
   const [asesmen, setAsesmen] = useState<AsesmenTahfidz | ''>('')
@@ -247,15 +274,14 @@ export function InputRaporTahfidz({
 
   const surahTampil = useMemo(() => {
     const kata = cariSurah.trim().toLowerCase()
-    const sumber = [...surahs].sort((a, b) => b.nomor_surat - a.nomor_surat)
+    const semua = [...katalogSurah(surahs)].sort((a, b) => b.nomor_surat - a.nomor_surat)
+    const sumber = saringTargetKelas(semua, targetTahfidzAktif, terpilih?.kelas)
     if (!kata) return sumber
-    return sumber.filter(
-      (item) =>
-        item.nama_surat.toLowerCase().includes(kata) ||
-        String(item.nomor_surat).includes(kata) ||
-        String(item.juz) === kata,
-    )
-  }, [surahs, cariSurah])
+    return sumber.filter((item) => {
+      const nama = String(item.nama_surat || '').toLowerCase()
+      return nama.includes(kata) || String(item.nomor_surat).includes(kata) || String(item.juz) === kata
+    })
+  }, [surahs, cariSurah, targetTahfidzAktif, terpilih?.kelas])
 
   const rekap = useMemo(() => {
     const nama = new Map(siswa.map((item) => [item.id_siswa, item]))
@@ -598,7 +624,7 @@ export function InputRaporTahfidz({
       <ToggleTargetTahfidz aktif={targetTahfidzAktif} onUbah={setTargetTahfidzAktif} />
       <BannerDrafHq />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="overflow-visible rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {targetTahfidzAktif && (
           <div className="mb-4">
             <PanelStandarTargetTahfidz ringkas={ringkasTarget} />
@@ -663,7 +689,7 @@ export function InputRaporTahfidz({
           </div>
         )}
 
-        <div ref={panelRef} className="relative mt-4">
+        <div ref={panelRef} className="relative z-30 mt-4 overflow-visible">
           <p className="text-xs font-bold text-slate-600">Materi ujian</p>
           <button
             type="button"
@@ -677,17 +703,20 @@ export function InputRaporTahfidz({
           </button>
 
           {panelSurah && (
-            <div className="absolute z-20 mt-1 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+            <div className="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={cariSurah}
                   onChange={(event) => setCariSurah(event.target.value)}
                   placeholder="Cari nama surah / nomor / juz"
-                  className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm"
                 />
               </div>
-              <div className="mt-2 max-h-56 overflow-auto">
+              <div className="relative z-50 mt-2 max-h-60 overflow-y-auto rounded-xl bg-white">
+                {surahTampil.length === 0 ? (
+                  <p className="px-2 py-3 text-center text-xs text-slate-400">Surah tidak ditemukan.</p>
+                ) : null}
                 {surahTampil.map((item) => {
                   const aktif = materi.some((row) => row.nomor === item.nomor_surat)
                   return (
