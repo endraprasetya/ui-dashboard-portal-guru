@@ -62,6 +62,23 @@ export function adalahKelasPutriHq(kelas?: string | null) {
   return /[CD]$/.test(kunci)
 }
 
+export function adalahKelasPutraHq(kelas?: string | null) {
+  const kunci = normalKelas(kelas || '')
+  return /[AB]$/.test(kunci)
+}
+
+export function kelasTampilHq(kelas?: string | null) {
+  const teks = String(kelas || '').trim()
+  const batas = teks.lastIndexOf('::')
+  return (batas >= 0 ? teks.slice(batas + 2) : teks).trim()
+}
+
+export function daftarKelasHq(kelas: Array<string | null | undefined>) {
+  return [...new Set(kelas.map((item) => kelasTampilHq(item)).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'id', { numeric: true }),
+  )
+}
+
 export function adalahSiswaPutriNogosari(siswa: { kelas?: string | null; unit?: string | null }) {
   if (!adalahKelasPutriHq(siswa.kelas)) return false
   const unit = kanonNamaUnit(siswa.unit)

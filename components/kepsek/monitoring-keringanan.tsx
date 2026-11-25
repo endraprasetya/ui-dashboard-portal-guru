@@ -13,8 +13,6 @@ import {
   type StatusPengajuanKeringanan,
 } from '@/lib/pengajuan-keringanan'
 
-const URUTAN: Record<StatusPengajuanKeringanan, number> = { Pending: 0, Disetujui: 1, Ditolak: 2 }
-
 function bandingKelas(a: string, b: string) {
   return a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' })
 }
@@ -31,6 +29,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
   const [galat, setGalat] = useState('')
   const [saring, setSaring] = useState<'semua' | StatusPengajuanKeringanan>('semua')
   const [kelas, setKelas] = useState('semua')
+  const [pengajuanLengkap, setPengajuanLengkap] = useState(false)
   const [aksi, setAksi] = useState<{ id: string; jenis: 'setuju' | 'tolak' } | null>(null)
   const [catatan, setCatatan] = useState('')
   const [menyimpan, setMenyimpan] = useState(false)
@@ -74,8 +73,10 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
     return menurutKelas
       .filter((item) => saring === 'semua' || item.statusPersetujuan === saring)
       .slice()
-      .sort((a, b) => URUTAN[a.statusPersetujuan] - URUTAN[b.statusPersetujuan] || b.dibuatPada.localeCompare(a.dibuatPada))
+      .sort((a, b) => b.dibuatPada.localeCompare(a.dibuatPada))
   }, [menurutKelas, saring])
+  const BATAS_PENGAJUAN = 10
+  const daftarTabel = pengajuanLengkap ? tampil : tampil.slice(0, BATAS_PENGAJUAN)
 
   const ringkas = useMemo(() => {
     const hitung = (status: StatusPengajuanKeringanan) =>
@@ -165,6 +166,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
         ) : null}
 
         {tampil.length > 0 ? (
+          <>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-[760px] w-full text-left text-xs">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
@@ -177,7 +179,7 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
                 </tr>
               </thead>
               <tbody>
-                {tampil.map((item) => (
+                {daftarTabel.map((item) => (
                   <tr key={item.id} className="border-t border-slate-100 align-top">
                     <td className="px-3 py-2">
                       <p className="font-extrabold text-slate-900">{item.namaSiswa}</p>
@@ -282,6 +284,16 @@ export function MonitoringPengajuanKeringanan({ unit }: { unit: string }) {
               </tbody>
             </table>
           </div>
+          {tampil.length > BATAS_PENGAJUAN ? (
+            <button
+              type="button"
+              onClick={() => setPengajuanLengkap((nilai) => !nilai)}
+              className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-sky-950 hover:bg-slate-50"
+            >
+              {pengajuanLengkap ? 'Tampilkan lebih sedikit' : 'Lihat selengkapnya'}
+            </button>
+          ) : null}
+          </>
         ) : null}
       </section>
       {surat ? <SuratRekomendasiKeringanan pengajuan={surat} onTutup={() => setSurat(null)} /> : null}

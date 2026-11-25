@@ -338,6 +338,7 @@ export default function Home() {
                             className="w-full text-left text-[11px] leading-4 hover:underline"
                           >
                             <span className="font-bold">{item.nama}</span> · {item.kelas}
+                            {item.penulis ? <span className="block opacity-80">{item.penulis}</span> : null}
                             <span className="line-clamp-2 block opacity-90">{item.catatan}</span>
                           </button>
                         </li>

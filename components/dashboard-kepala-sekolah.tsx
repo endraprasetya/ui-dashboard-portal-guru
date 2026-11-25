@@ -11,6 +11,7 @@ import {
   GraduationCap,
   LogOut,
   Printer,
+  RefreshCw,
   ShieldAlert,
   Users,
   UserCheck,
@@ -39,6 +40,7 @@ import { normalKelas, pemetaanKenaikanJilid, ujianTanpaTajwid } from '@/lib/qiro
 import { todayInputValue } from '@/lib/jurnal'
 import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { MonitoringPiketHariIni } from '@/components/kepsek/monitoring-piket'
+import { muatKepatuhanGuru, type HasilKepatuhanGuru } from '@/lib/kepatuhan-guru-kepsek'
 import { MonitoringSidiaAbsensiReguler } from '@/components/kepsek/monitoring-sidia-absensi'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { MonitoringPengajuanKeringanan } from '@/components/kepsek/monitoring-keringanan'
@@ -137,6 +139,8 @@ export function DashboardKepalaSekolah() {
   const [modalKpi, setModalKpi] = useState<ModalKpi>(null)
   const [rincianAbsen, setRincianAbsen] = useState(false)
   const [guruLengkap, setGuruLengkap] = useState(false)
+  const [kepatuhan, setKepatuhan] = useState<HasilKepatuhanGuru | null>(null)
+  const [memuatKepatuhan, setMemuatKepatuhan] = useState(false)
   const [ujianLengkap, setUjianLengkap] = useState(false)
   const [penyegarHq, setPenyegarHq] = useState(0)
   const [pesanPemeriksaHq, setPesanPemeriksaHq] = useState('')
@@ -193,6 +197,33 @@ export function DashboardKepalaSekolah() {
       batal = true
     }
   }, [siap, user, penyegarHq])
+
+  useEffect(() => {
+    if (siap !== 'siap' || !user) return
+    const unitAkun = kanonNamaUnit(String(user.unit || '')) || String(user.unit || '').trim()
+    if (!unitAkun) return
+    let batal = false
+    setMemuatKepatuhan(true)
+    muatKepatuhanGuru(unitAkun)
+      .then((hasil) => {
+        if (!batal) setKepatuhan(hasil)
+      })
+      .finally(() => {
+        if (!batal) setMemuatKepatuhan(false)
+      })
+    return () => {
+      batal = true
+    }
+  }, [siap, user])
+
+  const muatUlangKepatuhan = () => {
+    const unitAkun = kanonNamaUnit(String(user?.unit || '')) || String(user?.unit || '').trim()
+    if (!unitAkun) return
+    setMemuatKepatuhan(true)
+    muatKepatuhanGuru(unitAkun, { segar: true })
+      .then((hasil) => setKepatuhan(hasil))
+      .finally(() => setMemuatKepatuhan(false))
+  }
 
   useEffect(() => {
     if (siap !== 'siap') return
@@ -290,7 +321,10 @@ export function DashboardKepalaSekolah() {
   const angka = laporan?.kehadiran
   const tidakHadirTotal = (angka?.sakit || 0) + (angka?.izin || 0) + (angka?.alpa || 0)
   const puncakPredikat = Math.max(1, ...(laporan?.predikat.map((item) => item.jumlah) || [0]))
-  const guruTabel = guruLengkap ? laporan?.guru || [] : (laporan?.guru || []).slice(0, BATAS_TABEL)
+  const dariKepatuhan =
+    kepatuhan && (kepatuhan.baris.length > 0 || kepatuhan.catatan.length === 0) ? kepatuhan.baris : null
+  const daftarGuru = dariKepatuhan ?? laporan?.guru ?? []
+  const guruTabel = guruLengkap ? daftarGuru : daftarGuru.slice(0, BATAS_TABEL)
   const ujianTabel = ujianLengkap ? laporan?.ujian || [] : (laporan?.ujian || []).slice(0, BATAS_TABEL)
   const labelAsesmenRapor =
     PILIHAN_ASESMEN_RAPOR_HQ.find((item) => item.kode === laporan?.raporHqRingkas.asesmen)?.label || 'ASTS 1'
@@ -648,8 +682,28 @@ export function DashboardKepalaSekolah() {
             </section>
 
             <section className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-extrabold text-slate-900">Monitoring kepatuhan guru</h2>
-              <p className="mt-1 text-xs text-slate-500">Hanya guru Unit {unitTampil}. Jurnal mengikuti kelas binaan di unit ini. Setoran qiroah mengikuti nama guru yang mencatat hari ini.</p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">Monitoring kepatuhan guru</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Unit {unitTampil}
+                    {kepatuhan?.hari ? ` · ${kepatuhan.hari} (WIB)` : ''}. Sudah bila nama guru, ID guru, atau siswa/kelas
+                    binaannya tercatat hari ini.
+                    {kepatuhan?.dimuatPada
+                      ? ` Dimuat ${new Date(kepatuhan.dimuatPada).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}.`
+                      : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={muatUlangKepatuhan}
+                  disabled={memuatKepatuhan}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-900 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <RefreshCw className={`size-3.5 ${memuatKepatuhan ? 'animate-spin' : ''}`} />
+                  {memuatKepatuhan ? 'Memuat…' : 'Muat ulang'}
+                </button>
+              </div>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[720px] border-collapse text-left text-xs">
                   <thead>
@@ -662,8 +716,8 @@ export function DashboardKepalaSekolah() {
                     </tr>
                   </thead>
                   <tbody>
-                    {laporan.guru.length === 0 ? (
-                      <tr><td colSpan={5} className="p-4 text-center text-slate-400">Daftar guru belum tersedia.</td></tr>
+                    {daftarGuru.length === 0 ? (
+                      <tr><td colSpan={5} className="p-4 text-center text-slate-400">{memuatKepatuhan ? 'Memuat kepatuhan hari ini…' : 'Daftar guru belum tersedia.'}</td></tr>
                     ) : guruTabel.map((row) => (
                       <tr key={`${row.nama}-${row.unit}`}>
                         <td className="border-b p-2 font-bold">{row.nama}</td>
@@ -676,13 +730,18 @@ export function DashboardKepalaSekolah() {
                   </tbody>
                 </table>
               </div>
-              {laporan.guru.length > BATAS_TABEL && (
+              {kepatuhan && kepatuhan.catatan.length > 0 && (
+                <ul className="mt-2 space-y-1 text-[11px] text-amber-800">
+                  {kepatuhan.catatan.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              )}
+              {daftarGuru.length > BATAS_TABEL && (
                 <button
                   type="button"
                   onClick={() => setGuruLengkap((v) => !v)}
                   className="mt-3 w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-emerald-900 hover:bg-slate-50"
                 >
-                  {guruLengkap ? 'Tampilkan lebih ringkas' : `Lihat selengkapnya (${laporan.guru.length} guru)`}
+                  {guruLengkap ? 'Tampilkan lebih ringkas' : `Lihat selengkapnya (${daftarGuru.length} guru)`}
                 </button>
               )}
             </section>
@@ -842,7 +901,13 @@ export function DashboardKepalaSekolah() {
       {laporan && modalKpi === 'setoran' && <ModalSetoran laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'tertib' && <ModalTertib laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'jurnal' && <ModalJurnal laporan={laporan} onTutup={() => setModalKpi(null)} />}
-      {laporan && modalKpi === 'rapor_hq' && <ModalRaporHq laporan={laporan} onTutup={() => setModalKpi(null)} />}
+      {laporan && modalKpi === 'rapor_hq' && (
+        <ModalRaporHq
+          laporan={laporan}
+          penulis={{ id: String(user.target_id || user.username || ''), nama: namaKepsek }}
+          onTutup={() => setModalKpi(null)}
+        />
+      )}
       {laporan && modalKpi === 'rapor_kurmer' && <ModalRaporKurmer laporan={laporan} onTutup={() => setModalKpi(null)} />}
       {laporan && modalKpi === 'guru_bantu' && (
         <ModalGuruBantu rekap={laporan.guruBantu} unit={laporan.unit} onTutup={() => setModalKpi(null)} />

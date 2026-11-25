@@ -28,6 +28,9 @@ export type KirimRaporHq = {
   pemeriksaId: string
   pemeriksaNama: string
   diperiksaPada: string
+  catatanOleh: string
+  catatanOlehId: string
+  catatanPada: string
 }
 
 export type UsulanKirimRaporHq = {
@@ -49,13 +52,26 @@ export function idGuruAktif(user?: { target_id?: string; username?: string } | n
 }
 
 export function guruPenerimaRevisi(baris: Pick<KirimRaporHq, 'idGuru' | 'namaGuru'>, user?: any) {
-  const id = idGuruAktif(user).toLowerCase()
-  const nama = teacherDisplayName(user).trim().toLowerCase()
   const idBaris = baris.idGuru.trim().toLowerCase()
-  const namaBaris = baris.namaGuru.trim().toLowerCase()
-  if (id && idBaris && id === idBaris) return true
-  if (nama && namaBaris && nama === namaBaris) return true
-  return false
+  const identitas = [user?.target_id, user?.id_user, user?.username, user?.nip, user?.NIP]
+    .map((nilai) => String(nilai || '').trim().toLowerCase())
+    .filter((nilai) => nilai.length >= 2)
+  if (idBaris && identitas.includes(idBaris)) return true
+  const namaBaris = intiNamaOrang(baris.namaGuru)
+  const namaUser = intiNamaOrang(teacherDisplayName(user))
+  if (!namaBaris || !namaUser || namaUser === 'guru' || namaUser.length < 3) return false
+  return namaBaris === namaUser
+}
+
+function intiNamaOrang(nilai?: string | null) {
+  return String(nilai || '')
+    .toLowerCase()
+    .replace(/,/g, ' ')
+    .replace(/\bs\.?\s*pd\.?\s*i?\b/g, ' ')
+    .replace(/\ba\.?\s*ma\.?\b/g, ' ')
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function angkaAtauNull(nilai: unknown) {
@@ -93,6 +109,9 @@ function bacaKirim(nilai: unknown): KirimRaporHq | null {
       pemeriksaId: String(data.pemeriksaId || ''),
       pemeriksaNama: String(data.pemeriksaNama || ''),
       diperiksaPada: String(data.diperiksaPada || ''),
+      catatanOleh: String(data.catatanOleh || ''),
+      catatanOlehId: String(data.catatanOlehId || ''),
+      catatanPada: String(data.catatanPada || ''),
     }
   } catch {
     return null
@@ -251,6 +270,9 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
       pemeriksaId: '',
       pemeriksaNama: '',
       diperiksaPada: '',
+      catatanOleh: sebelumnya?.catatanOleh || '',
+      catatanOlehId: sebelumnya?.catatanOlehId || '',
+      catatanPada: sebelumnya?.catatanPada || '',
     }
     peta.set(item.kunci, isi)
   }
@@ -274,7 +296,11 @@ export async function cabutKirimRaporHq(idSiswa: string, asesmen: string) {
   return { error: null as string | null }
 }
 
-export async function simpanCatatanRevisiRaporHq(baris: KirimRaporHq, catatan: string) {
+export async function simpanCatatanRevisiRaporHq(
+  baris: KirimRaporHq,
+  catatan: string,
+  penulis?: { id?: string; nama?: string },
+) {
   const teks = catatan.trim()
   const dokumen = await muatDokumenKirim()
   if (dokumen.error) return { error: dokumen.error }
@@ -282,20 +308,30 @@ export async function simpanCatatanRevisiRaporHq(baris: KirimRaporHq, catatan: s
   const peta = new Map(dokumen.daftar.map((row) => [kunciKirimRaporHq(row), row]))
   const lama = peta.get(kunci)
   if (!lama) return { error: 'Data kiriman tidak ditemukan.' }
+  const sekarang = new Date().toISOString()
   const isi: KirimRaporHq = {
     ...lama,
     materi: baris.materi || lama.materi,
     nilaiAkhir: baris.nilaiAkhir ?? lama.nilaiAkhir,
     predikat: baris.predikat || lama.predikat,
     catatanRevisi: teks,
+    catatanOleh: teks ? penulis?.nama?.trim() || lama.catatanOleh || 'Pemeriksa' : '',
+    catatanOlehId: teks ? penulis?.id?.trim() || lama.catatanOlehId || '' : '',
+    catatanPada: teks ? sekarang : '',
     status: teks ? 'Revisi' : 'Terkirim',
-    diperbaruiPada: new Date().toISOString(),
+    diperbaruiPada: sekarang,
   }
   peta.set(kunci, isi)
   const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
   if (galat) return { error: galat }
+  const segar = await muatDokumenKirim()
+  const tersimpan = segar.daftar.find((row) => kunciKirimRaporHq(row) === kunci)
+  if (segar.error) return { error: segar.error }
+  if (!tersimpan || tersimpan.catatanRevisi !== teks) {
+    return { error: 'Catatan belum tersimpan. Muat ulang, lalu simpan sekali lagi.' }
+  }
   if (teks) await siarkanRevisiRaporHq(isi.idGuru)
-  return { error: null as string | null }
+  return { error: null as string | null, data: tersimpan }
 }
 
 export async function tandaiDiperiksaHq(

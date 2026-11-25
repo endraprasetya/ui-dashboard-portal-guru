@@ -6,7 +6,6 @@ import {
   monthRange,
   normalizeSiswaTidakHadir,
   saringJurnalUntukUnit,
-  todayInputValue,
 } from '@/lib/jurnal'
 import {
   muatAbsensiGuruBantuKepsek,
@@ -29,13 +28,12 @@ import {
   labelRentangKenaikanJilid,
   labelStatusPengajuan,
   menungguJadwal,
-  namaPengujiCocok,
   pengujiUntukKelas,
   normalKelas,
   sudahTerjadwal,
-  teacherDisplayName,
   waktuDariStatus,
 } from '@/lib/qiroah'
+import { susunKepatuhanGuru, hariIniWib } from '@/lib/kepatuhan-guru-hitung'
 import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import {
   dataKurmerKosong,
@@ -71,8 +69,8 @@ export function adalahKepalaSekolah(user?: { role?: string } | null) {
 export type BarisGuru = {
   nama: string
   unit: string
-  jurnal: 'Sudah' | 'Belum'
-  qiroah: 'Sudah' | 'Belum'
+  jurnal: 'Sudah' | 'Belum' | 'Tidak tercatat'
+  qiroah: 'Sudah' | 'Belum' | 'Tidak tercatat'
   tahfidz: 'Sudah' | 'Belum' | 'Tidak tercatat'
 }
 
@@ -341,17 +339,16 @@ function rekapAbsen(
   }
 }
 
-function namaGuru(row: any) {
-  return teacherDisplayName(row)
-}
-
 export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: string): Promise<LaporanKepsek> {
   const unit = unitAkunAktif(unitMentah)
-  const hari = todayInputValue(sekarang)
+  const hari = hariIniWib(sekarang)
   const mulai = new Date(sekarang)
   mulai.setHours(0, 0, 0, 0)
   const { start } = monthRange(hari.slice(0, 7))
   const catatan: string[] = []
+  let jurnalGagal = false
+  let qiroahGagal = false
+  let tahfidzGagal = false
 
   const [siswa, jurnal, qiroah, tahfidzContoh, pengajuan, tertib, rekapan, guru] = await Promise.all([
     halaman<{ id_siswa: string; nama_siswa: string; kelas: string; unit: string; id_pembimbing?: string | null }>((dari, sampai) =>
@@ -384,6 +381,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
         .lte('tanggal', hari)
         .range(dari, sampai),
     ).catch((error: Error) => {
+      jurnalGagal = true
       catatan.push('Jurnal pembelajaran belum dapat dimuat.')
       console.error(error.message)
       return []
@@ -397,6 +395,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
       ],
       (kueri) => kueri.ilike('unit', `%${unit}%`).gte('tanggal', start).order('tanggal', { ascending: true }),
     ).catch((error: Error) => {
+      qiroahGagal = true
       catatan.push('Setoran qiroah belum dapat dimuat.')
       console.error(error.message)
       return [] as any[]
@@ -410,6 +409,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
       ],
       (kueri) => kueri.gte('tanggal', start).order('tanggal', { ascending: true }),
     ).catch((error: Error) => {
+      tahfidzGagal = true
       catatan.push('Setoran tahfidz belum dapat dimuat.')
       console.error(error.message)
       return [] as any[]
@@ -473,9 +473,8 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
   const jurnalUnit = gabungBarisJurnalPerSlot(await saringJurnalUntukUnit(jurnal, unit), unit).filter((row) =>
     kelasUnit.has(normalKelas(row.kelas)),
   )
-  const jurnalHari = jurnalUnit.filter((row) => String(row.tanggal || '').slice(0, 10) === hari)
+  const jurnalHari = jurnalUnit.filter((row) => tanggalJakarta(row.tanggal) === hari)
   const rekapHari = rekapAbsen(jurnalHari, jumlahKelas, kenali)
-  const kelasJurnal = new Set(jurnalHari.map((row) => normalKelas(row.kelas)).filter(Boolean))
   const jurnalHariIni: BarisJurnal[] = []
   const jurnalHariUnik = new Map<string, BarisJurnal>()
   for (const row of jurnalHari) {
@@ -644,59 +643,24 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
   }
   hasilUjian.sort((a, b) => String(b.tanggal_ujian).localeCompare(String(a.tanggal_ujian)))
 
-  const kelasBinaan = (row: { target_id?: string; username?: string }) => {
-    const id = String(row.target_id || row.username || '').trim().toUpperCase()
-    if (!id) return [] as string[]
-    const kelas = new Set<string>()
-    for (const siswa of daftarSiswa) {
-      const pembimbing = String(siswa.id_pembimbing || '')
-        .split(',')
-        .map((item) => item.trim().toUpperCase())
-      if (!pembimbing.includes(id)) continue
-      const kunci = normalKelas(siswa.kelas)
-      if (kunci) kelas.add(kunci)
-    }
-    return [...kelas]
-  }
-
-  const barisGuru: BarisGuru[] = guru
-    .filter((row) => unitSama(row.unit, unit) && !adalahKepalaSekolah(row))
-    .map((row) => {
-      const nama = namaGuru(row)
-      const kelas = kelasBinaan(row)
-      const jurnalSudah = kelas.length ? kelas.some((item) => kelasJurnal.has(item)) : false
-      const qiroahSudah = setoranQiroah.some((item) => namaPengujiCocok(nama, item.ustadz))
-      return {
-        nama,
-        unit,
-        jurnal: jurnalSudah ? 'Sudah' : 'Belum',
-        qiroah: qiroahSudah ? 'Sudah' : 'Belum',
-        tahfidz: 'Tidak tercatat',
-      } as BarisGuru
-    })
-    .sort((a, b) => Number(a.jurnal === 'Sudah') - Number(b.jurnal === 'Sudah') || a.nama.localeCompare(b.nama, 'id'))
-
-  const guruUnik = new Map<string, BarisGuru>()
-  for (const row of barisGuru) {
-    const kunci = `${row.nama}|${row.unit}`
-    const lama = guruUnik.get(kunci)
-    if (!lama) {
-      guruUnik.set(kunci, row)
-      continue
-    }
-    guruUnik.set(kunci, {
-      ...lama,
-      jurnal: lama.jurnal === 'Sudah' || row.jurnal === 'Sudah' ? 'Sudah' : 'Belum',
-      qiroah: lama.qiroah === 'Sudah' || row.qiroah === 'Sudah' ? 'Sudah' : 'Belum',
-      tahfidz: lama.tahfidz === 'Sudah' || row.tahfidz === 'Sudah' ? 'Sudah' : lama.tahfidz === 'Tidak tercatat' ? row.tahfidz : lama.tahfidz,
-    })
-  }
+  const guruKepatuhan = susunKepatuhanGuru({
+    unit,
+    hari,
+    guru,
+    siswa: daftarSiswa,
+    jurnal: jurnalUnit,
+    qiroah: Array.isArray(qiroah) ? qiroah : [],
+    tahfidz: Array.isArray(tahfidzContoh) ? tahfidzContoh : [],
+    jurnalGagal,
+    qiroahGagal,
+    tahfidzGagal,
+  })
 
   const trenMingguan = Array.from({ length: 7 }, (_, index) => {
     const tanggal = new Date(mulai)
     tanggal.setDate(mulai.getDate() - (6 - index))
-    const iso = todayInputValue(tanggal)
-    const baris = jurnalUnit.filter((row) => String(row.tanggal || '').slice(0, 10) === iso)
+    const iso = hariIniWib(tanggal)
+    const baris = jurnalUnit.filter((row) => tanggalJakarta(row.tanggal) === iso)
     return {
       label: tanggal.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' }),
       persen: rekapAbsen(baris, jumlahKelas, kenali).persen,
@@ -710,7 +674,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
       const awal = (minggu - 1) * 7 + 1
       const akhir = Math.min(minggu * 7, 31)
       const baris = jurnalUnit.filter((row) => {
-        const tanggal = Number(String(row.tanggal || '').slice(8, 10))
+        const tanggal = Number(tanggalJakarta(row.tanggal).slice(8, 10))
         return tanggal >= awal && tanggal <= akhir
       })
       return { label: `Minggu ${minggu}`, persen: rekapAbsen(baris, jumlahKelas, kenali).persen }
@@ -797,7 +761,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     trenBulanan,
     jurnalRingkas,
     predikat: Array.from(hitungPredikat.entries()).map(([nama, jumlah]) => ({ nama, jumlah })),
-    guru: [...guruUnik.values()],
+    guru: guruKepatuhan,
     ujian,
     hasilUjian,
     lulus,

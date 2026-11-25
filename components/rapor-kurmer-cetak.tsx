@@ -52,6 +52,14 @@ export const GAYA_CETAK_RAPOR_KURMER = `
   .lembar-rapor-kurmer .ttd-bawah td { border: none !important; text-align: center; vertical-align: top; font-size: 9pt; }
   .lembar-rapor-kurmer .ruang-ttd { height: 13mm; }
   .lembar-rapor-kurmer .ruang-ttd-kecil { height: 11mm; }
+  .lembar-rapor-kurmer .blok-tanda-tangan,
+  .lembar-rapor-kurmer .ttd-atas,
+  .lembar-rapor-kurmer .ttd-bawah,
+  .lembar-rapor-kurmer .ttd-atas tr,
+  .lembar-rapor-kurmer .ttd-bawah tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   @media print {
     html, body {
       margin: 0 !important;
@@ -93,7 +101,10 @@ export const GAYA_CETAK_RAPOR_KURMER = `
     .lembar-rapor-kurmer .tabel-nilai { font-size: 8pt; }
     .lembar-rapor-kurmer .tabel-nilai th,
     .lembar-rapor-kurmer .tabel-nilai td { padding: 0.5px 2px; }
-    .lembar-rapor-kurmer section { page-break-inside: avoid; break-inside: avoid; }
+    .lembar-rapor-kurmer section,
+    .lembar-rapor-kurmer .blok-tanda-tangan,
+    .lembar-rapor-kurmer .ttd-atas,
+    .lembar-rapor-kurmer .ttd-bawah { page-break-inside: avoid; break-inside: avoid; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
   @media screen {
@@ -157,6 +168,7 @@ export function LembarRaporKurmer({ data }: { data: DataCetakKurmer }) {
         </table>
       </section>
 
+      <div className="blok-tanda-tangan">
       <table className="ttd-atas mt-2 w-full text-[9pt] print:mt-1">
         <tbody>
           <tr>
@@ -202,6 +214,7 @@ export function LembarRaporKurmer({ data }: { data: DataCetakKurmer }) {
           </tr>
         </tbody>
       </table>
+      </div>
     </article>
   )
 }

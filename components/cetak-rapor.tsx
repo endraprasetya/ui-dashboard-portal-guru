@@ -45,16 +45,29 @@ export function CetakRaporHalaman({ idSiswa }: { idSiswa: string }) {
   return (
     <div className="min-h-screen bg-slate-200 print:bg-white">
       <style>{`
-        @page { size: 210mm 330mm; margin: 12mm 14mm; }
+        @page { size: 210mm 330mm; margin: 8mm 10mm; }
         .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #111; }
         .lembar-rapor table { width: 100%; border-collapse: collapse; }
         .lembar-rapor .tabel-nilai th,
-        .lembar-rapor .tabel-nilai td { border: 1px solid #111; padding: 5px 7px; }
-        .ttd-rapor td { border: none !important; width: 50%; text-align: center; vertical-align: top; }
-        .ttd-rapor .ruang { height: 26mm; }
+        .lembar-rapor .tabel-nilai td { border: 1px solid #111; padding: 2px 4px; line-height: 1.2; }
+        .ttd-rapor td { border: none !important; width: 50%; text-align: center; vertical-align: top; padding: 0; }
+        .ttd-rapor .ruang { height: 16mm; }
+        .blok-tanda-tangan,
+        .ttd-rapor,
+        .ttd-rapor tr {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         @media print {
           body { background: #fff !important; }
-          .lembar-rapor { box-shadow: none !important; margin: 0 !important; }
+          .lembar-rapor { box-shadow: none !important; margin: 0 !important; font-size: 10.5pt; line-height: 1.25; }
+          .blok-tanda-tangan,
+          .ttd-rapor,
+          .ttd-rapor tr,
+          .ttd-rapor td {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
         }
       `}</style>
 
@@ -105,21 +118,21 @@ function LembarRapor({ data }: { data: DataRapor }) {
   const tempatTanggal = `${data.lokasi}, ${data.tanggalCetak}`
 
   return (
-    <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-8 py-7 text-[12pt] leading-relaxed shadow-xl print:min-h-0 print:max-w-none print:shadow-none">
+    <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-6 py-4 text-[11pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none">
       <header className="border-b-4 border-double border-black pb-2 text-center">
         <p className="text-[10pt] font-bold tracking-wide">YAYASAN AL MADINAH</p>
         <p className="text-[13pt] font-bold">SD ISLAM TERPADU AL MADINAH</p>
         <p className="text-[10pt]">{siswa.unit ? `Unit ${siswa.unit}` : 'Program Tahfidzul Qur’an & Qiroatul Qur’an'}</p>
       </header>
 
-      <div className="mt-4 text-center">
+      <div className="mt-2 text-center">
         <h1 className="text-[14pt] font-bold underline">RAPOR HAFALAN &amp; BACAAN AL-QUR’AN</h1>
         <p className="text-[11pt]">
           Semester {data.semester} · Tahun Ajaran {data.tahunAjaran}
         </p>
       </div>
 
-      <section className="mt-5">
+      <section className="mt-3">
         <table className="text-[12pt]">
           <tbody>
             <BarisIdentitas label="Nama siswa" nilai={siswa.nama} />
@@ -132,7 +145,7 @@ function LembarRapor({ data }: { data: DataRapor }) {
         </table>
       </section>
 
-      <section className="mt-5">
+      <section className="mt-3">
         <h2 className="mb-1 text-[12pt] font-bold">A. Capaian Tahfidzul Qur’an</h2>
         <p className="mb-2 text-[10.5pt]">
           Ziyadah terakhir: <strong>{data.ziyadahTerakhir || '-'}</strong>
@@ -176,7 +189,7 @@ function LembarRapor({ data }: { data: DataRapor }) {
         )}
       </section>
 
-      <section className="mt-5">
+      <section className="mt-3">
         <h2 className="mb-1 text-[12pt] font-bold">B. Capaian Qiroatul Qur’an</h2>
         <table className="tabel-nilai text-[11pt]">
           <thead>
@@ -200,7 +213,7 @@ function LembarRapor({ data }: { data: DataRapor }) {
         </table>
       </section>
 
-      <section className="mt-5">
+      <section className="mt-3">
         <h2 className="mb-1 text-[12pt] font-bold">C. Hasil ujian kenaikan jilid</h2>
         <table className="tabel-nilai text-[11pt]">
           <thead>
@@ -238,7 +251,8 @@ function LembarRapor({ data }: { data: DataRapor }) {
         </table>
       </section>
 
-      <table className="ttd-rapor mt-10 text-[11pt]">
+      <div className="blok-tanda-tangan">
+      <table className="ttd-rapor mt-4 text-[10.5pt]">
         <tbody>
           <tr>
             <td>Mengetahui,</td>
@@ -266,6 +280,7 @@ function LembarRapor({ data }: { data: DataRapor }) {
           </tr>
         </tbody>
       </table>
+      </div>
     </article>
   )
 }

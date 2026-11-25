@@ -23,33 +23,48 @@ export function cetakLembarRapor() {
 }
 
 export const GAYA_CETAK_RAPOR_TAHFIDZ = `
-  @page { size: A4; margin: 0; }
+  @page { size: 210mm 330mm; margin: 7mm 9mm; }
   .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #000; }
   .lembar-rapor table { width: 100%; border-collapse: collapse; }
-  .lembar-rapor .identitas td { padding: 1px 4px; vertical-align: middle; }
+  .lembar-rapor .identitas td { padding: 0 3px; vertical-align: middle; line-height: 1.2; }
   .lembar-rapor .tabel-nilai th,
-  .lembar-rapor .tabel-nilai td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
+  .lembar-rapor .tabel-nilai td { border: 1px solid #000; padding: 1px 3px; vertical-align: middle; line-height: 1.15; }
   .lembar-rapor .tabel-nilai thead th { background: #d9d9d9; font-weight: 700; text-align: center; }
   .lembar-rapor .tabel-catatan th,
-  .lembar-rapor .tabel-catatan td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; }
+  .lembar-rapor .tabel-catatan td { border: 1px solid #000; padding: 2px 4px; vertical-align: top; line-height: 1.2; }
   .lembar-rapor .tabel-catatan td { white-space: pre-wrap; }
   .banner-biru { background: #1e40af !important; color: #fff !important; font-weight: 700; text-align: center; }
   .kotak-merah { background: #ef4444 !important; color: #fff !important; font-weight: 700; text-align: center; }
-  .kotak-hijau { background: #22c55e !important; color: #000 !important; font-weight: 700; text-align: center; font-size: 18pt; }
-  .nama-arab { font-family: var(--font-amiri), "Times New Roman", serif; font-size: 13pt; }
-  .ttd-rapor td { border: none !important; text-align: center; vertical-align: top; width: 33.33%; }
-  .ttd-rapor .ruang { height: 22mm; }
+  .kotak-hijau { background: #22c55e !important; color: #000 !important; font-weight: 700; text-align: center; font-size: 14pt; }
+  .nama-arab { font-family: var(--font-amiri), "Times New Roman", serif; font-size: 11pt; }
+  .ttd-rapor td { border: none !important; text-align: center; vertical-align: top; width: 33.33%; padding: 0; }
+  .ttd-rapor .ruang { height: 14mm; }
+  .blok-tanda-tangan {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   @media print {
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
     .lembar-rapor {
       box-shadow: none !important;
       margin: 0 auto !important;
-      padding: 15mm 18mm !important;
+      padding: 0 !important;
       min-height: auto !important;
       max-width: none !important;
+      font-size: 9.5pt;
+      line-height: 1.15;
       page-break-after: always;
     }
     .lembar-rapor:last-child { page-break-after: auto; }
+    .lembar-rapor header h1,
+    .lembar-rapor header p { font-size: 12pt; line-height: 1.15; margin: 0; }
+    .blok-tanda-tangan,
+    .ttd-rapor,
+    .ttd-rapor tr,
+    .ttd-rapor td {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
 `
@@ -84,7 +99,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
       <div className="print:hidden sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-300 bg-[#143d32] px-4 py-3 text-white">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-100">Pratinjau rapor tahfidz</p>
-          <p className="text-sm font-extrabold">Kertas A4 · {asesmen || 'asesmen terbaru'}</p>
+          <p className="text-sm font-extrabold">Kertas F4 · {asesmen || 'asesmen terbaru'}</p>
         </div>
         <div className="flex gap-2">
           <Link href="/" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
@@ -126,7 +141,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
   const tempatTanggal = `${data.lokasi}, ${data.tanggalCetak}`
 
   return (
-    <article className="lembar-rapor mx-auto min-h-[297mm] max-w-[210mm] bg-white px-7 py-6 text-[11pt] leading-snug shadow-xl print:shadow-none">
+    <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-6 py-4 text-[10.5pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none">
       <header className="text-center">
         <h1 className="text-[14pt] font-bold tracking-wide">RAPOR TAHFIZHUL QUR&apos;AN</h1>
         <p className="text-[14pt] font-bold">{data.judulAsesmen}</p>
@@ -134,7 +149,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
         <p className="text-[14pt] font-bold">{data.judulTahunAjaran}</p>
       </header>
 
-      <table className="identitas mt-4 text-[11pt]">
+      <table className="identitas mt-2 text-[10.5pt]">
         <tbody>
           <tr>
             <td className="w-[70px]">Nama</td>
@@ -153,7 +168,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
 
       {indikator ? <p className="mt-2 text-[10.5pt]">Indikator penilaian: {indikator}</p> : null}
 
-      <table className="tabel-nilai mt-3 text-[10.5pt]">
+      <table className="tabel-nilai mt-2 text-[9.5pt]">
         <thead>
           <tr>
             <th rowSpan={2} className="w-10">
@@ -232,7 +247,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
         </tbody>
       </table>
 
-      <table className="tabel-catatan mt-4 text-[11pt]">
+      <table className="tabel-catatan mt-2 text-[9.5pt]">
         <tbody>
           <tr>
             <th className="w-[210px] bg-[#d9d9d9] text-left font-normal">Catatan Kompetensi HQ :</th>
@@ -249,7 +264,8 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
         </tbody>
       </table>
 
-      <table className="ttd-rapor mt-8 text-[10.5pt]">
+      <div className="blok-tanda-tangan">
+      <table className="ttd-rapor mt-3 text-[10pt]">
         <tbody>
           <tr>
             <td />
@@ -285,6 +301,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
           </tr>
         </tbody>
       </table>
+      </div>
     </article>
   )
 }

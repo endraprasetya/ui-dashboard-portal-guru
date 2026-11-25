@@ -888,14 +888,16 @@ export function InputRaporTahfidz({
         {peringatanKirim ? <p className="mt-3 text-sm font-semibold text-red-600">{peringatanKirim}</p> : null}
         {kiriman.some((row) => row.status === 'Revisi' && row.catatanRevisi) ? (
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">Catatan revisi Kepala Sekolah</p>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">Catatan koreksi pemeriksa</p>
             <ul className="mt-2 space-y-2 text-sm text-slate-800">
               {kiriman
                 .filter((row) => row.status === 'Revisi' && row.catatanRevisi)
                 .map((row) => (
                   <li key={`${row.idSiswa}-${row.asesmen}`} className="flex flex-wrap items-center justify-between gap-2">
                     <span>
-                      <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}: {row.catatanRevisi}
+                      <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}
+                      {row.catatanOleh ? ` · ${row.catatanOleh}` : ''}
+                      {row.catatanPada && waktuKirim(row.catatanPada) ? ` · ${waktuKirim(row.catatanPada)}` : ''}: {row.catatanRevisi}
                     </span>
                     <button
                       type="button"
@@ -986,7 +988,14 @@ export function InputRaporTahfidz({
                         ) : !kirim ? (
                           <span className="text-xs font-semibold text-slate-400">Belum dikirim</span>
                         ) : kirim.status === 'Revisi' ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Ada koreksi</span>
+                          <div>
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Ada koreksi</span>
+                            {kirim.catatanRevisi ? (
+                              <p className="mt-1 max-w-xs text-xs leading-snug text-amber-950">
+                                {kirim.catatanOleh || 'Pemeriksa'}: {kirim.catatanRevisi}
+                              </p>
+                            ) : null}
+                          </div>
                         ) : (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
                             Terkirim{waktuKirim(kirim.dikirimPada) ? ` · ${waktuKirim(kirim.dikirimPada)}` : ''}

@@ -24,6 +24,7 @@ export type NotifikasiRevisiRapor = {
   nama: string
   kelas: string
   catatan: string
+  penulis: string
 }
 
 export type NotifikasiQiroah = NotifikasiItem & {
@@ -195,7 +196,8 @@ export async function muatNotifikasi(currentUser?: any) {
     for (const row of kirimRapor.data) {
       if (row.status !== 'Revisi' || !row.catatanRevisi || !guruPenerimaRevisi(row, currentUser)) continue
       const materi = row.materi ? ` · ${row.materi}` : ''
-      const detailMentah = `${row.kelas || '-'} · ${row.asesmen}${materi} · Catatan Kepala Sekolah: ${row.catatanRevisi}. Ketuk untuk memperbaiki penilaian.`
+      const penulis = row.catatanOleh || row.pemeriksaNama || 'Pemeriksa'
+      const detailMentah = `${row.kelas || '-'} · ${row.asesmen}${materi} · Catatan ${penulis}: ${row.catatanRevisi}. Ketuk untuk memperbaiki penilaian.`
       const idRevisi = `rapor-revisi:${kunciKirimRaporHq(row)}:${row.diperbaruiPada}`
       revisiRapor.push({
         id: idRevisi,
@@ -204,6 +206,7 @@ export async function muatNotifikasi(currentUser?: any) {
         nama: row.namaSiswa,
         kelas: row.kelas || '-',
         catatan: row.catatanRevisi,
+        penulis,
       })
       lain.push({
         id: idRevisi,

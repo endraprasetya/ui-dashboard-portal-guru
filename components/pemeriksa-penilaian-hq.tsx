@@ -2,12 +2,22 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, BadgeCheck, ClipboardCheck, Search } from 'lucide-react'
+import { BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
-import { NAMA_SETTING_KIRIM_RAPOR, idGuruAktif, lengkapiTampilanKirim, tandaiDiperiksaHq, type KirimRaporHq } from '@/lib/rapor-hq-kirim'
+import {
+  NAMA_SETTING_KIRIM_RAPOR,
+  idGuruAktif,
+  lengkapiTampilanKirim,
+  simpanCatatanRevisiRaporHq,
+  tandaiDiperiksaHq,
+  type KirimRaporHq,
+} from '@/lib/rapor-hq-kirim'
 import { PILIHAN_ASESMEN_RAPOR_HQ, type KodeAsesmenRaporHq } from '@/lib/kepsek-rapor-hq'
 import {
   adalahPemeriksaHq,
+  daftarKelasHq,
+  kelasTampilHq,
   muatHakPemeriksaHq,
   muatPenilaianPutriHq,
   sudahDiperiksaHq,
@@ -41,8 +51,12 @@ export function PemeriksaPenilaianHq({
   const [galat, setGalat] = useState('')
   const [status, setStatus] = useState('')
   const [cari, setCari] = useState('')
+  const [kelasSaring, setKelasSaring] = useState('semua')
+  const [statusSaring, setStatusSaring] = useState<StatusSaringHq>('semua')
   const [izin, setIzin] = useState(() => adalahPemeriksaHq(currentUser))
   const [menyimpan, setMenyimpan] = useState('')
+  const [menyimpanCatatan, setMenyimpanCatatan] = useState('')
+  const [catatan, setCatatan] = useState<Record<string, string>>({})
   const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
   const [konfirmasi, setKonfirmasi] = useState<KirimRaporHq | null>(null)
   const { tahunAjaran, semester } = periodeAjaranSekarang()
@@ -69,6 +83,7 @@ export function PemeriksaPenilaianHq({
     }
     const lengkap = await lengkapiTampilanKirim(hasil.data)
     setDaftar(lengkap)
+    setCatatan(Object.fromEntries(lengkap.map((row) => [kunciBaris(row), row.catatanRevisi])))
     setMemuat(false)
   }
 
@@ -92,20 +107,29 @@ export function PemeriksaPenilaianHq({
     }
   }, [asesmen])
 
+  const kelasOpsi = useMemo(() => daftarKelasHq(daftar.map((row) => row.kelas)), [daftar])
+  const kelasAktif = kelasOpsi.includes(kelasSaring) ? kelasSaring : 'semua'
+  const menurutKelas = useMemo(
+    () => daftar.filter((row) => kelasAktif === 'semua' || kelasTampilHq(row.kelas) === kelasAktif),
+    [daftar, kelasAktif],
+  )
   const tampil = useMemo(() => {
     const kata = cari.trim().toLowerCase()
-    if (!kata) return daftar
-    return daftar.filter(
-      (row) =>
+    return menurutKelas.filter((row) => {
+      if (statusSaring === 'lolos' && !sudahDiperiksaHq(row)) return false
+      if (statusSaring === 'belum' && sudahDiperiksaHq(row)) return false
+      if (!kata) return true
+      return (
         row.namaSiswa.toLowerCase().includes(kata) ||
         row.kelas.toLowerCase().includes(kata) ||
         row.namaGuru.toLowerCase().includes(kata) ||
-        row.materi.toLowerCase().includes(kata),
-    )
-  }, [daftar, cari])
+        row.materi.toLowerCase().includes(kata)
+      )
+    })
+  }, [menurutKelas, cari, statusSaring])
 
-  const jumlahDiperiksa = daftar.filter(sudahDiperiksaHq).length
-  const jumlahBelum = daftar.length - jumlahDiperiksa
+  const jumlahDiperiksa = menurutKelas.filter(sudahDiperiksaHq).length
+  const jumlahBelum = menurutKelas.length - jumlahDiperiksa
 
   const tandai = async () => {
     if (!konfirmasi) return
@@ -122,6 +146,29 @@ export function PemeriksaPenilaianHq({
     }
     setKonfirmasi(null)
     setStatus(`Penilaian ${konfirmasi.namaSiswa} ditandai sudah diperiksa. Tanda terkirim ke Kepala Sekolah.`)
+    await muat()
+  }
+
+  const simpanCatatan = async (row: KirimRaporHq) => {
+    const kunci = kunciBaris(row)
+    setMenyimpanCatatan(kunci)
+    setStatus('')
+    setGalat('')
+    const teks = catatan[kunci] || ''
+    const hasil = await simpanCatatanRevisiRaporHq(row, teks, {
+      id: idGuruAktif(currentUser),
+      nama: teacherDisplayName(currentUser),
+    })
+    setMenyimpanCatatan('')
+    if (hasil.error) {
+      setGalat(hasil.error)
+      return
+    }
+    setStatus(
+      teks.trim()
+        ? `Catatan koreksi untuk ${row.namaSiswa} terkirim ke lonceng guru pengampu.`
+        : `Catatan koreksi untuk ${row.namaSiswa} dihapus.`,
+    )
     await muat()
   }
 
@@ -159,8 +206,8 @@ export function PemeriksaPenilaianHq({
       <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
         <p className="font-extrabold">Siswa putri unit Nogosari (kelas berakhiran C dan D)</p>
         <p className="mt-1 text-xs leading-relaxed">
-          Periksa hasil penilaian rapor HQ yang dikirim guru pengampu, lalu tandai sudah diperiksa agar Kepala Sekolah
-          menerima tanda pada pemantauan Rapor HQ. {semester} {tahunAjaran}.
+          Periksa hasil penilaian rapor HQ yang dikirim guru pengampu. Tuliskan catatan koreksi bila ada kekeliruan, lalu
+          tandai sudah diperiksa agar Kepala Sekolah menerima tanda pada pemantauan Rapor HQ. {semester} {tahunAjaran}.
         </p>
       </section>
 
@@ -181,8 +228,49 @@ export function PemeriksaPenilaianHq({
             ))}
           </div>
           <p className="text-xs font-semibold text-slate-600">
-            {jumlahBelum} menunggu · {jumlahDiperiksa} sudah diperiksa
+            {kelasAktif === 'semua' ? 'Semua kelas' : `Kelas ${kelasAktif}`}: {jumlahBelum} menunggu · {jumlahDiperiksa} sudah diperiksa
           </p>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold text-slate-600">
+            Filter Kelas
+            <select
+              value={kelasAktif}
+              onChange={(event) => setKelasSaring(event.target.value)}
+              className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800"
+            >
+              <option value="semua">Semua Kelas</option>
+              {kelasOpsi.map((kelas) => (
+                <option key={kelas} value={kelas}>
+                  {kelas}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <p className="text-xs font-bold text-slate-600">Filter Status</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {(
+                [
+                  ['semua', 'Semua Status'],
+                  ['lolos', 'Sudah diperiksa / Lolos pemeriksaan'],
+                  ['belum', 'Belum diperiksa'],
+                ] as const
+              ).map(([kode, label]) => (
+                <button
+                  key={kode}
+                  type="button"
+                  onClick={() => setStatusSaring(kode)}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${
+                    statusSaring === kode ? 'bg-[#6d28d9] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="relative mt-3">
@@ -202,7 +290,9 @@ export function PemeriksaPenilaianHq({
           <p className="mt-4 text-sm text-slate-500">Memuat penilaian siswa putri…</p>
         ) : tampil.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">
-            Belum ada hasil penilaian siswa putri Nogosari yang dikirim untuk {asesmen}.
+            {daftar.length === 0
+              ? `Belum ada hasil penilaian siswa putri Nogosari yang dikirim untuk ${asesmen}.`
+              : 'Tidak ada penilaian yang cocok dengan filter kelas, status, atau pencarian ini.'}
           </p>
         ) : (
           <div className="mt-4 overflow-x-auto">
@@ -213,6 +303,7 @@ export function PemeriksaPenilaianHq({
                   <th className="px-3 py-2">Materi / surah</th>
                   <th className="px-3 py-2">Nilai</th>
                   <th className="px-3 py-2">Guru pengampu</th>
+                  <th className="px-3 py-2">Catatan / Koreksi</th>
                   <th className="px-3 py-2">Status periksa</th>
                   <th className="px-3 py-2" />
                 </tr>
@@ -233,16 +324,28 @@ export function PemeriksaPenilaianHq({
                       <td className="px-3 py-2 font-semibold">{teksCapaian(row.nilaiAkhir, row.predikat)}</td>
                       <td className="px-3 py-2">{row.namaGuru || '-'}</td>
                       <td className="px-3 py-2">
-                        {diperiksa ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                            <BadgeCheck className="size-3" /> Sudah diperiksa
-                            {row.diperiksaPada ? ` · ${waktuTampil(row.diperiksaPada)}` : ''}
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-                            Belum diperiksa
-                          </span>
-                        )}
+                        <textarea
+                          value={catatan[kunci] ?? ''}
+                          onChange={(event) => setCatatan((semua) => ({ ...semua, [kunci]: event.target.value }))}
+                          rows={3}
+                          placeholder="Tuliskan kekurangan atau kekeliruan yang perlu diperbaiki guru"
+                          aria-label={`Catatan koreksi untuk ${row.namaSiswa}`}
+                          className="w-full min-w-[16rem] rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                        />
+                        <button
+                          type="button"
+                          disabled={menyimpanCatatan === kunci}
+                          onClick={() => void simpanCatatan(row)}
+                          className="mt-2 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-800 disabled:opacity-50"
+                        >
+                          {menyimpanCatatan === kunci ? 'Menyimpan…' : 'Simpan catatan'}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <BadgeLolosPemeriksaan lolos={diperiksa} />
+                        {diperiksa && row.diperiksaPada ? (
+                          <p className="mt-1 text-[10px] text-slate-500">{waktuTampil(row.diperiksaPada)}</p>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex flex-wrap justify-end gap-1">
@@ -296,3 +399,5 @@ export function PemeriksaPenilaianHq({
 function kunciBaris(row: Pick<KirimRaporHq, 'idSiswa' | 'asesmen'>) {
   return `${row.idSiswa}|${row.asesmen}`
 }
+
+type StatusSaringHq = 'semua' | 'lolos' | 'belum'

@@ -112,9 +112,9 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
       pdf.text(potong, xCol(i) + 1, y + 5.2)
     })
     y += tinggi
-    if (y > 250) {
-      pdf.addPage()
-      y = 18
+    if (y > 300) {
+      pdf.addPage([210, 330], 'portrait')
+      y = 16
     }
   }
 
@@ -164,7 +164,12 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
     y += tinggi
   }
 
-  y += 14
+  const tinggiTandaTangan = 62
+  if (y + tinggiTandaTangan > 318) {
+    pdf.addPage([210, 330], 'portrait')
+    y = 18
+  }
+  y += 10
   pdf.setFont('times', 'normal')
   pdf.setFontSize(10)
   pdf.text(`${data.lokasi}, ${data.tanggalCetak}`, 160, y, { align: 'center' })
