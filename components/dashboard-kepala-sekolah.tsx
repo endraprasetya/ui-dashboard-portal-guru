@@ -42,6 +42,7 @@ import { PILIHAN_ASESMEN_RAPOR_HQ } from '@/lib/kepsek-rapor-hq'
 import { MonitoringPiketHariIni } from '@/components/kepsek/monitoring-piket'
 import { muatKepatuhanGuru, type HasilKepatuhanGuru } from '@/lib/kepatuhan-guru-kepsek'
 import { MonitoringSidiaAbsensiReguler } from '@/components/kepsek/monitoring-sidia-absensi'
+import { RekapBulananPresensiKaryawan } from '@/components/kepsek/rekap-bulanan-presensi-karyawan'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { MonitoringPengajuanKeringanan } from '@/components/kepsek/monitoring-keringanan'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
@@ -528,8 +529,9 @@ export function DashboardKepalaSekolah() {
               </article>
             </section>
 
-            <div id={ID_PINTASAN.sidia} className="scroll-mt-28 rounded-2xl transition-shadow">
+            <div id={ID_PINTASAN.sidia} className="scroll-mt-28 space-y-4 rounded-2xl transition-shadow">
               <MonitoringSidiaAbsensiReguler tanggal={laporan.tanggalLaporan} />
+              <RekapBulananPresensiKaryawan />
             </div>
 
             <section className="no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

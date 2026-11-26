@@ -223,8 +223,9 @@ function riwayatSetelahDiperiksa(lama: KirimRaporHq, sekarang: string) {
 
 function bacaJenisCatatan(nilai: unknown, status: StatusKirimRaporHq, catatan: string): JenisCatatanPemeriksaHq {
   if (nilai === 'konfirmasi' || nilai === 'revisi') return nilai
-  if (status === 'Revisi' && catatan) return 'revisi'
-  return ''
+  if (!catatan.trim()) return ''
+  if (status === 'Revisi') return 'revisi'
+  return tentukanCatatanPemeriksaHq(catatan).mode
 }
 
 function bacaKirim(nilai: unknown): KirimRaporHq | null {
@@ -465,6 +466,7 @@ export async function simpanCatatanRevisiRaporHq(
   if (!lama) return { error: 'Data kiriman tidak ditemukan.' }
   const sekarang = new Date().toISOString()
   const revisi = mode === 'revisi'
+  const namaPenulis = penulis?.nama?.trim() || lama.catatanOleh || 'Pemeriksa'
   const isi: KirimRaporHq = {
     ...lama,
     materi: baris.materi || lama.materi,
@@ -472,16 +474,25 @@ export async function simpanCatatanRevisiRaporHq(
     predikat: baris.predikat || lama.predikat,
     catatanRevisi: teks,
     jenisCatatan: mode,
-    catatanOleh: penulis?.nama?.trim() || lama.catatanOleh || 'Pemeriksa',
+    catatanOleh: namaPenulis,
     catatanOlehId: penulis?.id?.trim() || lama.catatanOlehId || '',
     catatanPada: sekarang,
     status: revisi ? 'Revisi' : 'Terkirim',
+    diajukanPada: lama.diajukanPada || lama.dikirimPada,
+    riwayatWaktu: riwayatSetelahDiperiksa(lama, sekarang),
+    statusPemeriksa: 'Diperiksa',
+    pemeriksaId: penulis?.id?.trim() || lama.pemeriksaId || '',
+    pemeriksaNama: namaPenulis,
+    diperiksaPada: sekarang,
     diperbaruiPada: sekarang,
   }
   peta.set(kunci, isi)
   const galat = await simpanDokumenKirim([...peta.values()], lama.idGuru)
   if (galat) return { error: galat }
-  void siarkanRevisiRaporHq(isi.idGuru)
+  void (async () => {
+    await siarkanRevisiRaporHq(isi.idGuru)
+    await siarkanPemeriksaHq(isi)
+  })()
   return { error: null as string | null, data: isi }
 }
 

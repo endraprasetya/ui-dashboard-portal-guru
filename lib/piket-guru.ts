@@ -615,6 +615,154 @@ export async function muatAbsensiPiket(unit: string, tanggal: string) {
     .filter((row): row is BarisAbsensiPiket => Boolean(row))
 }
 
+export type ModeRekapPiket = 'tanggal' | 'bulan'
+
+export type BarisRekapPiketTampil = {
+  namaGuru: string
+  jamPagi: string
+  jamSore: string
+  keterangan: string
+}
+
+function jamSesiRekap(status: StatusSesiPiket, waktu?: string) {
+  if (status === 'Hadir') return formatJamAbsenPiket(waktu) || 'Hadir'
+  if (status === 'Izin') return 'Izin'
+  return '—'
+}
+
+function keteranganHarianPiket(item: BarisAbsensiPiket) {
+  const catatan: string[] = [item.jenis]
+  if (item.statusPagi === 'Izin') catatan.push('Izin pagi')
+  if (item.statusSore === 'Izin') catatan.push('Izin sore')
+  if (item.statusPagi === 'Belum') catatan.push('Pagi belum absen')
+  if (item.statusSore === 'Belum') catatan.push('Sore belum absen')
+  return catatan.join(' · ')
+}
+
+function skorAbsensiPiket(item: BarisAbsensiPiket) {
+  const bobot = (status: StatusSesiPiket) => (status === 'Hadir' ? 2 : status === 'Izin' ? 1 : 0)
+  return bobot(item.statusPagi) + bobot(item.statusSore) + (item.waktuPagi ? 1 : 0) + (item.waktuSore ? 1 : 0)
+}
+
+function susunRekapPiketHarian(baris: BarisAbsensiPiket[]): BarisRekapPiketTampil[] {
+  const unik = new Map<string, BarisAbsensiPiket>()
+  for (const item of baris) {
+    const kunci = `${item.tanggal}|${item.jenis}|${norm(item.nama_guru) || norm(item.id_guru)}`
+    const ada = unik.get(kunci)
+    if (!ada || skorAbsensiPiket(item) > skorAbsensiPiket(ada)) unik.set(kunci, item)
+  }
+  return [...unik.values()]
+    .sort((a, b) => a.nama_guru.localeCompare(b.nama_guru, 'id') || a.jenis.localeCompare(b.jenis, 'id'))
+    .map((item) => ({
+      namaGuru: item.nama_guru,
+      jamPagi: jamSesiRekap(item.statusPagi, item.waktuPagi),
+      jamSore: jamSesiRekap(item.statusSore, item.waktuSore),
+      keterangan: keteranganHarianPiket(item),
+    }))
+}
+
+function susunRekapPiketBulanan(baris: BarisAbsensiPiket[]): BarisRekapPiketTampil[] {
+  type Ember = {
+    nama: string
+    jenis: Set<string>
+    tanggal: Set<string>
+    pagiHadir: Set<string>
+    pagiIzin: Set<string>
+    soreHadir: Set<string>
+    soreIzin: Set<string>
+  }
+  const map = new Map<string, Ember>()
+  for (const item of baris) {
+    const kunci = norm(item.nama_guru) || norm(item.id_guru)
+    if (!kunci || !item.tanggal) continue
+    let ember = map.get(kunci)
+    if (!ember) {
+      ember = {
+        nama: item.nama_guru,
+        jenis: new Set(),
+        tanggal: new Set(),
+        pagiHadir: new Set(),
+        pagiIzin: new Set(),
+        soreHadir: new Set(),
+        soreIzin: new Set(),
+      }
+      map.set(kunci, ember)
+    }
+    ember.jenis.add(item.jenis)
+    ember.tanggal.add(item.tanggal)
+    if (item.statusPagi === 'Hadir') ember.pagiHadir.add(item.tanggal)
+    if (item.statusPagi === 'Izin') ember.pagiIzin.add(item.tanggal)
+    if (item.statusSore === 'Hadir') ember.soreHadir.add(item.tanggal)
+    if (item.statusSore === 'Izin') ember.soreIzin.add(item.tanggal)
+  }
+
+  const teksJam = (hadir: number, izin: number) => {
+    if (hadir > 0) return `${hadir} hadir`
+    if (izin > 0) return `${izin} izin`
+    return '—'
+  }
+
+  return [...map.values()]
+    .sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
+    .map((item) => {
+      const pagiBelum = [...item.tanggal].filter((tgl) => !item.pagiHadir.has(tgl) && !item.pagiIzin.has(tgl)).length
+      const soreBelum = [...item.tanggal].filter((tgl) => !item.soreHadir.has(tgl) && !item.soreIzin.has(tgl)).length
+      const catatan = [[...item.jenis].join(', '), `${item.tanggal.size} hari`]
+      if (item.pagiIzin.size) catatan.push(`izin pagi ${item.pagiIzin.size}`)
+      if (item.soreIzin.size) catatan.push(`izin sore ${item.soreIzin.size}`)
+      if (pagiBelum) catatan.push(`pagi belum absen ${pagiBelum}`)
+      if (soreBelum) catatan.push(`sore belum absen ${soreBelum}`)
+      return {
+        namaGuru: item.nama,
+        jamPagi: teksJam(item.pagiHadir.size, item.pagiIzin.size),
+        jamSore: teksJam(item.soreHadir.size, item.soreIzin.size),
+        keterangan: catatan.join(' · '),
+      }
+    })
+}
+
+async function muatAbsensiPiketRentang(unit: string, dari: string, sampai: string) {
+  const kunci = kanonNamaUnit(unit)
+  if (!kunci || !/^\d{4}-\d{2}-\d{2}$/.test(dari) || !/^\d{4}-\d{2}-\d{2}$/.test(sampai)) return [] as BarisAbsensiPiket[]
+  let data: BarisMentahPiket[] | null = null
+  let error: { message?: string } | null = null
+  for (const kolom of PILIHAN_PIKET) {
+    const semua: BarisMentahPiket[] = []
+    let galat: { message?: string } | null = null
+    for (let from = 0; from < 6000; from += 1000) {
+      const hasil = await supabase
+        .from(TABEL_PIKET)
+        .select(kolom)
+        .ilike('unit', `%${kunci}%`)
+        .gte('tanggal', dari)
+        .lte('tanggal', sampai)
+        .order('tanggal', { ascending: true })
+        .range(from, from + 999)
+      if (hasil.error) {
+        galat = hasil.error
+        break
+      }
+      const potong = (hasil.data || []) as BarisMentahPiket[]
+      semua.push(...potong)
+      if (potong.length < 1000) break
+    }
+    data = semua
+    error = galat
+    if (!error) break
+    if (!kolomWaktuAbsenTidakAda(error.message)) break
+  }
+  if (error) lempar(error, 'Rekap piket belum dapat dimuat.')
+  return (data || [])
+    .filter((row) => unitSama(String(row.unit || ''), kunci))
+    .map((row) => petakanAbsensi(row))
+    .filter((row): row is BarisAbsensiPiket => Boolean(row))
+}
+
+export async function muatRekapPiket(unit: string, dari: string, sampai: string, mode: ModeRekapPiket) {
+  const baris = await muatAbsensiPiketRentang(unit, dari, sampai)
+  return mode === 'bulan' ? susunRekapPiketBulanan(baris) : susunRekapPiketHarian(baris)
+}
+
 export async function simpanAbsensiPiket(input: {
   unit: string
   jenis: JenisPiket

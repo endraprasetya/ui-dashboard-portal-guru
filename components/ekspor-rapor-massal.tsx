@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Download, Loader2, Printer } from 'lucide-react'
+import { Download, Loader2, Printer } from 'lucide-react'
+import { TombolKembaliCetak } from '@/components/tombol-kembali-cetak'
 import { fetchSiswaBinaan, type Siswa } from '@/lib/siswa'
 import { ASESMEN_TAHFIDZ } from '@/lib/materi-ujian-tahfidz'
 import { denganPenandatanganSesi, fetchCetakRaporTahfidz, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
@@ -124,9 +124,10 @@ export function EksporRaporMassal({ asesmenAwal }: { asesmenAwal?: string }) {
             <p className="text-sm font-extrabold">PDF terpisah per siswa binaan · kertas A4</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
-              <ArrowLeft className="size-3.5" /> Kembali
-            </Link>
+            <TombolKembaliCetak
+              cadangan="/?view=tahfidz_rapor"
+              className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold"
+            />
             <button
               type="button"
               onClick={cetakLembarRapor}

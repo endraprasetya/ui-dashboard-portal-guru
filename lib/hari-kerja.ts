@@ -39,6 +39,22 @@ export function bulanRomawi(tanggal: Date) {
   return ROMAWI[tanggal.getMonth()] || ''
 }
 
+const NAMA_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const
+const NAMA_BULAN = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+] as const
+
 function kapitalAwal(teks: string) {
   return teks.replace(/^\S/, (huruf) => huruf.toUpperCase())
 }
@@ -53,15 +69,11 @@ export function formatTanggalPanjang(tanggal: Date) {
   )
 }
 
+/** Contoh: `Kamis, 26 November 2026`. */
 export function formatHariTanggal(tanggal: Date) {
-  return kapitalAwal(
-    tanggal.toLocaleDateString('id-ID', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }),
-  )
+  const hari = NAMA_HARI[tanggal.getDay()] || ''
+  const bulan = NAMA_BULAN[tanggal.getMonth()] || ''
+  return `${hari}, ${tanggal.getDate()} ${bulan} ${tanggal.getFullYear()}`
 }
 
 export function angkaNomorSurat(nilai: string) {

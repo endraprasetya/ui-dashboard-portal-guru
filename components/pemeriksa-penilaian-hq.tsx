@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, BadgeCheck, ClipboardCheck, Search } from 'lucide-react'
-import { BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
+import { BadgeJenisCatatanHq, BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
 import { CatatanPemeriksaHq } from '@/components/catatan-pemeriksa-hq'
 import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
@@ -173,8 +173,8 @@ export function PemeriksaPenilaianHq({
     setCatatan((semua) => ({ ...semua, [kunci]: tersimpan.catatanRevisi }))
     setStatus(
       tersimpan.jenisCatatan === 'konfirmasi'
-        ? `Rapor HQ ${row.namaSiswa} tersimpan siap cetak.`
-        : `Catatan revisi ${row.namaSiswa} tersimpan dan terkirim ke guru pengampu.`,
+        ? `Rapor HQ ${row.namaSiswa} tersimpan sebagai siap cetak, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`
+        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`,
     )
   }
 
@@ -324,6 +324,7 @@ export function PemeriksaPenilaianHq({
                     <tr key={kunci} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2">
                         <p className="font-semibold text-slate-800">{row.namaSiswa}</p>
+                        <BadgeJenisCatatanHq jenis={row.jenisCatatan} />
                         <p className="text-xs text-slate-500">
                           {row.kelas} · {row.asesmen}
                         </p>

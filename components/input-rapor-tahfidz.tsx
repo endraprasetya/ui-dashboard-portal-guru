@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ClipboardCheck, Printer, Save, Search, Send, Trash2, X } from 'lucide-react'
+import { BadgeJenisCatatanHq } from '@/components/badge-pemeriksaan-hq'
 import { NilaiUjianTahfidz, type TargetNilaiUjian } from '@/components/nilai-ujian-tahfidz'
 import { fetchSiswaBinaan, kunciUserGuru, type Siswa } from '@/lib/siswa'
 import { daftarSurahBawaan, fetchAllSurah, infoAyatMelebihi, type InfoBatasAyat, type Surah } from '@/lib/surah'
@@ -888,26 +889,41 @@ export function InputRaporTahfidz({
           </div>
         </div>
         {peringatanKirim ? <p className="mt-3 text-sm font-semibold text-red-600">{peringatanKirim}</p> : null}
-        {kiriman.some((row) => row.status === 'Revisi' && row.catatanRevisi) ? (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900">Catatan koreksi pemeriksa</p>
+        {kiriman.some((row) => row.jenisCatatan === 'revisi' || row.jenisCatatan === 'konfirmasi') ? (
+          <div
+            className={`mt-3 rounded-xl border px-4 py-3 ${
+              kiriman.some((row) => row.jenisCatatan === 'revisi')
+                ? 'border-amber-200 bg-amber-50'
+                : 'border-emerald-200 bg-emerald-50'
+            }`}
+          >
+            <p
+              className={`text-xs font-extrabold uppercase tracking-wide ${
+                kiriman.some((row) => row.jenisCatatan === 'revisi') ? 'text-amber-900' : 'text-emerald-900'
+              }`}
+            >
+              Catatan pemeriksa
+            </p>
             <ul className="mt-2 space-y-2 text-sm text-slate-800">
               {kiriman
-                .filter((row) => row.status === 'Revisi' && row.catatanRevisi)
+                .filter((row) => row.jenisCatatan === 'revisi' || row.jenisCatatan === 'konfirmasi')
                 .map((row) => (
                   <li key={`${row.idSiswa}-${row.asesmen}`} className="flex flex-wrap items-center justify-between gap-2">
                     <span>
                       <span className="font-bold">{row.namaSiswa}</span> · {row.asesmen}
                       {row.catatanOleh ? ` · ${row.catatanOleh}` : ''}
                       {row.catatanPada && waktuKirim(row.catatanPada) ? ` · ${waktuKirim(row.catatanPada)}` : ''}: {row.catatanRevisi}
+                      <BadgeJenisCatatanHq jenis={row.jenisCatatan} />
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => bukaNilai(row.idSiswa, row.asesmen)}
-                      className="rounded-lg bg-amber-800 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-900"
-                    >
-                      Perbaiki penilaian
-                    </button>
+                    {row.jenisCatatan === 'revisi' ? (
+                      <button
+                        type="button"
+                        onClick={() => bukaNilai(row.idSiswa, row.asesmen)}
+                        className="rounded-lg bg-amber-800 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-900"
+                      >
+                        Perbaiki penilaian
+                      </button>
+                    ) : null}
                   </li>
                 ))}
             </ul>
@@ -972,6 +988,7 @@ export function InputRaporTahfidz({
                       </td>
                       <td className="px-3 py-2">
                         <p className="font-semibold text-slate-800">{row.nama}</p>
+                        {kirim ? <BadgeJenisCatatanHq jenis={kirim.jenisCatatan} /> : null}
                         {ujianLengkap.has(kunci) ? (
                           <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
                             <CheckCircle2 className="size-3" aria-hidden />
@@ -1023,7 +1040,7 @@ export function InputRaporTahfidz({
                             <Trash2 className="size-3" /> Hapus
                           </button>
                           <Link
-                            href={`/raport/${encodeURIComponent(row.idSiswa)}?asesmen=${encodeURIComponent(row.asesmen)}`}
+                            href={`/raport/${encodeURIComponent(row.idSiswa)}?asesmen=${encodeURIComponent(row.asesmen)}&kembali=tahfidz_rapor`}
                             className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-900"
                           >
                             <Printer className="size-3" /> Cetak Rapor

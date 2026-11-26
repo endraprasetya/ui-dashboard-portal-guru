@@ -11,6 +11,7 @@ import {
   muatAbsensiPiket,
   muatGuruUnit,
   muatJadwalPiket,
+  muatRekapPiket,
   ringkasMonitor,
   simpanJadwalPiket,
   slotUntukHari,
@@ -18,7 +19,9 @@ import {
   tanggalHariJakarta,
   type BarisJadwalPiket,
   type BarisMonitorPiket,
+  type BarisRekapPiketTampil,
   type JenisPiket,
+  type ModeRekapPiket,
   type StatusSesiPiket,
   labelStatusSesiPiketDetail,
 } from '@/lib/piket-guru'
@@ -30,6 +33,136 @@ function lencana(status: StatusSesiPiket) {
   if (status === 'Hadir') return 'bg-emerald-100 text-emerald-800'
   if (status === 'Izin') return 'bg-amber-100 text-amber-900'
   return 'bg-slate-100 text-slate-600'
+}
+
+function rentangBulan(bulan: string) {
+  const [tahun, angka] = bulan.split('-').map(Number)
+  if (!tahun || !angka || angka < 1 || angka > 12) return null
+  const akhir = new Date(tahun, angka, 0).getDate()
+  const mm = String(angka).padStart(2, '0')
+  return {
+    dari: `${tahun}-${mm}-01`,
+    sampai: `${tahun}-${mm}-${String(akhir).padStart(2, '0')}`,
+  }
+}
+
+function RekapPiket({ unit, tanggalAwal }: { unit: string; tanggalAwal: string }) {
+  const [mode, setMode] = useState<ModeRekapPiket>('tanggal')
+  const [tanggal, setTanggal] = useState(tanggalAwal)
+  const [bulan, setBulan] = useState(tanggalAwal.slice(0, 7))
+  const [baris, setBaris] = useState<BarisRekapPiketTampil[]>([])
+  const [memuat, setMemuat] = useState(false)
+  const [galat, setGalat] = useState('')
+
+  useEffect(() => {
+    const rentang = mode === 'tanggal' ? (tanggal ? { dari: tanggal, sampai: tanggal } : null) : rentangBulan(bulan)
+    if (!unit || !rentang) {
+      setBaris([])
+      return
+    }
+    let batal = false
+    setMemuat(true)
+    setGalat('')
+    muatRekapPiket(unit, rentang.dari, rentang.sampai, mode)
+      .then((hasil) => {
+        if (!batal) setBaris(hasil)
+      })
+      .catch((error: Error) => {
+        if (!batal) {
+          setBaris([])
+          setGalat(error.message || 'Rekap piket belum dapat dimuat.')
+        }
+      })
+      .finally(() => {
+        if (!batal) setMemuat(false)
+      })
+    return () => {
+      batal = true
+    }
+  }, [unit, mode, tanggal, bulan])
+
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-200 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-sm font-extrabold text-slate-900">Rekap Piket</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {mode === 'tanggal'
+              ? 'Jam pagi dan sore adalah waktu absen pada tanggal yang dipilih.'
+              : 'Rekap bulanan merangkum jumlah hadir piket pagi dan sore pada bulan tersebut.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs font-bold text-slate-600">
+            Mode
+            <select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as ModeRekapPiket)}
+              className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-sm"
+            >
+              <option value="tanggal">Tanggal tertentu</option>
+              <option value="bulan">Rekap bulanan</option>
+            </select>
+          </label>
+          {mode === 'tanggal' ? (
+            <label className="text-xs font-bold text-slate-600">
+              Tanggal
+              <input
+                type="date"
+                value={tanggal}
+                onChange={(event) => setTanggal(event.target.value)}
+                className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-sm"
+              />
+            </label>
+          ) : (
+            <label className="text-xs font-bold text-slate-600">
+              Bulan
+              <input
+                type="month"
+                value={bulan}
+                onChange={(event) => setBulan(event.target.value)}
+                className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-sm"
+              />
+            </label>
+          )}
+        </div>
+      </div>
+      {galat ? <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{galat}</p> : null}
+      {memuat ? <p className="mt-3 text-sm text-slate-500">Memuat rekap piket...</p> : null}
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-2 py-2">No</th>
+              <th className="px-2 py-2">Guru</th>
+              <th className="px-2 py-2">Jam Piket Pagi</th>
+              <th className="px-2 py-2">Jam Piket Sore</th>
+              <th className="px-2 py-2">Keterangan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!memuat && baris.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-2 py-4 text-slate-500">
+                  {galat ? 'Rekap piket belum dapat ditampilkan.' : 'Belum ada data piket pada filter ini.'}
+                </td>
+              </tr>
+            ) : (
+              baris.map((item, indeks) => (
+                <tr key={`${item.namaGuru}-${item.keterangan}-${indeks}`} className="border-t border-slate-100">
+                  <td className="px-2 py-2 text-slate-500">{indeks + 1}</td>
+                  <td className="px-2 py-2 font-semibold text-slate-900">{item.namaGuru}</td>
+                  <td className="px-2 py-2 font-mono text-xs">{item.jamPagi}</td>
+                  <td className="px-2 py-2 font-mono text-xs">{item.jamSore}</td>
+                  <td className="px-2 py-2 text-slate-600">{item.keterangan}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
 }
 
 function LencanaSesi({ sesi, status, waktu }: { sesi: 'Pagi' | 'Sore'; status: StatusSesiPiket; waktu?: string }) {
@@ -175,7 +308,7 @@ export function MonitoringPiketHariIni({ unit }: { unit: string }) {
             </div>
           </div>
         ) : null}
-        <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk rincian kehadiran Pagi dan Sore.</p>
+        <p className="mt-2 text-[11px] text-slate-400">Ketuk untuk rincian kehadiran, rekap tanggal tertentu, dan rekap bulanan.</p>
       </article>
 
       {buka ? (
@@ -183,7 +316,7 @@ export function MonitoringPiketHariIni({ unit }: { unit: string }) {
           judul="Monitoring Piket Hari Ini"
           keterangan={`${hariIni.label} · Unit ${unit}`}
           onTutup={() => setBuka(false)}
-          lebar="max-w-4xl"
+          lebar="max-w-5xl"
         >
           <p className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-relaxed text-sky-950">{CATATAN_WAKTU_PIKET}</p>
           {galat ? <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{galat}</p> : null}
@@ -231,6 +364,8 @@ export function MonitoringPiketHariIni({ unit }: { unit: string }) {
               </tbody>
             </table>
           </div>
+
+          <RekapPiket unit={unit} tanggalAwal={hariIni.tanggal} />
 
           <div className="mt-5 rounded-2xl border border-slate-200 p-3">
             <h3 className="text-sm font-extrabold text-slate-900">Jadwal piket mingguan</h3>

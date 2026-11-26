@@ -25,6 +25,7 @@ import { PortalGuruNav } from '@/components/portal-guru-nav'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { tujuanSetelahLogin } from '@/lib/bendahara'
+import { ingatTampilanPortal } from '@/lib/kembali-tampilan'
 import { isAdminRole, isGuruBantuRole, userDariSesi } from '@/lib/guru-bantu/utils'
 import { kunciUserGuru, unitDariAkun } from '@/lib/siswa'
 import { adalahPemeriksaHq, muatHakPemeriksaHq } from '@/lib/pemeriksa-hq'
@@ -81,6 +82,10 @@ export default function Home() {
     const view = params.get('view')
     if (view) setCurrentView(view)
   }, [])
+
+  useEffect(() => {
+    ingatTampilanPortal(currentView)
+  }, [currentView])
 
   useEffect(() => {
     if (!currentUser) return

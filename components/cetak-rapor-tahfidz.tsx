@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { Printer } from 'lucide-react'
+import { TombolKembaliCetak } from '@/components/tombol-kembali-cetak'
+import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import {
   denganPenandatanganSesi,
   fetchCetakRaporTahfidz,
@@ -107,9 +108,10 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
           <p className="text-sm font-extrabold">Kertas F4 · {asesmen || 'asesmen terbaru'}</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
-            <ArrowLeft className="size-3.5" /> Kembali
-          </Link>
+          <TombolKembaliCetak
+            cadangan="/?view=tahfidz_rapor"
+            className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold"
+          />
           <button
             type="button"
             onClick={cetakLembarRapor}
@@ -139,6 +141,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
 
 export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTahfidz; indikator?: string }) {
   const { siswa } = data
+  const niyPembimbing = niyDariNamaPembimbing(siswa.pembimbing)
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
     : 'SD ISLAM TERPADU AL MADINAH'
@@ -293,6 +296,12 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
             </td>
             <td>
               <span className="font-bold underline">{garis(siswa.pembimbing)}</span>
+              {niyPembimbing ? (
+                <>
+                  <br />
+                  NIY. {niyPembimbing}
+                </>
+              ) : null}
             </td>
             <td>
               <span className="font-bold underline">{garis(data.kepsek.nama)}</span>

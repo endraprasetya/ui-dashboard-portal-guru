@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { Printer } from 'lucide-react'
+import { TombolKembaliCetak } from '@/components/tombol-kembali-cetak'
+import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import { fetchRaporSiswa, type DataRapor } from '@/lib/rapor'
 
 function garis(value: string, panjang = 22) {
@@ -77,9 +78,11 @@ export function CetakRaporHalaman({ idSiswa }: { idSiswa: string }) {
           <p className="text-sm font-extrabold">Tahfidz &amp; Qiroah · kertas F4</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/report" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
-            <ArrowLeft className="size-3.5" /> Pilih siswa
-          </Link>
+          <TombolKembaliCetak
+            cadangan="/report"
+            anak="Pilih siswa"
+            className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold"
+          />
           <button
             type="button"
             onClick={() => window.print()}
@@ -102,9 +105,11 @@ export function CetakRaporHalaman({ idSiswa }: { idSiswa: string }) {
             ID <span className="font-mono">{idSiswa}</span> tidak ada di tabel <code>siswa</code>. Periksa kembali tautan
             rapor.
           </p>
-          <Link href="/report" className="mt-4 inline-flex rounded-lg bg-[#143d32] px-4 py-2 text-xs font-bold text-white">
-            Kembali ke daftar siswa
-          </Link>
+          <TombolKembaliCetak
+            cadangan="/report"
+            anak="Kembali ke daftar siswa"
+            className="mt-4 inline-flex rounded-lg bg-[#143d32] px-4 py-2 text-xs font-bold text-white"
+          />
         </div>
       )}
 
@@ -114,6 +119,7 @@ export function CetakRaporHalaman({ idSiswa }: { idSiswa: string }) {
 }
 
 function LembarRapor({ data }: { data: DataRapor }) {
+  const niyPembimbing = niyDariNamaPembimbing(data.siswa.pembimbing) || data.siswa.pembimbingNiy
   const { siswa } = data
   const tempatTanggal = `${data.lokasi}, ${data.tanggalCetak}`
 
@@ -269,8 +275,12 @@ function LembarRapor({ data }: { data: DataRapor }) {
           <tr>
             <td>
               <span className="font-bold underline">{garis(siswa.pembimbing)}</span>
-              <br />
-              NIY. {garis(siswa.pembimbingNiy, 14)}
+              {niyPembimbing ? (
+                <>
+                  <br />
+                  NIY. {niyPembimbing}
+                </>
+              ) : null}
             </td>
             <td>
               <span className="font-bold underline">{garis(data.kepsek.nama)}</span>

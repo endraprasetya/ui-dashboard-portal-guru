@@ -27,7 +27,7 @@ import {
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
-import { BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
+import { BadgeJenisCatatanHq, BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
 import { CatatanPemeriksaHq } from '@/components/catatan-pemeriksa-hq'
 import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import { adalahKelasPutraHq, adalahKelasPutriHq, daftarKelasHq, kelasTampilHq, NAMA_PEMERIKSA_HQ_CADANGAN } from '@/lib/pemeriksa-hq'
@@ -193,8 +193,8 @@ export function ModalRaporHq({
     setCatatan((semua) => ({ ...semua, [kunci]: tersimpan.catatanRevisi }))
     setPesan(
       tersimpan.jenisCatatan === 'konfirmasi'
-        ? `Rapor HQ ${row.namaSiswa} tersimpan siap cetak.`
-        : `Catatan revisi ${row.namaSiswa} tersimpan dan terkirim ke guru pengampu.`,
+        ? `Rapor HQ ${row.namaSiswa} tersimpan sebagai siap cetak, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`
+        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`,
     )
   }
 
@@ -338,6 +338,7 @@ export function ModalRaporHq({
                           <tr key={kunci} className="align-top">
                             <td className="border-b p-2">
                               <p className="font-bold text-slate-800">{row.namaSiswa}</p>
+                              <BadgeJenisCatatanHq jenis={row.jenisCatatan} />
                               <p className="text-xs text-slate-500">
                                 {row.kelas || '-'} · {row.asesmen}
                               </p>
@@ -419,6 +420,7 @@ export function ModalRaporHq({
                           <tr key={`${row.idSiswa}|${row.asesmen}`} className="align-top">
                             <td className="border-b p-2">
                               <p className="font-bold text-slate-800">{row.namaSiswa}</p>
+                              <BadgeJenisCatatanHq jenis={row.jenisCatatan} />
                               <p className="text-xs text-slate-500">
                                 {row.kelas || '-'} · {row.asesmen}
                               </p>

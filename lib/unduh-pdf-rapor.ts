@@ -1,4 +1,5 @@
 import { tempatTanggalPengesahanRaporHq, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
 export function namaBerkasRaporTahfidz(nama: string, asesmen: string) {
@@ -182,6 +183,11 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   pdf.text('........................', 40, y, { align: 'center' })
   pdf.text(siswa.pembimbing || '........................', 105, y, { align: 'center' })
   pdf.text(data.kepsek.nama || '........................', 165, y, { align: 'center' })
+  const niyPembimbing = niyDariNamaPembimbing(siswa.pembimbing)
+  if (niyPembimbing) {
+    pdf.setFont('times', 'normal')
+    pdf.text(`NIY. ${niyPembimbing}`, 105, y + 5, { align: 'center' })
+  }
   if (data.kepsek.niy) {
     pdf.setFont('times', 'normal')
     pdf.text(`NIY. ${data.kepsek.niy}`, 165, y + 5, { align: 'center' })

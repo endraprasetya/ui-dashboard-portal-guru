@@ -1,3 +1,4 @@
+import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import { cekTargetQiroahSiswa, formatCapaianQiroah, pemetaanKenaikanJilid, TARGET_QIROAH } from '@/lib/qiroah'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
 import { supabase } from '@/lib/supabase'
@@ -192,6 +193,7 @@ export async function fetchRaporSiswa(idSiswa: string): Promise<DataRapor | null
       .map((row) => teks(row.nama_lengkap))
       .filter(Boolean)
       .join(', ')
+    pembimbingNiy = niyDariNamaPembimbing(pembimbing)
   }
 
   const setoranTahfidz = [...(tahfidzRes.data || [])].sort((a, b) => parseTanggal(b.tanggal) - parseTanggal(a.tanggal))

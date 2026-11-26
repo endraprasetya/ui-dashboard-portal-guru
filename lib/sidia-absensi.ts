@@ -37,6 +37,31 @@ export type RekapAbsensiSidia = {
   baris: BarisAbsensiSidia[]
 }
 
+export type SelBulanSidia = {
+  status: StatusKehadiranSidia
+  ketepatan: KetepatanSidia
+  jamMasuk?: string
+  jamPulang?: string
+}
+
+export type BarisBulanSidia = {
+  kelompok: KelompokSidia
+  lembaga: string
+  namaGuru: string
+  hari: Record<string, SelBulanSidia>
+}
+
+export type RekapBulananSidia = {
+  tahun: number
+  bulan: number
+  jumlahHari: number
+  labelBulan: string
+  diambilPada: string
+  catatan: string[]
+  lembaga: string[]
+  baris: BarisBulanSidia[]
+}
+
 type BarisMentahSidia = unknown[]
 
 const UMUR_SESI_MS = 25 * 60 * 1000
@@ -165,28 +190,58 @@ async function loginSidia(kelompok: KelompokSidia): Promise<SesiSidia> {
   }
 }
 
-async function ambilBarisMentah(kelompok: KelompokSidia, tanggal: string) {
+function sidikBaris(row: BarisMentahSidia) {
+  return JSON.stringify(Array.isArray(row) ? row.slice(0, 6) : row)
+}
+
+async function ambilBarisRentang(kelompok: KelompokSidia, dari: string, sampai: string) {
   const { cookie } = await loginSidia(kelompok)
   const url = `${dasarUrl()}/laporan_api/absensi_guru/get_data`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-      Cookie: cookie,
-    },
-    body: new URLSearchParams({
-      ds: tanggal,
-      de: tanggal,
-      draw: '1',
-      start: '0',
-      length: '5000',
-    }),
-    signal: AbortSignal.timeout(BATAS_MS),
-  })
-  const json = (await res.json().catch(() => null)) as { data?: BarisMentahSidia[] } | null
-  if (!res.ok || !json?.data) throw new Error(`Data presensi SIDIA (${kelompok}) belum dapat dibaca.`)
-  return json.data
+  const panjang = 2500
+  const semua: BarisMentahSidia[] = []
+  const sudah = new Set<string>()
+
+  for (let halaman = 0, start = 0; halaman < 12; halaman += 1) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        Cookie: cookie,
+      },
+      body: new URLSearchParams({
+        ds: dari,
+        de: sampai,
+        draw: String(halaman + 1),
+        start: String(start),
+        length: String(panjang),
+      }),
+      signal: AbortSignal.timeout(BATAS_MS),
+    })
+    const json = (await res.json().catch(() => null)) as {
+      data?: BarisMentahSidia[]
+      recordsFiltered?: number
+      recordsTotal?: number
+    } | null
+    if (!res.ok || !json?.data) throw new Error(`Data presensi SIDIA (${kelompok}) belum dapat dibaca.`)
+    let baru = 0
+    for (const row of json.data) {
+      const kunci = sidikBaris(row)
+      if (sudah.has(kunci)) continue
+      sudah.add(kunci)
+      semua.push(row)
+      baru += 1
+    }
+    const total = Number(json.recordsFiltered ?? json.recordsTotal ?? 0)
+    start += json.data.length
+    if (baru === 0 || json.data.length < panjang || (total > 0 && start >= total)) break
+  }
+
+  return semua
+}
+
+async function ambilBarisMentah(kelompok: KelompokSidia, tanggal: string) {
+  return ambilBarisRentang(kelompok, tanggal, tanggal)
 }
 
 type AgregatInternal = {
@@ -205,7 +260,7 @@ type AgregatInternal = {
   adaIn: boolean
 }
 
-function gabungBarisMentah(baris: BarisMentahSidia[], tanggal: string, sumber: KelompokSidia) {
+function gabungBarisMentah(baris: BarisMentahSidia[], dari: string, sumber: KelompokSidia, sampai = dari) {
   const map = new Map<string, AgregatInternal>()
   for (const row of baris) {
     if (!Array.isArray(row) || row.length < 6) continue
@@ -216,10 +271,12 @@ function gabungBarisMentah(baris: BarisMentahSidia[], tanggal: string, sumber: K
     const ketepatanHtml = String(row[5] || '')
     const fotoHtml = String(row[6] || '')
     const { tanggal: tgl, jam } = parseTanggalSidia(tanggalHtml)
-    if (tgl && tgl !== tanggal) continue
-    const tanggalPakai = tgl || tanggal
+    if (!tgl) {
+      if (dari !== sampai) continue
+    } else if (tgl < dari || tgl > sampai) continue
+    const tanggalPakai = tgl || dari
     const kelompok = kelompokDariLembaga(lembaga)
-    const kunci = `${kelompok}|${normNama(namaGuru)}`
+    const kunci = `${tanggalPakai}|${kelompok}|${normNama(namaGuru)}`
     let item = map.get(kunci)
     if (!item) {
       item = {
@@ -314,7 +371,7 @@ export async function muatRekapAbsensiSidia(tanggal: string): Promise<RekapAbsen
   for (const kelompok of ['Putra', 'Putri'] as const) {
     try {
       const mentah = await ambilBarisMentah(kelompok, tanggalIso)
-      baris.push(...gabungBarisMentah(mentah, tanggalIso, kelompok))
+      baris.push(...gabungBarisMentah(mentah, tanggalIso, kelompok, tanggalIso))
     } catch (error) {
       catatan.push(error instanceof Error ? error.message : `SIDIA ${kelompok} gagal dimuat.`)
     }
@@ -329,6 +386,99 @@ export async function muatRekapAbsensiSidia(tanggal: string): Promise<RekapAbsen
     diambilPada: new Date().toISOString(),
     catatan,
     ringkas: hitungRingkas(baris),
+    baris,
+  }
+}
+
+const NAMA_BULAN = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
+
+function kunciKaryawan(kelompok: KelompokSidia, nama: string) {
+  return `${kelompok}|${normNama(nama)}`
+}
+
+/** Rekap satu bulan. SIDIA dipanggil per rentang tanggal (bukan per hari) dan foto tidak ikut dikirim. */
+export async function muatRekapBulananSidia(tahun: number, bulan: number): Promise<RekapBulananSidia> {
+  if (!Number.isInteger(tahun) || tahun < 2000 || tahun > 2100 || !Number.isInteger(bulan) || bulan < 1 || bulan > 12) {
+    throw new Error('Bulan atau tahun rekap presensi tidak valid.')
+  }
+  const jumlahHari = new Date(tahun, bulan, 0).getDate()
+  const mm = String(bulan).padStart(2, '0')
+  const dari = `${tahun}-${mm}-01`
+  const sampai = `${tahun}-${mm}-${String(jumlahHari).padStart(2, '0')}`
+  const hasilKelompok = await Promise.all(
+    (['Putra', 'Putri'] as const).map(async (kelompok) => {
+      try {
+        const mentah = await ambilBarisRentang(kelompok, dari, sampai)
+        return { baris: gabungBarisMentah(mentah, dari, kelompok, sampai), catatan: '' }
+      } catch (error) {
+        return {
+          baris: [] as BarisAbsensiSidia[],
+          catatan: error instanceof Error ? error.message : `SIDIA ${kelompok} gagal dimuat.`,
+        }
+      }
+    }),
+  )
+  const catatan = hasilKelompok.map((item) => item.catatan).filter(Boolean)
+  const harian = hasilKelompok.flatMap((item) => item.baris)
+
+  if (harian.length === 0 && catatan.length > 0) {
+    throw new Error(catatan.join(' '))
+  }
+
+  const map = new Map<string, BarisBulanSidia>()
+  for (const item of harian) {
+    const hari = item.tanggal.slice(8, 10)
+    if (!hari) continue
+    const kunci = kunciKaryawan(item.kelompok, item.namaGuru)
+    let baris = map.get(kunci)
+    if (!baris) {
+      baris = {
+        kelompok: item.kelompok,
+        lembaga: item.lembaga || item.kelompok,
+        namaGuru: item.namaGuru,
+        hari: {},
+      }
+      map.set(kunci, baris)
+    }
+    baris.hari[hari] = {
+      status: item.status,
+      ketepatan: item.ketepatan,
+      jamMasuk: item.jamMasuk,
+      jamPulang: item.jamPulang,
+    }
+  }
+
+  const baris = [...map.values()].sort(
+    (a, b) =>
+      a.kelompok.localeCompare(b.kelompok, 'id') ||
+      a.lembaga.localeCompare(b.lembaga, 'id') ||
+      a.namaGuru.localeCompare(b.namaGuru, 'id', { sensitivity: 'base' }),
+  )
+  const lembaga = [...new Set(baris.map((item) => item.lembaga).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'id'),
+  )
+
+  return {
+    tahun,
+    bulan,
+    jumlahHari,
+    labelBulan: `${NAMA_BULAN[bulan - 1]} ${tahun}`,
+    diambilPada: new Date().toISOString(),
+    catatan,
+    lembaga,
     baris,
   }
 }

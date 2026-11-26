@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { Printer } from 'lucide-react'
+import { TombolKembaliCetak } from '@/components/tombol-kembali-cetak'
 import { GAYA_CETAK_RAPOR_KURMER, LembarRaporKurmer } from '@/components/rapor-kurmer-cetak'
 import { fetchDataCetakKurmer, periodeKurmer, type DataCetakKurmer, type JenisAsesmenKurmer } from '@/lib/rapor-kurmer'
 
@@ -74,9 +74,10 @@ export function RaporKurmerHalamanCetak({
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/rapor-kurmer" className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold">
-            <ArrowLeft className="size-3.5" /> Kembali
-          </Link>
+          <TombolKembaliCetak
+            cadangan="/rapor-kurmer"
+            className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold"
+          />
           <button
             type="button"
             onClick={() => window.print()}
@@ -95,9 +96,11 @@ export function RaporKurmerHalamanCetak({
           <p className="mt-2 text-sm text-slate-500">
             Pastikan kelas dan data siswa sudah dipilih. Buka kembali dari modul Rapor Kurmer.
           </p>
-          <Link href="/rapor-kurmer" className="mt-4 inline-flex rounded-lg bg-[#4f46e5] px-4 py-2 text-xs font-bold text-white">
-            Kembali ke Rapor Kurmer
-          </Link>
+          <TombolKembaliCetak
+            cadangan="/rapor-kurmer"
+            anak="Kembali ke Rapor Kurmer"
+            className="mt-4 inline-flex rounded-lg bg-[#4f46e5] px-4 py-2 text-xs font-bold text-white"
+          />
         </div>
       )}
       {status === 'siap' && data ? (

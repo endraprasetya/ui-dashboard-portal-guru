@@ -1,6 +1,6 @@
 'use client'
 
-import { PLACEHOLDER_CATATAN_PEMERIKSA_HQ, type JenisCatatanPemeriksaHq } from '@/lib/rapor-hq-kirim'
+import { PLACEHOLDER_CATATAN_PEMERIKSA_HQ, tentukanCatatanPemeriksaHq, type JenisCatatanPemeriksaHq } from '@/lib/rapor-hq-kirim'
 
 export function CatatanPemeriksaHq({
   nilai,
@@ -23,6 +23,8 @@ export function CatatanPemeriksaHq({
 }) {
   const tombol = aksen === 'hijau' ? 'bg-[#143d32] hover:bg-[#0f2e26]' : 'bg-violet-700 hover:bg-violet-800'
   const warnaRingkas = jenisTersimpan === 'konfirmasi' ? 'text-emerald-800' : 'text-amber-800'
+  const duga = tentukanCatatanPemeriksaHq(nilai)
+  const warnaDuga = duga.mode === 'konfirmasi' ? 'text-emerald-800' : 'text-amber-800'
   return (
     <div>
       <textarea
@@ -33,6 +35,7 @@ export function CatatanPemeriksaHq({
         aria-label={labelAria}
         className="w-full min-w-[16rem] rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
       />
+      <p className={`mt-1 text-[11px] font-bold ${warnaDuga}`}>Terdeteksi: {duga.mode === 'konfirmasi' ? 'Siap cetak' : 'Revisi'}</p>
       {ringkas ? <p className={`mt-1 text-[11px] font-semibold leading-snug ${warnaRingkas}`}>{ringkas}</p> : null}
       <button
         type="button"

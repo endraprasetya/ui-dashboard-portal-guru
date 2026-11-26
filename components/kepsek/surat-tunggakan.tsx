@@ -16,6 +16,33 @@ import type { DetailTunggakan, SiswaTunggakan } from '@/lib/keuangan-tipe'
 
 const TEMPAT_TEMU = 'Ruang Kepala Sekolah SDIP Al Madinah Putra Jengglong'
 const JAM_TEMU = '09.00 - 10.00 WIB'
+const JAM_MULAI_AWAL = '09:00'
+const JAM_SELESAI_AWAL = '10:00'
+
+function inputDariTanggal(tanggal: Date) {
+  const bulan = String(tanggal.getMonth() + 1).padStart(2, '0')
+  const hari = String(tanggal.getDate()).padStart(2, '0')
+  return `${tanggal.getFullYear()}-${bulan}-${hari}`
+}
+
+function tanggalDariInput(nilai: string) {
+  const [tahun, bulan, hari] = nilai.split('-').map(Number)
+  if (!tahun || !bulan || !hari) return new Date()
+  return new Date(tahun, bulan - 1, hari)
+}
+
+function formatRentangJam(mulai: string, selesai: string) {
+  const rapi = (nilai: string) => {
+    const [jam, menit] = nilai.split(':')
+    if (!jam || menit == null || menit === '') return ''
+    return `${jam.padStart(2, '0')}.${menit.slice(0, 2).padStart(2, '0')}`
+  }
+  const awal = rapi(mulai)
+  const akhir = rapi(selesai)
+  if (awal && akhir) return `${awal} - ${akhir} WIB`
+  return JAM_TEMU
+}
+
 const KOP = '/surat/kop-surat.jpg'
 const STEMPEL = '/surat/stempel.png'
 const TANDA_TANGAN = '/surat/tanda-tangan.png'
@@ -35,13 +62,18 @@ export function SuratTunggakan({
 }) {
   const [siapPortal, setSiapPortal] = useState(false)
   const [nomor, setNomor] = useState('')
+  const saatBuka = useMemo(() => new Date(), [])
+  const [tanggalHadirInput, setTanggalHadirInput] = useState(() => inputDariTanggal(tanggalPertemuanTunggakan(saatBuka)))
+  const [jamMulai, setJamMulai] = useState(JAM_MULAI_AWAL)
+  const [jamSelesai, setJamSelesai] = useState(JAM_SELESAI_AWAL)
   const [siapCetak, setSiapCetak] = useState(false)
   const [detail, setDetail] = useState<DetailTunggakan | null>(null)
   const [galat, setGalat] = useState('')
   const inputNomor = useRef<HTMLInputElement>(null)
-  const saatBuka = useMemo(() => new Date(), [])
   const tanggalSurat = formatTanggalPanjang(saatBuka)
-  const tanggalTemu = formatHariTanggal(tanggalPertemuanTunggakan(saatBuka))
+  const tanggalHadir = /^\d{4}-\d{2}-\d{2}$/.test(tanggalHadirInput) ? tanggalDariInput(tanggalHadirInput) : null
+  const tanggalTemu = tanggalHadir ? formatHariTanggal(tanggalHadir) : ''
+  const waktuTemu = formatRentangJam(jamMulai, jamSelesai)
   const angkaNomor = angkaNomorSurat(nomor)
   const nomorPakai = angkaNomor ? nomorSuratTunggakan(angkaNomor, saatBuka) : ''
   const contohCetak = nomorSuratTunggakan('616', saatBuka)
@@ -97,6 +129,7 @@ export function SuratTunggakan({
       inputNomor.current?.focus()
       return
     }
+    if (!tanggalHadir || !waktuTemu) return
     setSiapCetak(true)
   }
 
@@ -109,7 +142,7 @@ export function SuratTunggakan({
           role="dialog"
           aria-modal="true"
           aria-labelledby="judul-nomor-surat"
-          className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+          className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
           onClick={(event) => event.stopPropagation()}
           onSubmit={lanjutCetak}
         >
@@ -142,13 +175,56 @@ export function SuratTunggakan({
             Cukup isi angkanya. Yang tercetak:{' '}
             <span className="font-semibold text-slate-700">{nomorPakai || contohCetak}</span>
           </p>
+          <label className="mt-4 block text-xs font-bold text-slate-700">
+            Tanggal kehadiran
+            <input
+              type="date"
+              value={tanggalHadirInput}
+              onChange={(event) => setTanggalHadirInput(event.target.value)}
+              required
+              className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+            />
+          </label>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            Tampil di surat pada baris Hari/Tanggal:{' '}
+            <span className="font-semibold text-slate-800">{tanggalTemu}</span>
+          </p>
+          <fieldset className="mt-4">
+            <legend className="text-xs font-bold text-slate-700">Waktu/jam kehadiran</legend>
+            <div className="mt-1.5 grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
+              <input
+                type="time"
+                value={jamMulai}
+                onChange={(event) => setJamMulai(event.target.value)}
+                step={60}
+                required
+                aria-label="Jam mulai kehadiran"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+              />
+              <span className="text-xs font-bold text-slate-500">s.d.</span>
+              <input
+                type="time"
+                value={jamSelesai}
+                onChange={(event) => setJamSelesai(event.target.value)}
+                step={60}
+                required
+                aria-label="Jam selesai kehadiran"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+              />
+              <span className="text-xs font-bold text-slate-500">WIB</span>
+            </div>
+          </fieldset>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            Tampil di surat pada baris Waktu:{' '}
+            <span className="font-semibold text-slate-800">{waktuTemu}</span>
+          </p>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={onTutup} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
               Batal
             </button>
             <button
               type="submit"
-              disabled={!angkaNomor}
+              disabled={!angkaNomor || !tanggalHadir}
               className="rounded-xl bg-[#143d32] px-4 py-2 text-xs font-extrabold text-white hover:bg-[#1b4d40] disabled:opacity-40"
             >
               Lanjut
@@ -330,7 +406,7 @@ export function SuratTunggakan({
               <tr>
                 <td>Waktu</td>
                 <td>:</td>
-                <td>{JAM_TEMU}</td>
+                <td>{waktuTemu}</td>
               </tr>
               <tr>
                 <td>Tempat</td>
