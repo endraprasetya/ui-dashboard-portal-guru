@@ -71,6 +71,9 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
       .on('broadcast', { event: 'pemeriksa' }, () => {
         segar.dariRealtime()
       })
+      .on('broadcast', { event: 'pengajuan' }, () => {
+        segar.dariRealtime()
+      })
     return segar.pasang(kanal)
   }, [muat])
 

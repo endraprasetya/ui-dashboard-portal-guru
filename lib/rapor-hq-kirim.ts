@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { TABEL_HEADER_RAPOR, periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
-import { teacherDisplayName } from '@/lib/qiroah'
+import { normalKelas, teacherDisplayName } from '@/lib/qiroah'
 
 export const NAMA_SETTING_KIRIM_RAPOR = 'hq_kirim'
 export const KANAL_REVISI_RAPOR_HQ = 'rapor-hq-revisi'
@@ -435,6 +435,8 @@ export async function kirimRaporKeKepsek(daftar: UsulanKirimRaporHq[]) {
 
   const galat = await simpanDokumenKirim([...peta.values()], sasaran[0]?.idGuru || '')
   if (galat) return { error: galat, jumlah: 0 }
+  const kirimBaru = sasaran.map((s) => peta.get(s.kunci)).filter((row): row is KirimRaporHq => Boolean(row))
+  void siarkanPengajuanRaporHqPutri(kirimBaru)
   return { error: null as string | null, jumlah: sasaran.length }
 }
 
@@ -535,7 +537,9 @@ export async function tandaiDiperiksaHq(
   return { error: null as string | null, data: isi }
 }
 
-export async function siarkanPemeriksaHq(baris: Pick<KirimRaporHq, 'idSiswa' | 'namaSiswa' | 'kelas' | 'asesmen' | 'pemeriksaNama'>) {
+export async function siarkanPemeriksaHq(
+  baris: Pick<KirimRaporHq, 'idSiswa' | 'namaSiswa' | 'kelas' | 'asesmen' | 'pemeriksaNama' | 'jenisCatatan' | 'status'>,
+) {
   const kanal = supabase.channel(KANAL_REVISI_RAPOR_HQ)
   await new Promise<void>((selesai) => {
     const batas = setTimeout(() => {
@@ -560,7 +564,45 @@ export async function siarkanPemeriksaHq(baris: Pick<KirimRaporHq, 'idSiswa' | '
             kelas: baris.kelas,
             asesmen: baris.asesmen,
             pemeriksaNama: baris.pemeriksaNama,
+            jenisCatatan: baris.jenisCatatan,
+            status: baris.status,
           },
+        })
+        .finally(() => {
+          void supabase.removeChannel(kanal)
+          selesai()
+        })
+    })
+  })
+}
+
+function adalahKelasPutriKirimHq(kelas?: string | null) {
+  return /[CD]$/.test(normalKelas(kelas || ''))
+}
+
+/** Memberi tahu pemeriksa HQ (broadcast ringan) bahwa ada pengajuan putri baru. */
+export async function siarkanPengajuanRaporHqPutri(baris: KirimRaporHq[]) {
+  const putri = baris.filter((row) => adalahKelasPutriKirimHq(row.kelas))
+  if (putri.length === 0) return
+  const kanal = supabase.channel(KANAL_REVISI_RAPOR_HQ)
+  await new Promise<void>((selesai) => {
+    const batas = setTimeout(() => {
+      void supabase.removeChannel(kanal)
+      selesai()
+    }, 2500)
+    kanal.subscribe((status) => {
+      if (status !== 'SUBSCRIBED' && status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') return
+      clearTimeout(batas)
+      if (status !== 'SUBSCRIBED') {
+        void supabase.removeChannel(kanal)
+        selesai()
+        return
+      }
+      void kanal
+        .send({
+          type: 'broadcast',
+          event: 'pengajuan',
+          payload: { jumlah: putri.length, asesmen: putri[0]?.asesmen || '' },
         })
         .finally(() => {
           void supabase.removeChannel(kanal)

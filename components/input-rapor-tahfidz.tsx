@@ -592,6 +592,9 @@ export function InputRaporTahfidz({
         const sisa = namaDilewati.length > 5 ? `, dan ${namaDilewati.length - 5} siswa lain` : ''
         bagian.push(`${namaDilewati.length} siswa lain sudah memiliki materi tersimpan dan tidak diubah (${cuplikan}${sisa}).`)
       }
+      materiKotor.current = false
+      const selaras = await muatUlangDaftar()
+      if (terpilih) muatMateriDariDaftar(terpilih.id_siswa, asesmen, selaras, surahs)
       setStatus(bagian.join(' '))
       setGalat(false)
       setPanelSurah(false)

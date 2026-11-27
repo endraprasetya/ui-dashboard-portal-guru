@@ -170,7 +170,9 @@ export function ModalRaporHq({
   const putraTabel = penilaianPutra.filter((row) => cocokKelas(row) && cocokStatus(row))
   const putriKelas = penilaianPutri.filter(cocokKelas)
   const putriTabel = putriKelas.filter(cocokStatus)
-  const putriLolos = putriKelas.filter(sudahDiperiksa).length
+  const putriSiapCetak = putriKelas.filter((row) => sudahDiperiksa(row) && row.jenisCatatan === 'konfirmasi').length
+  const putriRevisi = putriKelas.filter((row) => sudahDiperiksa(row) && row.jenisCatatan === 'revisi').length
+  const putriBelum = putriKelas.filter((row) => !sudahDiperiksa(row)).length
 
   const simpanCatatan = async (row: KirimRaporHq, mode: ModeCatatanPemeriksaHq) => {
     const kunci = `${row.idSiswa}|${row.asesmen}`
@@ -287,7 +289,7 @@ export function ModalRaporHq({
                 {(
                   [
                     ['semua', 'Semua Status'],
-                    ['lolos', 'Sudah diperiksa / Lolos pemeriksaan'],
+                    ['lolos', 'Sudah diperiksa'],
                     ['belum', 'Belum diperiksa'],
                   ] as const
                 ).map(([kode, label]) => (
@@ -399,8 +401,8 @@ export function ModalRaporHq({
               <h4 className="text-sm font-extrabold text-violet-950">Ringkasan pemeriksaan Ustadzah Ambar</h4>
               <p className="mt-1 text-xs leading-relaxed text-violet-950">
                 {kelasAktif === 'semua' ? 'Siswa putri kelas C dan D.' : `Kelas ${kelasAktif}.`} {putriKelas.length}{' '}
-                penilaian: {putriLolos} sudah diperiksa (lolos pemeriksaan), {putriKelas.length - putriLolos} belum
-                diperiksa (menunggu pemeriksaan). Pemeriksa: Ustadzah Ambar.
+                penilaian: <strong>{putriSiapCetak}</strong> siap cetak · <strong>{putriRevisi}</strong> revisi ·{' '}
+                <strong>{putriBelum}</strong> menunggu pemeriksaan. Pemeriksa: Ustadzah Ambar.
               </p>
               {putriTabel.length === 0 ? (
                 <p className="mt-3 text-sm text-violet-950">

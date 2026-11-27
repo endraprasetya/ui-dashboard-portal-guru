@@ -235,17 +235,34 @@ export function DashboardKepalaSekolah() {
         { event: '*', schema: 'public', table: 'setting', filter: `nama_variabel=eq.${NAMA_SETTING_KIRIM_RAPOR}` },
         () => setPenyegarHq((nilai) => nilai + 1),
       )
-    const kanalSiaran = supabase.channel(KANAL_REVISI_RAPOR_HQ).on('broadcast', { event: 'pemeriksa' }, (pesan) => {
-      const muatan = (pesan?.payload || {}) as { namaSiswa?: string; kelas?: string; asesmen?: string; pemeriksaNama?: string }
-      const nama = String(muatan.namaSiswa || 'Siswa putri').trim()
-      const kelas = String(muatan.kelas || '').trim()
-      const asesmen = String(muatan.asesmen || '').trim()
-      const pemeriksa = String(muatan.pemeriksaNama || 'Pemeriksa HQ').trim()
-      setPesanPemeriksaHq(
-        `${pemeriksa} menandai penilaian ${nama}${kelas ? ` (${kelas})` : ''}${asesmen ? ` · ${asesmen}` : ''} sudah diperiksa.`,
-      )
-      setPenyegarHq((nilai) => nilai + 1)
-    })
+    const kanalSiaran = supabase
+      .channel(KANAL_REVISI_RAPOR_HQ)
+      .on('broadcast', { event: 'pemeriksa' }, (pesan) => {
+        const muatan = (pesan?.payload || {}) as {
+          namaSiswa?: string
+          kelas?: string
+          asesmen?: string
+          pemeriksaNama?: string
+          jenisCatatan?: string
+        }
+        const nama = String(muatan.namaSiswa || 'Siswa').trim()
+        const kelas = String(muatan.kelas || '').trim()
+        const asesmen = String(muatan.asesmen || '').trim()
+        const pemeriksa = String(muatan.pemeriksaNama || 'Pemeriksa HQ').trim()
+        const siap = muatan.jenisCatatan === 'konfirmasi'
+        const revisi = muatan.jenisCatatan === 'revisi'
+        setPesanPemeriksaHq(
+          revisi
+            ? `${pemeriksa} mengirim catatan revisi untuk ${nama}${kelas ? ` (${kelas})` : ''}${asesmen ? ` · ${asesmen}` : ''}. Status: perlu perbaikan.`
+            : siap
+              ? `${pemeriksa} mengonfirmasi ${nama}${kelas ? ` (${kelas})` : ''}${asesmen ? ` · ${asesmen}` : ''} siap cetak.`
+              : `${pemeriksa} menandai penilaian ${nama}${kelas ? ` (${kelas})` : ''}${asesmen ? ` · ${asesmen}` : ''} sudah diperiksa.`,
+        )
+        setPenyegarHq((nilai) => nilai + 1)
+      })
+      .on('broadcast', { event: 'pengajuan' }, () => {
+        setPenyegarHq((nilai) => nilai + 1)
+      })
     kanalSetting.subscribe()
     kanalSiaran.subscribe()
     return () => {
@@ -417,14 +434,24 @@ export function DashboardKepalaSekolah() {
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>
-            {pesanPemeriksaHq || laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
+            {pesanPemeriksaHq ||
+            laporan.raporHqRingkas.siswaDiperiksaHq > 0 ||
+            laporan.raporHqRingkas.hqMenungguPeriksa > 0 ? (
               <div className="no-print rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
                 <p className="font-extrabold">Notifikasi Pemeriksa Penilaian HQ</p>
                 {pesanPemeriksaHq ? <p className="mt-1 text-xs font-semibold leading-relaxed">{pesanPemeriksaHq}</p> : null}
+                {laporan.raporHqRingkas.putriMenungguPeriksa > 0 ? (
+                  <p className="mt-1 text-xs leading-relaxed">
+                    <strong>{laporan.raporHqRingkas.putriMenungguPeriksa}</strong> penilaian siswa putri (kelas C dan D){' '}
+                    menunggu pemeriksaan Ustadzah Ambar.
+                  </p>
+                ) : null}
                 {laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
                   <p className="mt-1 text-xs leading-relaxed">
-                    {laporan.raporHqRingkas.siswaDiperiksaHq} penilaian siswa putri (kelas C dan D) sudah ditandai diperiksa.
-                    Buka kartu Rapor HQ untuk melihat tandanya.
+                    Sudah diperiksa:{' '}
+                    <strong className="text-emerald-800">{laporan.raporHqRingkas.hqSiapCetak}</strong> siap cetak ·{' '}
+                    <strong className="text-amber-900">{laporan.raporHqRingkas.hqRevisi}</strong> revisi / perlu perbaikan.
+                    Buka kartu Rapor HQ untuk rincian per siswa.
                   </p>
                 ) : null}
               </div>
@@ -564,13 +591,29 @@ export function DashboardKepalaSekolah() {
                   <strong className="text-amber-800">{laporan.raporHqRingkas.belum}</strong> kelas belum lengkap ·{' '}
                   {laporan.raporHqRingkas.total} kelas binaan
                 </p>
-                {laporan.raporHqRingkas.siswaDiperiksaHq > 0 ? (
-                  <p className="mt-2 rounded-lg bg-violet-100 px-2.5 py-1.5 text-xs font-bold text-violet-900">
-                    {laporan.raporHqRingkas.siswaDiperiksaHq} penilaian siswa putri sudah diperiksa Pemeriksa HQ
-                  </p>
+                {laporan.raporHqRingkas.hqMenungguPeriksa > 0 ||
+                laporan.raporHqRingkas.hqSiapCetak > 0 ||
+                laporan.raporHqRingkas.hqRevisi > 0 ? (
+                  <div className="mt-2 space-y-1 text-xs">
+                    {laporan.raporHqRingkas.putriMenungguPeriksa > 0 ? (
+                      <p className="rounded-lg bg-amber-100 px-2.5 py-1.5 font-bold text-amber-950">
+                        {laporan.raporHqRingkas.putriMenungguPeriksa} putri kelas C/D menunggu pemeriksaan
+                      </p>
+                    ) : null}
+                    {laporan.raporHqRingkas.hqSiapCetak > 0 ? (
+                      <p className="rounded-lg bg-emerald-100 px-2.5 py-1.5 font-bold text-emerald-900">
+                        {laporan.raporHqRingkas.hqSiapCetak} penilaian siap cetak
+                      </p>
+                    ) : null}
+                    {laporan.raporHqRingkas.hqRevisi > 0 ? (
+                      <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 font-bold text-amber-900">
+                        {laporan.raporHqRingkas.hqRevisi} penilaian perlu revisi
+                      </p>
+                    ) : null}
+                  </div>
                 ) : (
                   <p className="mt-2 text-[11px] text-slate-400">
-                    Ketuk untuk rincian per siswa dan kelas yang belum menyetorkan.
+                    Ketuk untuk rincian per siswa, status pemeriksaan, dan kelas yang belum menyetorkan.
                   </p>
                 )}
               </article>

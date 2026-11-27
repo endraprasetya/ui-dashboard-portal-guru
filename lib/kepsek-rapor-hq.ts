@@ -2,7 +2,8 @@ import { supabase } from '@/lib/supabase'
 import { TABEL_HEADER_RAPOR, periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
 import { normalKelas, teacherDisplayName } from '@/lib/qiroah'
-import { muatKirimRaporHq } from '@/lib/rapor-hq-kirim'
+import { muatKirimRaporHq, type JenisCatatanPemeriksaHq } from '@/lib/rapor-hq-kirim'
+import { adalahKelasPutriHq } from '@/lib/pemeriksa-hq'
 import { kanonNamaUnit, unitSama } from '@/lib/siswa'
 
 export const PILIHAN_ASESMEN_RAPOR_HQ = [
@@ -29,6 +30,7 @@ export type KirimanRaporHqMentah = {
   diperiksaHq?: boolean
   pemeriksaNama?: string
   diperiksaPada?: string
+  jenisCatatan?: JenisCatatanPemeriksaHq
 }
 
 export type DataMentahRaporHq = {
@@ -47,6 +49,14 @@ export type RingkasRaporHq = {
   siswaSudah: number
   kelasSudah: string[]
   siswaDiperiksaHq: number
+  /** Penilaian yang sudah diperiksa dan dikonfirmasi siap cetak. */
+  hqSiapCetak: number
+  /** Penilaian yang sudah diperiksa dengan catatan revisi. */
+  hqRevisi: number
+  /** Kiriman yang belum ditandai diperiksa. */
+  hqMenungguPeriksa: number
+  /** Putri kelas C/D menunggu pemeriksaan Ustadzah Ambar. */
+  putriMenungguPeriksa: number
 }
 
 export type SiswaBinaanUnit = {
@@ -135,18 +145,41 @@ export function jumlahDiperiksaHq(mentah: DataMentahRaporHq, asesmen: KodeAsesme
   return (mentah.kiriman || []).filter((row) => row.diperiksaHq && normalAsesmen(row.asesmen) === kode).length
 }
 
+export function ringkasanPemeriksaanHqKiriman(mentah: DataMentahRaporHq, asesmen: KodeAsesmenRaporHq) {
+  const kode = normalAsesmen(asesmen)
+  const milik = (mentah.kiriman || []).filter((row) => normalAsesmen(row.asesmen) === kode)
+  const diperiksa = milik.filter((row) => row.diperiksaHq)
+  const putri = (row: KirimanRaporHqMentah) => adalahKelasPutriHq(row.kelas)
+  return {
+    hqSiapCetak: diperiksa.filter((row) => row.jenisCatatan === 'konfirmasi').length,
+    hqRevisi: diperiksa.filter((row) => row.jenisCatatan === 'revisi').length,
+    hqMenungguPeriksa: milik.filter((row) => !row.diperiksaHq).length,
+    putriMenungguPeriksa: milik.filter((row) => !row.diperiksaHq && putri(row)).length,
+  }
+}
+
 export function ringkasPemantauanRaporHq(
   baris: BarisPemantauanRaporHq[],
   asesmen: KodeAsesmenRaporHq,
   siswaSudah = 0,
   kelasKiriman: string[] = [],
   siswaDiperiksaHq = 0,
+  pemeriksaan = { hqSiapCetak: 0, hqRevisi: 0, hqMenungguPeriksa: 0, putriMenungguPeriksa: 0 },
 ): RingkasRaporHq {
   const sudah = baris.filter((row) => row.status === 'Sudah Menyetorkan').length
   const kelasSudah = Array.from(
     new Set([...baris.filter((row) => row.siswaMasuk > 0).map((row) => row.kelas), ...kelasKiriman.filter(Boolean)]),
   ).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }))
-  return { asesmen, sudah, belum: baris.length - sudah, total: baris.length, siswaSudah, kelasSudah, siswaDiperiksaHq }
+  return {
+    asesmen,
+    sudah,
+    belum: baris.length - sudah,
+    total: baris.length,
+    siswaSudah,
+    kelasSudah,
+    siswaDiperiksaHq,
+    ...pemeriksaan,
+  }
 }
 
 export async function muatDataRaporHqKepsek(
@@ -205,6 +238,7 @@ export async function muatDataRaporHqKepsek(
       diperiksaHq: row.statusPemeriksa === 'Diperiksa' || Boolean(row.diperiksaPada),
       pemeriksaNama: row.pemeriksaNama,
       diperiksaPada: row.diperiksaPada,
+      jenisCatatan: row.jenisCatatan,
     })
   }
 

@@ -20,6 +20,7 @@ import {
   muatDataRaporHqKepsek,
   pilihAsesmenRaporHq,
   ringkasPemantauanRaporHq,
+  ringkasanPemeriksaanHqKiriman,
   type DataMentahRaporHq,
   type RingkasRaporHq,
 } from '@/lib/kepsek-rapor-hq'
@@ -728,6 +729,7 @@ export async function muatLaporanKepsek(sekarang = new Date(), unitMentah?: stri
     kumpulanSiswaMasuk(raporHqHasil.mentah, asesmenAwal).size,
     kelasDariKiriman(raporHqHasil.mentah, asesmenAwal),
     jumlahDiperiksaHq(raporHqHasil.mentah, asesmenAwal),
+    ringkasanPemeriksaanHqKiriman(raporHqHasil.mentah, asesmenAwal),
   )
 
   const asesmenKurmer = pilihAsesmenRaporKurmer(raporKurmerHasil.mentah)

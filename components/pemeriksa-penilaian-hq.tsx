@@ -245,7 +245,7 @@ export function PemeriksaPenilaianHq({
               {(
                 [
                   ['semua', 'Semua Status'],
-                  ['lolos', 'Sudah diperiksa / Lolos pemeriksaan'],
+                  ['lolos', 'Sudah diperiksa'],
                   ['belum', 'Belum diperiksa'],
                 ] as const
               ).map(([kode, label]) => (
