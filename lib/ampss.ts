@@ -30,7 +30,7 @@ const UMUR_CACHE_MS = 5 * 60 * 1000
 const BATAS_MS = 45_000
 
 const PESAN_AMPSS_NONAKTIF =
-  'Integrasi AMPSS sementara dinonaktifkan sesuai instruksi yayasan. Data tagihan tidak diambil dari ampss.net.'
+  'Data pembayaran dan Tagihan siswa dalam perbaikan. Mohon maaf atas ketidaknyamanan ini. Jazaakumullohu khoiron katsiron.'
 
 /** Default nonaktif; aktifkan scraping dengan `AMPSS_NONAKTIF=0` di server. */
 function ampssNonaktif(): boolean {
