@@ -17,6 +17,7 @@ const DAFTAR_NAV: ItemNav[] = [
   { id: 'absensi', label: 'Absensi', href: '/?view=absensi_menu', view: 'absensi_menu' },
   { id: 'data_siswa', label: 'Data Siswa', href: '/data-siswa' },
   { id: 'tertib_point', label: 'Tertib Point', href: '/?view=tertib_point', view: 'tertib_point' },
+  { id: 'pengaduan', label: 'Pengaduan', href: '/?view=pengaduan', view: 'pengaduan' },
   { id: 'pengumuman', label: 'Pengumuman', href: '/?view=pengumuman', view: 'pengumuman' },
   { id: 'rapor_kurmer', label: 'Rapor Kurmer', href: '/rapor-kurmer' },
 ]

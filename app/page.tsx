@@ -23,6 +23,8 @@ import { JadwalAsasI } from '@/components/jadwal-asas'
 import { PemeriksaPenilaianHq } from '@/components/pemeriksa-penilaian-hq'
 import { PortalGuruNav } from '@/components/portal-guru-nav'
 import { AbsensiCepatKelas } from '@/components/absensi-cepat-kelas'
+import { AduanDiteruskanGuru } from '@/components/aduan-diteruskan-guru'
+import { HalamanPengaduanGuru } from '@/components/halaman-pengaduan-guru'
 import { hasKoordinatorQQRole, hasPengujiRole } from '@/lib/qiroah'
 import { tujuanSetelahLogin } from '@/lib/bendahara'
 import { ingatTampilanPortal } from '@/lib/kembali-tampilan'
@@ -76,6 +78,7 @@ export default function Home() {
   const [aktivitasGuru, setAktivitasGuru] = useState<BarisAktivitasGuru[]>([])
   const [aktivitasSiap, setAktivitasSiap] = useState(false)
   const [hakPemeriksaHq, setHakPemeriksaHq] = useState(false)
+  const [fokusPengaduanId, setFokusPengaduanId] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -285,6 +288,9 @@ export default function Home() {
                 pusat.tandai(item.id)
                 if (item.tujuan === 'tahfidz_rapor' && item.idSiswa) {
                   setFokusRapor({ idSiswa: item.idSiswa, asesmen: item.asesmen || '' })
+                }
+                if (item.tujuan === 'pengaduan') {
+                  setFokusPengaduanId(item.idPengaduan || '')
                 }
                 setCurrentView(item.tujuan)
               }}
@@ -588,6 +594,8 @@ export default function Home() {
                 penyegar={currentView === 'dashboard' ? 'dashboard' : currentView}
                 onBukaAbsensi={() => setCurrentView('absensi')}
               />
+
+              <AduanDiteruskanGuru currentUser={currentUser} />
             </div>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -650,6 +658,17 @@ export default function Home() {
               </div>
             </section>
           </div>
+        )}
+
+        {currentView === 'pengaduan' && (
+          <HalamanPengaduanGuru
+            currentUser={currentUser}
+            fokusId={fokusPengaduanId}
+            onKembali={() => {
+              setFokusPengaduanId('')
+              setCurrentView('dashboard')
+            }}
+          />
         )}
 
         {/* RENDER HALAMAN TERTIB POINT */}

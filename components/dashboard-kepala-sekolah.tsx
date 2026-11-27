@@ -45,6 +45,7 @@ import { MonitoringSidiaAbsensiReguler } from '@/components/kepsek/monitoring-si
 import { RekapBulananPresensiKaryawan } from '@/components/kepsek/rekap-bulanan-presensi-karyawan'
 import { ModulKeuangan } from '@/components/kepsek/modul-keuangan'
 import { MonitoringPengajuanKeringanan } from '@/components/kepsek/monitoring-keringanan'
+import { MonitoringPengaduanWali } from '@/components/kepsek/monitoring-pengaduan-wali'
 import { LaporanKeuangan } from '@/components/laporan-keuangan'
 import { tujuanSetelahLogin, validasiSesiKepalaSekolah, type AkunSesi } from '@/lib/bendahara'
 import { kanonNamaUnit } from '@/lib/siswa'
@@ -388,6 +389,9 @@ export function DashboardKepalaSekolah() {
             <a href="#pengajuan-keringanan" className={kelasTombolNav}>
               Kegiatan sekolah
             </a>
+            <a href="#layanan-aduan-wali" className={kelasTombolNav}>
+              Aduan wali
+            </a>
             <a href="/data-siswa" className={kelasTombolNav}>
               Data Siswa
             </a>
@@ -431,6 +435,7 @@ export function DashboardKepalaSekolah() {
         ) : null}
         {unitTampil ? <ModulKeuangan unit={unitTampil} /> : null}
         {unitTampil ? <MonitoringPengajuanKeringanan unit={unitTampil} /> : null}
+        {unitTampil ? <MonitoringPengaduanWali unit={unitTampil} /> : null}
         {!laporan && !galat && <p className="no-print text-sm text-slate-500">Menyusun laporan dari data sekolah...</p>}
         {laporan && (
           <>

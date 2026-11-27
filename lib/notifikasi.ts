@@ -12,8 +12,12 @@ import {
 } from '@/lib/rapor-hq-kirim'
 import { adalahKelasPutriHq, adalahPemeriksaHq, adalahSiswaPutriNogosari } from '@/lib/pemeriksa-hq'
 import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
+import { adalahKepalaSekolah } from '@/lib/kepala-sekolah'
+import { guruMenerimaPengaduan } from '@/lib/peta-wali-kelas-pengaduan'
+import { muatPengaduanWaliUnit } from '@/lib/pengaduan-wali-murid'
+import { unitDariAkun } from '@/lib/siswa'
 
-export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib' | 'rapor'
+export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib' | 'rapor' | 'pengaduan'
 
 export type NotifikasiItem = {
   id: string
@@ -23,6 +27,8 @@ export type NotifikasiItem = {
   tujuan: string
   idSiswa?: string
   asesmen?: string
+  /** ID baris `pengaduan_wali_murid` untuk navigasi ke menu Pengaduan. */
+  idPengaduan?: string
 }
 
 export type NotifikasiRevisiRapor = {
@@ -54,9 +60,10 @@ export const LABEL_KATEGORI: Record<KategoriNotifikasi, string> = {
   jurnal: 'Jurnal pembelajaran',
   tertib: 'Tertib Point',
   rapor: 'Koreksi penilaian HQ',
+  pengaduan: 'Aduan wali murid',
 }
 
-const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
+const URUTAN: KategoriNotifikasi[] = ['pengumuman', 'pengaduan', 'rapor', 'qiroah', 'tahfidz', 'jurnal', 'tertib']
 const KUNCI_DIBACA = 'portal-guru-notifikasi-dibaca'
 const BATAS = 5
 
@@ -433,6 +440,64 @@ export async function muatNotifikasi(currentUser?: any) {
       detail: 'Catat materi dan kegiatan pembelajaran sebelum hari berakhir.',
       tujuan: 'jurnal',
     })
+  }
+
+  try {
+  const unitPengaduan = unitDariAkun(currentUser) || unitMentah || 'Semua Unit'
+    const { daftar: pengaduan } = await muatPengaduanWaliUnit(unitPengaduan)
+    const ringkasIsi = (teks: string) => {
+      const bersih = teks.replace(/\s+/g, ' ').trim()
+      return bersih.length > 140 ? `${bersih.slice(0, 137)}…` : bersih
+    }
+
+    if (adalahKepalaSekolah(currentUser)) {
+      pengaduan
+        .filter((baris) => baris.statusAlur === 'masuk' || baris.statusAlur === 'ditangani_ks')
+        .slice(0, BATAS)
+        .forEach((baris) => {
+          lain.push({
+            id: `pengaduan:ks:${baris.id}`,
+            kategori: 'pengaduan',
+            judul:
+              baris.statusAlur === 'masuk'
+                ? `Aduan baru · ${baris.namaAnak}`
+                : `Aduan perlu tindak lanjut · ${baris.namaAnak}`,
+            detail: `${baris.kategori} · ${baris.namaWaliMurid}${baris.kelasAnak ? ` · ${baris.kelasAnak}` : ''} · ${ringkasIsi(baris.isiPengaduan)}`,
+            tujuan: 'pengaduan',
+            idPengaduan: baris.id,
+          })
+        })
+    }
+
+    pengaduan
+      .filter(
+        (baris) =>
+          baris.statusAlur === 'diteruskan' &&
+          guruMenerimaPengaduan(currentUser, {
+            penerimaKunci: baris.penerimaKunci,
+            penerimaJenis: baris.penerimaJenis,
+            penerimaKelas: baris.penerimaKelas,
+            penerimaNama: baris.penerimaNama,
+            tujuanPenerusan: baris.tujuanPenerusan,
+            statusAlur: baris.statusAlur,
+          }),
+      )
+      .slice(0, BATAS)
+      .forEach((baris) => {
+        const catatan = baris.catatanKs
+        lain.push({
+          id: `pengaduan:diteruskan:${baris.id}`,
+          kategori: 'pengaduan',
+          judul: `Aduan diteruskan · ${baris.namaAnak}`,
+          detail: catatan
+            ? `Catatan KS: ${ringkasIsi(catatan)}`
+            : `${baris.kategori} · ${ringkasIsi(baris.isiPengaduan)}`,
+          tujuan: 'pengaduan',
+          idPengaduan: baris.id,
+        })
+      })
+  } catch {
+    /* pengaduan opsional — jangan memblokir notifikasi lain */
   }
 
   if (!tertib.error) {
