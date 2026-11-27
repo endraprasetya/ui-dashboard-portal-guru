@@ -56,10 +56,18 @@ function teks(value: unknown) {
 }
 
 export function formatRentangAyat(mulai: string, selesai: string) {
-  const a = teks(mulai)
-  const b = teks(selesai) || a
-  if (!a) return ''
-  return a === b ? a : `${a}-${b}`
+  const a = teks(mulai).replace(/\D/g, '')
+  const b = teks(selesai).replace(/\D/g, '')
+  if (!a && !b) return ''
+  if (!a) return b
+  const akhir = b || a
+  return a === akhir ? a : `${a}-${akhir}`
+}
+
+/** Angka ayat untuk disimpan ke basis data; mempertahankan nilai valid yang sudah diketik. */
+export function normalisasiAyatTersimpan(nilai: string, fallback: string) {
+  const angka = teks(nilai).replace(/\D/g, '')
+  return angka || fallback
 }
 
 export function formatLabelMateri(item: MateriSurah) {
@@ -78,9 +86,11 @@ export function sidikMateriUjian(daftar: { nama: string; ayat: string }[]) {
 export function validasiMateriUjian(surahs: Surah[], materi: MateriSurah[]) {
   if (materi.length === 0) return 'Pilih minimal satu surah untuk materi ujian.'
   for (const item of materi) {
-    const galat = validasiAyatSurat(surahs, item.nama, item.ayatMulai, item.ayatSelesai, item.nama)
+    const mulai = normalisasiAyatTersimpan(item.ayatMulai, '1')
+    const selesai = normalisasiAyatTersimpan(item.ayatSelesai, mulai)
+    const galat = validasiAyatSurat(surahs, item.nama, mulai, selesai, item.nama)
     if (galat) return galat
-    if (!teks(item.ayatMulai) || !teks(item.ayatSelesai)) {
+    if (!mulai || !selesai) {
       return `Lengkapi ayat untuk ${item.nama}.`
     }
   }

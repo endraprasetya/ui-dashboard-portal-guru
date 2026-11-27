@@ -456,8 +456,16 @@ export async function simpanCatatanRevisiRaporHq(
   baris: KirimRaporHq,
   catatan: string,
   penulis?: { id?: string; nama?: string },
+  modePaksa?: ModeCatatanPemeriksaHq,
 ) {
-  const { mode, teks } = tentukanCatatanPemeriksaHq(catatan)
+  const { mode, teks } = modePaksa
+    ? modePaksa === 'konfirmasi'
+      ? { mode: 'konfirmasi' as const, teks: catatan.trim() || TEKS_KONFIRMASI_RAPOR_HQ_SIAP_CETAK }
+      : { mode: 'revisi' as const, teks: catatan.trim() }
+    : tentukanCatatanPemeriksaHq(catatan)
+  if (modePaksa === 'revisi' && !teks) {
+    return { error: 'Catatan revisi wajib diisi sebelum dikirim ke guru pengampu.', data: null as KirimRaporHq | null }
+  }
   const dokumen = await muatDokumenKirim()
   if (dokumen.error) return { error: dokumen.error }
   const kunci = kunciKirimRaporHq(baris)

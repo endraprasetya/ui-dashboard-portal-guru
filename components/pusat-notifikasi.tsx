@@ -63,9 +63,14 @@ export function usePusatNotifikasi(currentUser?: any, penyegar = '') {
     const segar = buatKendaliSegar(() => {
       void muat(true)
     })
-    const kanal = supabase.channel(KANAL_REVISI_RAPOR_HQ).on('broadcast', { event: 'revisi' }, () => {
-      segar.dariRealtime()
-    })
+    const kanal = supabase
+      .channel(KANAL_REVISI_RAPOR_HQ)
+      .on('broadcast', { event: 'revisi' }, () => {
+        segar.dariRealtime()
+      })
+      .on('broadcast', { event: 'pemeriksa' }, () => {
+        segar.dariRealtime()
+      })
     return segar.pasang(kanal)
   }, [muat])
 

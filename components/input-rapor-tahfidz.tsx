@@ -41,6 +41,7 @@ import {
   fetchTeksJadwalUjianTahfidz,
   formatLabelMateri,
   formatRentangAyat,
+  normalisasiAyatTersimpan,
   gabungMateriSiswa,
   hapusMateriUjianTahfidz,
   JUDUL_JADWAL_UJIAN_TAHFIDZ,
@@ -259,9 +260,9 @@ export function InputRaporTahfidz({
     }
   }, [targetTahfidzAktif, idSiswa, asesmen, daftar, siswa])
 
-  useEffect(() => {
-    if (!idSiswa || !asesmen) return
-    const milik = daftar.filter((row) => row.id_siswa === idSiswa && row.asesmen === asesmen)
+  const materiKotor = useRef(false)
+  const muatMateriDariDaftar = (id: string, jenis: string, sumber: BarisMateriUjian[], katalog: Surah[]) => {
+    const milik = sumber.filter((row) => row.id_siswa === id && row.asesmen === jenis)
     if (milik.length === 0) {
       setMateri([])
       setKeterangan('')
@@ -270,19 +271,30 @@ export function InputRaporTahfidz({
     setKeterangan(milik[0]?.keterangan || '')
     setMateri(
       milik.map((row) => {
-        const surah = surahs.find((item) => item.nama_surat.toLowerCase() === String(row.surah || '').toLowerCase())
+        const surah = katalog.find((item) => item.nama_surat.toLowerCase() === String(row.surah || '').toLowerCase())
         const [mulai, selesai] = String(row.ayat || '')
           .split(/[-–]/)
           .map((item) => item.trim())
+        const akhirSurah = String(surah?.jumlah_ayat || '')
         return {
           nomor: surah?.nomor_surat || 0,
           nama: row.surah,
           ayatMulai: mulai || '1',
-          ayatSelesai: selesai || mulai || String(surah?.jumlah_ayat || ''),
+          ayatSelesai: selesai || mulai || akhirSurah,
           jumlahAyat: surah?.jumlah_ayat || 999,
         }
       }),
     )
+  }
+
+  useEffect(() => {
+    materiKotor.current = false
+  }, [idSiswa, asesmen])
+
+  useEffect(() => {
+    if (!idSiswa || !asesmen) return
+    if (materiKotor.current) return
+    muatMateriDariDaftar(idSiswa, asesmen, daftar, surahs)
   }, [idSiswa, asesmen, daftar, surahs])
 
   useEffect(() => {
@@ -392,6 +404,7 @@ export function InputRaporTahfidz({
   }, [kunciFokus, rekap, daftar])
 
   const pilihSurah = (surah: Surah, aktif: boolean) => {
+    materiKotor.current = true
     setMateri((current) => {
       if (!aktif) return current.filter((item) => item.nomor !== surah.nomor_surat)
       if (current.some((item) => item.nomor === surah.nomor_surat)) return current
@@ -409,22 +422,18 @@ export function InputRaporTahfidz({
   }
 
   const ubahAyat = (nomor: number, field: 'ayatMulai' | 'ayatSelesai', nilai: string) => {
+    materiKotor.current = true
+    const hanyaAngka = nilai.replace(/[^\d]/g, '')
     setMateri((current) =>
       current.map((item) => {
         if (item.nomor !== nomor) return item
-        const berikutnya = { ...item, [field]: nilai }
+        const berikutnya = { ...item, [field]: hanyaAngka }
         const konteks = field === 'ayatMulai' ? `${item.nama} (ayat mulai)` : `${item.nama} (ayat selesai)`
-        const info = infoAyatMelebihi(surahs, item.nama, nilai, konteks)
+        const info = hanyaAngka ? infoAyatMelebihi(surahs, item.nama, hanyaAngka, konteks) : null
         if (info) setPeringatanAyat(info)
         return berikutnya
       }),
     )
-  }
-
-  const cekBatasAyat = (item: MateriSurah, field: 'ayatMulai' | 'ayatSelesai') => {
-    const konteks = field === 'ayatMulai' ? `${item.nama} (ayat mulai)` : `${item.nama} (ayat selesai)`
-    const info = infoAyatMelebihi(surahs, item.nama, item[field], konteks)
-    if (info) setPeringatanAyat(info)
   }
 
   const bukaNilai = (idSiswaNilai: string, asesmenNilai: string) => {
@@ -501,7 +510,7 @@ export function InputRaporTahfidz({
   }
 
   const muatUlangDaftar = async () => {
-    if (siswa.length === 0) return
+    if (siswa.length === 0) return [] as BarisMateriUjian[]
     const ids = siswa.map((item) => item.id_siswa)
     const [segar, header, dinilai] = await Promise.all([
       fetchMateriUjianTahfidz(ids),
@@ -513,6 +522,7 @@ export function InputRaporTahfidz({
     setDaftar(selaras)
     setSurahDinilai(dinilai)
     void tulisAsesmenMateriMengikutiHeader(sumber, selaras)
+    return selaras
   }
 
   const tampilkanGalatMateri = (galatMateri: string) => {
@@ -588,11 +598,16 @@ export function InputRaporTahfidz({
       return
     }
 
+    const materiTersimpan = materi.map((item) => {
+      const mulai = normalisasiAyatTersimpan(item.ayatMulai, '1')
+      const selesai = normalisasiAyatTersimpan(item.ayatSelesai, mulai || String(item.jumlahAyat))
+      return { ...item, ayatMulai: mulai, ayatSelesai: selesai }
+    })
     const hasil = await simpanMateriUjianTahfidz({
       idSiswa: terpilih.id_siswa,
       kelas: terpilih.kelas,
       asesmen,
-      materi,
+      materi: materiTersimpan,
       keterangan,
       guru: teacherDisplayName(currentUser),
     })
@@ -603,7 +618,9 @@ export function InputRaporTahfidz({
       return
     }
 
-    await muatUlangDaftar()
+    materiKotor.current = false
+    const selaras = await muatUlangDaftar()
+    muatMateriDariDaftar(terpilih.id_siswa, asesmen, selaras, surahs)
     setStatus(`Materi ujian ${terpilih.nama_siswa} (${asesmen}) tersimpan.`)
     setGalat(false)
     setPanelSurah(false)
@@ -801,25 +818,25 @@ export function InputRaporTahfidz({
                 <label className="text-[11px] font-bold text-slate-500">
                   Ayat mulai
                   <input
-                    type="number"
-                    min={1}
-                    max={item.jumlahAyat}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={item.ayatMulai}
                     onChange={(event) => ubahAyat(item.nomor, 'ayatMulai', event.target.value)}
-                    onBlur={() => cekBatasAyat(item, 'ayatMulai')}
-                    className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                    className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
                   />
                 </label>
                 <label className="text-[11px] font-bold text-slate-500">
                   Ayat selesai
                   <input
-                    type="number"
-                    min={1}
-                    max={item.jumlahAyat}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={item.ayatSelesai}
                     onChange={(event) => ubahAyat(item.nomor, 'ayatSelesai', event.target.value)}
-                    onBlur={() => cekBatasAyat(item, 'ayatSelesai')}
-                    className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                    className="mt-1 w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
                   />
                 </label>
                 <button

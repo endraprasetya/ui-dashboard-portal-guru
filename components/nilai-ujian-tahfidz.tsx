@@ -268,14 +268,15 @@ export function NilaiUjianTahfidz({
   }
 
   const ubahAyatBaris = (index: number, field: 'mulai' | 'selesai', nilai: string) => {
+    const hanyaAngka = nilai.replace(/[^\d]/g, '')
     setBaris((current) =>
       current.map((row, i) => {
         if (i !== index) return row
         const pecah = pecahRentang(row.rentangAyat)
-        const mulai = field === 'mulai' ? nilai : pecah.mulai
-        const selesai = field === 'selesai' ? nilai : pecah.selesai
+        const mulai = field === 'mulai' ? hanyaAngka : pecah.mulai
+        const selesai = field === 'selesai' ? hanyaAngka : pecah.selesai
         const konteks = field === 'mulai' ? `${row.namaSurat} (ayat mulai)` : `${row.namaSurat} (ayat selesai)`
-        const info = infoAyatMelebihi(surahs, row.namaSurat, nilai, konteks)
+        const info = hanyaAngka ? infoAyatMelebihi(surahs, row.namaSurat, hanyaAngka, konteks) : null
         if (info) setPeringatanAyat(info)
         return { ...row, rentangAyat: formatRentangAyat(mulai, selesai) }
       }),
@@ -558,23 +559,27 @@ export function NilaiUjianTahfidz({
                       <label className="text-[11px] font-bold text-slate-500">
                         Ayat mulai
                         <input
-                          type="number"
-                          min={1}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
                           value={pecahRentang(row.rentangAyat).mulai}
                           disabled={memuat}
                           onChange={(event) => ubahAyatBaris(index, 'mulai', event.target.value)}
-                          className="mt-1 w-24 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:bg-slate-100"
+                          className="mt-1 w-24 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm tabular-nums disabled:bg-slate-100"
                         />
                       </label>
                       <label className="text-[11px] font-bold text-slate-500">
                         Ayat selesai
                         <input
-                          type="number"
-                          min={1}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
                           value={pecahRentang(row.rentangAyat).selesai}
                           disabled={memuat}
                           onChange={(event) => ubahAyatBaris(index, 'selesai', event.target.value)}
-                          className="mt-1 w-24 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:bg-slate-100"
+                          className="mt-1 w-24 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm tabular-nums disabled:bg-slate-100"
                         />
                       </label>
                     </div>

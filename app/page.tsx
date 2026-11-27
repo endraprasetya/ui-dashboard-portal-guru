@@ -119,6 +119,8 @@ export default function Home() {
 
   const pusat = usePusatNotifikasi(currentUser, currentView)
   const revisiRapor = pusat.revisiRapor ?? []
+  const pengajuanPemeriksaanHq = revisiRapor.filter((item) => item.peran === 'pengajuan')
+  const hasilPemeriksaanRapor = revisiRapor.filter((item) => item.peran !== 'pengajuan')
   const pekan = ringkasanPekan()
   const kunciTugas = `portal-guru-todo:${currentUser?.target_id || currentUser?.username || 'guru'}:${todayInputValue()}`
 
@@ -327,30 +329,62 @@ export default function Home() {
                   <h3 className="text-sm font-extrabold">Tahfidzul Qur&apos;an</h3>
                   <p className="mt-1 text-[11px] opacity-80">Kelola setoran, hafalan, dan kenaikan hafalan santri</p>
                 </button>
-                {revisiRapor.length > 0 && (
-                  <div className="mt-3 rounded-xl bg-black/10 p-2.5">
-                    <p className="text-[10px] font-extrabold uppercase tracking-wide">Hasil pemeriksaan rapor HQ</p>
-                    <ul className="mt-1.5 space-y-1.5">
-                      {revisiRapor.slice(0, 3).map((item) => (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              pusat.tandai(item.id)
-                              setFokusRapor({ idSiswa: item.idSiswa, asesmen: item.asesmen })
-                              setCurrentView('tahfidz_rapor')
-                            }}
-                            className="w-full text-left text-[11px] leading-4 hover:underline"
-                          >
-                            <span className="font-bold">{item.nama}</span> · {item.kelas}
-                            {item.penulis ? <span className="block opacity-80">{item.penulis}</span> : null}
-                            <span className="line-clamp-2 block opacity-90">{item.catatan}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    {revisiRapor.length > 3 && (
-                      <p className="mt-1 text-[10px] font-bold">+{revisiRapor.length - 3} siswa lain</p>
+                {(pengajuanPemeriksaanHq.length > 0 || hasilPemeriksaanRapor.length > 0) && (
+                  <div className="mt-3 space-y-2 rounded-xl bg-black/10 p-2.5">
+                    {pengajuanPemeriksaanHq.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide">
+                          Rapor HQ putri menunggu pemeriksaan
+                        </p>
+                        <ul className="mt-1.5 space-y-1.5">
+                          {pengajuanPemeriksaanHq.slice(0, 3).map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  pusat.tandai(item.id)
+                                  setCurrentView('tahfidz_pemeriksa_hq')
+                                }}
+                                className="w-full text-left text-[11px] leading-4 hover:underline"
+                              >
+                                <span className="font-bold">{item.nama}</span> · {item.kelas}
+                                {item.penulis ? <span className="block opacity-80">{item.penulis}</span> : null}
+                                <span className="line-clamp-2 block opacity-90">{item.catatan}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        {pengajuanPemeriksaanHq.length > 3 && (
+                          <p className="mt-1 text-[10px] font-bold">+{pengajuanPemeriksaanHq.length - 3} siswa lain</p>
+                        )}
+                      </div>
+                    )}
+                    {hasilPemeriksaanRapor.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide">Hasil pemeriksaan rapor HQ</p>
+                        <ul className="mt-1.5 space-y-1.5">
+                          {hasilPemeriksaanRapor.slice(0, 3).map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  pusat.tandai(item.id)
+                                  setFokusRapor({ idSiswa: item.idSiswa, asesmen: item.asesmen })
+                                  setCurrentView('tahfidz_rapor')
+                                }}
+                                className="w-full text-left text-[11px] leading-4 hover:underline"
+                              >
+                                <span className="font-bold">{item.nama}</span> · {item.kelas}
+                                {item.penulis ? <span className="block opacity-80">{item.penulis}</span> : null}
+                                <span className="line-clamp-2 block opacity-90">{item.catatan}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        {hasilPemeriksaanRapor.length > 3 && (
+                          <p className="mt-1 text-[10px] font-bold">+{hasilPemeriksaanRapor.length - 3} siswa lain</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

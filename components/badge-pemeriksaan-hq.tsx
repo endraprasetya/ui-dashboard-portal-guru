@@ -15,17 +15,37 @@ export function BadgeJenisCatatanHq({ jenis }: { jenis: JenisCatatanPemeriksaHq 
   )
 }
 
-export function BadgeLolosPemeriksaan({ lolos }: { lolos: boolean }) {
-  if (lolos) {
+export function BadgeLolosPemeriksaan({
+  lolos,
+  jenis = '',
+}: {
+  lolos: boolean
+  jenis?: JenisCatatanPemeriksaHq
+}) {
+  if (!lolos) {
+    return (
+      <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+        Belum diperiksa · menunggu pemeriksaan
+      </span>
+    )
+  }
+  if (jenis === 'revisi') {
+    return (
+      <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+        Sudah diperiksa · Revisi / perlu perbaikan
+      </span>
+    )
+  }
+  if (jenis === 'konfirmasi') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-        <BadgeCheck className="size-3" aria-hidden /> Sudah diperiksa · Lolos pemeriksaan
+        <BadgeCheck className="size-3" aria-hidden /> Sudah diperiksa · Siap cetak
       </span>
     )
   }
   return (
-    <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-      Belum diperiksa · menunggu pemeriksaan
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+      <BadgeCheck className="size-3" aria-hidden /> Sudah diperiksa
     </span>
   )
 }

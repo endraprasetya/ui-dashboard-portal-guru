@@ -25,6 +25,7 @@ import {
   simpanCatatanRevisiRaporHq,
   teksRiwayatRingkasCatatanHq,
   type KirimRaporHq,
+  type ModeCatatanPemeriksaHq,
 } from '@/lib/rapor-hq-kirim'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
 import { BadgeJenisCatatanHq, BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
@@ -171,16 +172,21 @@ export function ModalRaporHq({
   const putriTabel = putriKelas.filter(cocokStatus)
   const putriLolos = putriKelas.filter(sudahDiperiksa).length
 
-  const simpanCatatan = async (row: KirimRaporHq) => {
+  const simpanCatatan = async (row: KirimRaporHq, mode: ModeCatatanPemeriksaHq) => {
     const kunci = `${row.idSiswa}|${row.asesmen}`
     setMenyimpan(kunci)
     setPesan('')
     setGalatCatatan(false)
     lewatiMuat.current = true
-    const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '', {
-      id: penulis?.id,
-      nama: penulis?.nama || 'Kepala Sekolah',
-    })
+    const hasil = await simpanCatatanRevisiRaporHq(
+      row,
+      catatan[kunci] || '',
+      {
+        id: penulis?.id,
+        nama: penulis?.nama || 'Kepala Sekolah',
+      },
+      mode,
+    )
     setMenyimpan('')
     if (hasil.error || !hasil.data) {
       lewatiMuat.current = false
@@ -194,7 +200,7 @@ export function ModalRaporHq({
     setPesan(
       tersimpan.jenisCatatan === 'konfirmasi'
         ? `Rapor HQ ${row.namaSiswa} tersimpan sebagai siap cetak, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`
-        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`,
+        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dengan status perlu perbaikan.`,
     )
   }
 
@@ -351,7 +357,7 @@ export function ModalRaporHq({
                                 {waktu ? ` · ${waktu}` : ''}
                               </span>
                               <div className="mt-1">
-                                <BadgeLolosPemeriksaan lolos={sudahDiperiksa(row)} />
+                                <BadgeLolosPemeriksaan lolos={sudahDiperiksa(row)} jenis={row.jenisCatatan} />
                               </div>
                               <RiwayatWaktuPemeriksaanHq baris={row} />
                             </td>
@@ -363,7 +369,8 @@ export function ModalRaporHq({
                                 nilai={catatan[kunci] ?? ''}
                                 onUbah={(teks) => setCatatan((semua) => ({ ...semua, [kunci]: teks }))}
                                 menyimpan={menyimpan === kunci}
-                                onSimpan={() => void simpanCatatan(row)}
+                                onSimpanRevisi={() => void simpanCatatan(row, 'revisi')}
+                                onKonfirmasiSiapCetak={() => void simpanCatatan(row, 'konfirmasi')}
                                 labelAria={`Catatan Kepala Sekolah untuk ${row.namaSiswa}`}
                                 ringkas={teksRiwayatRingkasCatatanHq(row)}
                                 jenisTersimpan={row.jenisCatatan}
@@ -430,7 +437,7 @@ export function ModalRaporHq({
                             </td>
                             <td className="border-b p-2">{row.namaGuru || 'Guru'}</td>
                             <td className="border-b p-2">
-                              <BadgeLolosPemeriksaan lolos={sudahDiperiksa(row)} />
+                              <BadgeLolosPemeriksaan lolos={sudahDiperiksa(row)} jenis={row.jenisCatatan} />
                             </td>
                             <td className="border-b p-2 text-slate-700">{namaPemeriksaPutri(row)}</td>
                           </tr>

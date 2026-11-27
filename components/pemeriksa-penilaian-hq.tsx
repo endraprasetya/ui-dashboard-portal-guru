@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BadgeCheck, ClipboardCheck, Search } from 'lucide-react'
+import { ArrowLeft, ClipboardCheck, Search } from 'lucide-react'
 import { BadgeJenisCatatanHq, BadgeLolosPemeriksaan } from '@/components/badge-pemeriksaan-hq'
 import { CatatanPemeriksaHq } from '@/components/catatan-pemeriksa-hq'
-import { DialogKonfirmasi } from '@/components/dialog-konfirmasi'
 import { PratinjauRaporHqKepsek } from '@/components/kepsek/pratinjau-rapor-hq'
 import { RiwayatWaktuPemeriksaanHq } from '@/components/riwayat-waktu-hq'
 import {
@@ -13,7 +12,7 @@ import {
   idGuruAktif,
   lengkapiTampilanKirim,
   simpanCatatanRevisiRaporHq,
-  tandaiDiperiksaHq,
+  type ModeCatatanPemeriksaHq,
   teksRiwayatRingkasCatatanHq,
   type KirimRaporHq,
 } from '@/lib/rapor-hq-kirim'
@@ -52,11 +51,9 @@ export function PemeriksaPenilaianHq({
   const [kelasSaring, setKelasSaring] = useState('semua')
   const [statusSaring, setStatusSaring] = useState<StatusSaringHq>('semua')
   const [izin, setIzin] = useState(() => adalahPemeriksaHq(currentUser))
-  const [menyimpan, setMenyimpan] = useState('')
   const [menyimpanCatatan, setMenyimpanCatatan] = useState('')
   const [catatan, setCatatan] = useState<Record<string, string>>({})
   const [pratinjau, setPratinjau] = useState<KirimRaporHq | null>(null)
-  const [konfirmasi, setKonfirmasi] = useState<KirimRaporHq | null>(null)
   const lewatiMuat = useRef(false)
   const { tahunAjaran, semester } = periodeAjaranSekarang()
 
@@ -134,34 +131,21 @@ export function PemeriksaPenilaianHq({
   const jumlahDiperiksa = menurutKelas.filter(sudahDiperiksaHq).length
   const jumlahBelum = menurutKelas.length - jumlahDiperiksa
 
-  const tandai = async () => {
-    if (!konfirmasi) return
-    setMenyimpan(kunciBaris(konfirmasi))
-    setStatus('')
-    const hasil = await tandaiDiperiksaHq(konfirmasi, {
-      id: idGuruAktif(currentUser),
-      nama: teacherDisplayName(currentUser),
-    })
-    setMenyimpan('')
-    if (hasil.error) {
-      setGalat(hasil.error)
-      return
-    }
-    setKonfirmasi(null)
-    setStatus(`Penilaian ${konfirmasi.namaSiswa} ditandai sudah diperiksa. Tanda terkirim ke Kepala Sekolah.`)
-    await muat()
-  }
-
-  const simpanCatatan = async (row: KirimRaporHq) => {
+  const simpanCatatan = async (row: KirimRaporHq, mode: ModeCatatanPemeriksaHq) => {
     const kunci = kunciBaris(row)
     setMenyimpanCatatan(kunci)
     setStatus('')
     setGalat('')
     lewatiMuat.current = true
-    const hasil = await simpanCatatanRevisiRaporHq(row, catatan[kunci] || '', {
-      id: idGuruAktif(currentUser),
-      nama: teacherDisplayName(currentUser),
-    })
+    const hasil = await simpanCatatanRevisiRaporHq(
+      row,
+      catatan[kunci] || '',
+      {
+        id: idGuruAktif(currentUser),
+        nama: teacherDisplayName(currentUser),
+      },
+      mode,
+    )
     setMenyimpanCatatan('')
     if (hasil.error || !hasil.data) {
       lewatiMuat.current = false
@@ -174,7 +158,7 @@ export function PemeriksaPenilaianHq({
     setStatus(
       tersimpan.jenisCatatan === 'konfirmasi'
         ? `Rapor HQ ${row.namaSiswa} tersimpan sebagai siap cetak, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`
-        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dan ditandai sudah diperiksa.`,
+        : `Catatan revisi ${row.namaSiswa} tersimpan, terkirim ke guru pengampu, dengan status perlu perbaikan.`,
     )
   }
 
@@ -339,33 +323,24 @@ export function PemeriksaPenilaianHq({
                           nilai={catatan[kunci] ?? ''}
                           onUbah={(teks) => setCatatan((semua) => ({ ...semua, [kunci]: teks }))}
                           menyimpan={menyimpanCatatan === kunci}
-                          onSimpan={() => void simpanCatatan(row)}
+                          onSimpanRevisi={() => void simpanCatatan(row, 'revisi')}
+                          onKonfirmasiSiapCetak={() => void simpanCatatan(row, 'konfirmasi')}
                           labelAria={`Catatan pemeriksa untuk ${row.namaSiswa}`}
                           ringkas={teksRiwayatRingkasCatatanHq(row)}
                           jenisTersimpan={row.jenisCatatan}
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <BadgeLolosPemeriksaan lolos={diperiksa} />
+                        <BadgeLolosPemeriksaan lolos={diperiksa} jenis={row.jenisCatatan} />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setPratinjau(row)}
-                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-slate-50"
-                          >
-                            Detail
-                          </button>
-                          <button
-                            type="button"
-                            disabled={diperiksa || menyimpan === kunci}
-                            onClick={() => setKonfirmasi(row)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-violet-700 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-violet-800 disabled:opacity-50"
-                          >
-                            <BadgeCheck className="size-3" /> {menyimpan === kunci ? 'Menyimpan…' : 'Tandai sudah diperiksa'}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPratinjau(row)}
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-slate-50"
+                        >
+                          Detail
+                        </button>
                       </td>
                     </tr>
                   )
@@ -377,22 +352,6 @@ export function PemeriksaPenilaianHq({
       </section>
 
       {pratinjau ? <PratinjauRaporHqKepsek baris={pratinjau} onTutup={() => setPratinjau(null)} /> : null}
-      <DialogKonfirmasi
-        terbuka={Boolean(konfirmasi)}
-        pertanyaan="Apa Anda yakin akan menandai penilaian ini sudah diperiksa?"
-        keterangan={
-          konfirmasi
-            ? `Penilaian ${konfirmasi.namaSiswa} (${konfirmasi.kelas} · ${konfirmasi.asesmen}) akan ditandai sudah diperiksa dan tanda dikirim ke Kepala Sekolah.`
-            : undefined
-        }
-        labelYa={menyimpan ? 'Menyimpan…' : 'OK'}
-        labelTidak="Tidak"
-        sedang={Boolean(menyimpan)}
-        onYa={() => void tandai()}
-        onTidak={() => {
-          if (!menyimpan) setKonfirmasi(null)
-        }}
-      />
     </div>
   )
 }

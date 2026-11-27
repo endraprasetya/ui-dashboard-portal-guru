@@ -3,7 +3,15 @@ import { educationCalendar } from '@/lib/teacher-data'
 import { fetchJurnalRentang, jamHariIni, teacherUnit, todayInputValue } from '@/lib/jurnal'
 import { barisUntukPenguji, labelRentangKenaikanJilid, namaPengujiCocok, pengujiEfektif, sudahTerjadwal, teacherDisplayName, untukPengampu, waktuDariStatus, menungguJadwal } from '@/lib/qiroah'
 import { cariRekapan, kunciJilid, ringkasHasil, ujianSudahSelesai, type RekapanRingkas } from '@/lib/ujian-relasi'
-import { guruPenerimaRevisi, kunciKirimRaporHq, muatKirimRaporHq, teksRiwayatRingkasCatatanHq } from '@/lib/rapor-hq-kirim'
+import {
+  formatWaktuPemeriksaanHq,
+  guruPenerimaRevisi,
+  kunciKirimRaporHq,
+  muatKirimRaporHq,
+  teksRiwayatRingkasCatatanHq,
+} from '@/lib/rapor-hq-kirim'
+import { adalahKelasPutriHq, adalahPemeriksaHq, adalahSiswaPutriNogosari } from '@/lib/pemeriksa-hq'
+import { periodeAjaranSekarang } from '@/lib/rapor-tahfidz-nilai'
 
 export type KategoriNotifikasi = 'pengumuman' | 'qiroah' | 'tahfidz' | 'jurnal' | 'tertib' | 'rapor'
 
@@ -25,6 +33,8 @@ export type NotifikasiRevisiRapor = {
   kelas: string
   catatan: string
   penulis: string
+  /** `pengajuan` = penilaian baru menunggu pemeriksaan HQ (kotak Tahfidz pemeriksa). */
+  peran?: 'hasil' | 'pengajuan'
 }
 
 export type NotifikasiQiroah = NotifikasiItem & {
@@ -192,8 +202,46 @@ export async function muatNotifikasi(currentUser?: any) {
     muatKirimRaporHq(),
   ])
 
+  const { tahunAjaran, semester } = periodeAjaranSekarang()
+  const pemeriksaHq = adalahPemeriksaHq(currentUser)
+
   if (!kirimRapor.error) {
+    const idsPutri = kirimRapor.data.map((row) => row.idSiswa).filter(Boolean)
+    const petaPutri = idsPutri.length > 0 ? await namaSiswa(idsPutri) : new Map<string, { nama: string; kelas: string; unit: string }>()
+
     for (const row of kirimRapor.data) {
+      if (row.tahunAjaran && row.tahunAjaran !== tahunAjaran) continue
+      if (row.semester && row.semester !== semester) continue
+      const milik = petaPutri.get(row.idSiswa)
+      const putri =
+        (milik ? adalahSiswaPutriNogosari({ kelas: milik.kelas, unit: milik.unit }) : false) || adalahKelasPutriHq(row.kelas)
+      const belumDiperiksa = row.statusPemeriksa !== 'Diperiksa' && !row.diperiksaPada
+
+      if (pemeriksaHq && putri && belumDiperiksa) {
+        const waktu = formatWaktuPemeriksaanHq(row.dikirimPada)
+        const idPengajuan = `rapor-hq-pengajuan:${kunciKirimRaporHq(row)}:${row.dikirimPada}`
+        const materi = row.materi ? ` · ${row.materi}` : ''
+        revisiRapor.push({
+          id: idPengajuan,
+          idSiswa: row.idSiswa,
+          asesmen: row.asesmen,
+          nama: row.namaSiswa,
+          kelas: row.kelas || '-',
+          catatan: `${row.namaGuru || 'Guru pengampu'} mengirim penilaian${waktu ? ` · ${waktu}` : ''}${materi}`,
+          penulis: row.namaGuru || 'Guru pengampu',
+          peran: 'pengajuan',
+        })
+        lain.push({
+          id: idPengajuan,
+          kategori: 'rapor',
+          judul: `Pemeriksaan rapor HQ · ${row.namaSiswa}`,
+          detail: `${row.kelas || '-'} · ${row.asesmen}${materi} · dari ${row.namaGuru || 'guru pengampu'}`,
+          tujuan: 'tahfidz_pemeriksa_hq',
+          idSiswa: row.idSiswa,
+          asesmen: row.asesmen,
+        })
+      }
+
       const ringkas = teksRiwayatRingkasCatatanHq(row)
       if (!ringkas || !guruPenerimaRevisi(row, currentUser)) continue
       const konfirmasi = row.jenisCatatan === 'konfirmasi'
@@ -211,6 +259,7 @@ export async function muatNotifikasi(currentUser?: any) {
         kelas: row.kelas || '-',
         catatan: ringkas,
         penulis,
+        peran: 'hasil',
       })
       lain.push({
         id: idRevisi,
