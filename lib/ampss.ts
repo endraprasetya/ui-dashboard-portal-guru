@@ -29,6 +29,15 @@ import { muatKunciYatim, nisTermasukYatim } from './yatim'
 const UMUR_CACHE_MS = 5 * 60 * 1000
 const BATAS_MS = 45_000
 
+const PESAN_AMPSS_NONAKTIF =
+  'Integrasi AMPSS sementara dinonaktifkan sesuai instruksi yayasan. Data tagihan tidak diambil dari ampss.net.'
+
+/** Default nonaktif; aktifkan scraping dengan `AMPSS_NONAKTIF=0` di server. */
+function ampssNonaktif(): boolean {
+  const nilai = (process.env.AMPSS_NONAKTIF ?? '1').trim().toLowerCase()
+  return nilai !== '0' && nilai !== 'false' && nilai !== 'off' && nilai !== 'no'
+}
+
 type Sesi = Map<string, string>
 
 let sesi: Sesi | null = null
@@ -151,6 +160,7 @@ function adalahAlihan(status: number) {
 }
 
 async function minta(url: string, init: RequestInit & { sesi?: Sesi; referer?: string } = {}): Promise<Response> {
+  if (ampssNonaktif()) throw new Error(PESAN_AMPSS_NONAKTIF)
   const { sesi: peta, referer, headers: headersAwal, signal, ...sisa } = init
   const headers = new Headers(headersAwal)
   headers.set('User-Agent', UA_PERAMBAN)
@@ -416,6 +426,11 @@ async function muatRekapSekolah(sekolah: { id: string; nama: string }, segar: bo
 }
 
 export async function muatRekapKeuangan(segar = false, unit?: string): Promise<RekapKeuangan> {
+  if (ampssNonaktif()) {
+    const sekolah = sekolahDariUnit(unit)
+    const nama = sekolah?.nama || kanonNamaUnit(unit) || String(unit || '').trim() || 'Sekolah'
+    return rekapKosong(nama, PESAN_AMPSS_NONAKTIF)
+  }
   const sekolah = sekolahDariUnit(unit)
   if (!sekolah) {
     const nama = kanonNamaUnit(unit) || String(unit || '').trim() || 'unit ini'
@@ -474,6 +489,7 @@ export async function muatRekapSyaratAsas(segar = false, unit?: string): Promise
 }
 
 export async function muatDetailTunggakan(nis: string, unit?: string): Promise<DetailTunggakan | null> {
+  if (ampssNonaktif()) return null
   if (!/^\d{3,12}$/.test(nis)) return null
   const sekolah = sekolahDariUnit(unit)
   if (!sekolah) return null
@@ -515,6 +531,7 @@ function susunDetailTunggakan(
 
 /** Rincian tunggakan ananda untuk Portal Wali: SPP/katering hanya s.d. bulan berjalan. */
 export async function muatTunggakanWali(kunciNis: string[], unit?: string): Promise<DetailTunggakan[]> {
+  if (ampssNonaktif()) return []
   const unik = [...new Set(kunciNis.map(angkaNis).filter((nilai) => nilai.length >= 3))]
   if (unik.length === 0) return []
   const rekap = await muatRekapKeuangan(false, unit)
