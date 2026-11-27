@@ -1,4 +1,5 @@
 import { tempatTanggalPengesahanRaporHq, type DataCetakRaporTahfidz } from '@/lib/cetak-rapor-tahfidz'
+import { formatTeksNisNisn } from '@/lib/identitas-siswa-cetak'
 import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
@@ -43,7 +44,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
     : 'SD ISLAM TERPADU AL MADINAH'
-  const nisNisn = [siswa.nis, siswa.nisn].filter(Boolean).join('/') || '-'
+  const nisNisn = formatTeksNisNisn(siswa.nis, siswa.nisn, '/')
 
   pdf.setFont('times', 'bold')
   pdf.setFontSize(14)

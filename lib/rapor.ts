@@ -1,6 +1,7 @@
 import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
 import { cekTargetQiroahSiswa, formatCapaianQiroah, pemetaanKenaikanJilid, TARGET_QIROAH } from '@/lib/qiroah'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
+import { resolveIdentitasSiswaCetak } from '@/lib/identitas-siswa-cetak'
 import { supabase } from '@/lib/supabase'
 import { fetchAllSurah } from '@/lib/surah'
 import { formatMurojaahRecord, formatZiyadahRecord } from '@/lib/tahfidz'
@@ -99,11 +100,11 @@ function normalSurah(nama: string) {
     .replace(/[^a-z0-9']/g, '')
 }
 
-async function ambilDataDiri(nama: string, kelas: string, nis: string) {
+async function ambilDataDiriJenisKelamin(nama: string, kelas: string, nis: string) {
   if (nis) {
     const { data } = await supabase
       .from('data_diri_siswa')
-      .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn,jenis_kelamin')
+      .select('jenis_kelamin')
       .eq('nomor_induk_sekolah', nis)
       .limit(1)
       .maybeSingle()
@@ -112,7 +113,7 @@ async function ambilDataDiri(nama: string, kelas: string, nis: string) {
   if (nama && kelas) {
     const { data } = await supabase
       .from('data_diri_siswa')
-      .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn,jenis_kelamin')
+      .select('jenis_kelamin')
       .eq('nama_lengkap', nama)
       .eq('kelas', kelas)
       .limit(1)
@@ -152,7 +153,7 @@ export async function fetchRaporSiswa(idSiswa: string): Promise<DataRapor | null
   const unit = teks(siswaRow.unit)
   const nis = teks(siswaRow.nis)
 
-  const [tahfidzRes, qiroahRes, ujianRes, surahs, pejabat, diri] = await Promise.all([
+  const [tahfidzRes, qiroahRes, ujianRes, surahs, pejabat, identitas, diriJk] = await Promise.all([
     supabase
       .from('setoran_tahfidz')
       .select(
@@ -175,7 +176,8 @@ export async function fetchRaporSiswa(idSiswa: string): Promise<DataRapor | null
       .limit(12),
     fetchAllSurah(),
     fetchPejabatUntukCetak({ unit, kelas, idSiswa: id, namaSiswa: nama }),
-    ambilDataDiri(nama, kelas, nis),
+    resolveIdentitasSiswaCetak({ idSiswa: id, nama, kelas, nis }),
+    ambilDataDiriJenisKelamin(nama, kelas, nis),
   ])
   const idsPembimbing = teks(siswaRow.id_pembimbing)
     .split(/[,;]/)
@@ -242,11 +244,11 @@ export async function fetchRaporSiswa(idSiswa: string): Promise<DataRapor | null
     siswa: {
       idSiswa: id,
       nama,
-      nis: nis || teks(diri?.nomor_induk_sekolah),
-      nisn: teks(diri?.nisn),
+      nis: identitas.nis,
+      nisn: identitas.nisn,
       kelas,
       unit,
-      jenisKelamin: teks(diri?.jenis_kelamin),
+      jenisKelamin: teks(diriJk?.jenis_kelamin),
       pembimbing,
       pembimbingNiy,
     },

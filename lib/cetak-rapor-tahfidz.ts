@@ -1,5 +1,6 @@
 import { labelPembimbingDariDaftarPeran, labelPembimbingDariRole, roleDariSesiPengguna } from '@/lib/label-pembimbing'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
+import { resolveIdentitasSiswaCetak } from '@/lib/identitas-siswa-cetak'
 import { supabase } from '@/lib/supabase'
 import { namaSuratArab } from '@/lib/surah-arab'
 import { fetchAllSurah, cariSurah } from '@/lib/surah'
@@ -122,29 +123,6 @@ export function tempatTanggalPengesahanRaporHq(lokasi?: string) {
   return `${tempat}, ${TANGGAL_PENGESAHAN_RAPOR_HQ}`
 }
 
-async function ambilDataDiri(nama: string, kelas: string, nis: string) {
-  if (nis) {
-    const { data } = await supabase
-      .from('data_diri_siswa')
-      .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn')
-      .eq('nomor_induk_sekolah', nis)
-      .limit(1)
-      .maybeSingle()
-    if (data) return data
-  }
-  if (nama && kelas) {
-    const { data } = await supabase
-      .from('data_diri_siswa')
-      .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn')
-      .eq('nama_lengkap', nama)
-      .eq('kelas', kelas)
-      .limit(1)
-      .maybeSingle()
-    return data
-  }
-  return null
-}
-
 async function ambilHeaderCetak(id: string, asesmen: string, tahunAjaran: string, semester: string) {
   const kolomLengkap =
     'id_ujian_tahfidz,id_siswa,jenis_asesmen,tahun_ajaran,semester,nilai_akhir,predikat,capaian_kompetensi,capaian_target,motivasi,nilai_target,updated_at'
@@ -182,7 +160,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
   const { tahunAjaran, semester } = periodeAjaranSekarang()
   const header = await ambilHeaderCetak(id, teks(asesmen), tahunAjaran, semester)
 
-  const [{ data: detail }, surahs, diri, setoranRes] = await Promise.all([
+  const [{ data: detail }, surahs, identitas, setoranRes] = await Promise.all([
     header
       ? supabase
           .from(TABEL_DETAIL_RAPOR)
@@ -192,7 +170,12 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
           .eq('header_id', header.id_ujian_tahfidz)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     fetchAllSurah(),
-    ambilDataDiri(teks(siswaRow.nama_siswa), teks(siswaRow.kelas), teks(siswaRow.nis)),
+    resolveIdentitasSiswaCetak({
+      idSiswa: id,
+      nama: teks(siswaRow.nama_siswa),
+      kelas: teks(siswaRow.kelas),
+      nis: teks(siswaRow.nis),
+    }),
     supabase
       .from('setoran_tahfidz')
       .select('hafalan_baru,ayat_mulai,ayat_selesai,surah_ziyadah,tanggal')
@@ -290,8 +273,8 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     siswa: {
       idSiswa: id,
       nama: teks(siswaRow.nama_siswa),
-      nis: teks(diri?.nomor_induk_sekolah) || teks(siswaRow.nis),
-      nisn: teks(diri?.nisn),
+      nis: identitas.nis,
+      nisn: identitas.nisn,
       noAbsen: noAbsenDariKode(teks((siswaRow as { id_ortu?: string }).id_ortu)),
       kelas: teks(siswaRow.kelas),
       kelasTampil: formatKelasRapor(teks(siswaRow.kelas)),

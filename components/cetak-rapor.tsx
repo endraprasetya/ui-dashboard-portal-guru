@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { TombolKembaliCetak } from '@/components/tombol-kembali-cetak'
 import { niyDariNamaPembimbing } from '@/lib/niy-pembimbing'
+import { formatTeksNisNisn } from '@/lib/identitas-siswa-cetak'
 import { fetchRaporSiswa, type DataRapor } from '@/lib/rapor'
 
 function garis(value: string, panjang = 22) {
@@ -142,7 +143,7 @@ function LembarRapor({ data }: { data: DataRapor }) {
         <table className="text-[12pt]">
           <tbody>
             <BarisIdentitas label="Nama siswa" nilai={siswa.nama} />
-            <BarisIdentitas label="NIS / NISN" nilai={[siswa.nis, siswa.nisn].filter(Boolean).join(' / ')} />
+            <BarisIdentitas label="NIS / NISN" nilai={formatTeksNisNisn(siswa.nis, siswa.nisn)} />
             <BarisIdentitas label="Kelas" nilai={siswa.kelas} />
             <BarisIdentitas label="Unit" nilai={siswa.unit} />
             <BarisIdentitas label="Semester" nilai={`${data.semester} ${data.tahunAjaran}`} />

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Printer, Save } from 'lucide-react'
+import { formatTeksNisNisn } from '@/lib/identitas-siswa-cetak'
 import {
   formatNilaiKurmer,
   susunBarisMuatanCetak,
@@ -47,6 +48,7 @@ export const GAYA_CETAK_RAPOR_KURMER = `
   }
   .lembar-rapor-kurmer .tabel-nilai .indent-muatan { padding-left: 14px; font-size: 8.5pt; }
   .lembar-rapor-kurmer .blok-identitas td { padding: 0; line-height: 1.2; }
+  .lembar-rapor-kurmer .blok-identitas td.nilai-nis { max-width: 11.5rem; word-break: break-word; }
   .lembar-rapor-kurmer .kotak-catatan td { vertical-align: top; font-size: 8.5pt; padding: 3px 5px; min-height: 12mm; }
   .lembar-rapor-kurmer .ttd-atas td { border: none !important; width: 50%; text-align: center; vertical-align: top; font-size: 9pt; }
   .lembar-rapor-kurmer .ttd-bawah td { border: none !important; text-align: center; vertical-align: top; font-size: 9pt; }
@@ -143,7 +145,10 @@ export function LembarRaporKurmer({ data }: { data: DataCetakKurmer }) {
         <table className="blok-identitas text-[9.5pt]">
           <tbody>
             <BarisIdentitas label="Nama peserta didik" nilai={siswa.nama_siswa} />
-            <BarisIdentitas label="NIS" nilai={siswa.nis} />
+            <tr>
+              <td className="w-40 py-0.5 align-top">NIS / NISN</td>
+              <td className="nilai-nis py-0.5 align-top">: {formatTeksNisNisn(siswa.nis, siswa.nisn)}</td>
+            </tr>
             <BarisIdentitas label="Kelas / Fase" nilai={`${siswa.kelas} / Fase ${periode.fase}`} />
           </tbody>
         </table>

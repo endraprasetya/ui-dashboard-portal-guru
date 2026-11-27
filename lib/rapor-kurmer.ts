@@ -15,6 +15,7 @@ import {
 } from '@/lib/kkm-kurmer'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
 import { excludeAlumniSiswa, isKelasAlumni, unitLogin, unitSama } from '@/lib/siswa'
+import { resolveIdentitasSiswaCetak } from '@/lib/identitas-siswa-cetak'
 import { supabase } from '@/lib/supabase'
 
 export {
@@ -973,6 +974,14 @@ export async function fetchDataCetakKurmer(
   const siswa = siswaKelas.find((item) => item.id_siswa === idSiswa)
   if (!siswa) return null
 
+  const identitas = await resolveIdentitasSiswaCetak({
+    idSiswa: siswa.id_siswa,
+    nama: siswa.nama_siswa,
+    kelas: siswa.kelas,
+    nis: siswa.nis,
+  })
+  const siswaLengkap: SiswaKurmer = { ...siswa, nis: identitas.nis, nisn: identitas.nisn }
+
   const [{ data: nilai }, catatan, pejabat] = await Promise.all([
     fetchNilaiKurmerKelas(filterEfektif),
     fetchCatatanKurmer(idSiswa, filterEfektif),
@@ -985,7 +994,7 @@ export async function fetchDataCetakKurmer(
   const namaKepsek = catatan?.nama_kepsek || pejabat.kepsek.nama
 
   return {
-    siswa,
+    siswa: siswaLengkap,
     filter: filterEfektif,
     periode: {
       tahunAjaran: filterEfektif.tahunAjaran,

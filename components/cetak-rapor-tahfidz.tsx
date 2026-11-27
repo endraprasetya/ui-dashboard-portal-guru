@@ -10,6 +10,7 @@ import {
   tempatTanggalPengesahanRaporHq,
   type DataCetakRaporTahfidz,
 } from '@/lib/cetak-rapor-tahfidz'
+import { formatTeksNisNisn } from '@/lib/identitas-siswa-cetak'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
 
 function garis(value: string, panjang = 22) {
@@ -33,6 +34,7 @@ export const GAYA_CETAK_RAPOR_TAHFIDZ = `
   .lembar-rapor { font-family: "Times New Roman", Times, serif; color: #000; }
   .lembar-rapor table { width: 100%; border-collapse: collapse; }
   .lembar-rapor .identitas td { padding: 0 3px; vertical-align: middle; line-height: 1.2; }
+  .lembar-rapor .identitas td.nilai-nis { max-width: 11.5rem; font-size: 10pt; word-break: break-word; }
   .lembar-rapor .tabel-nilai th,
   .lembar-rapor .tabel-nilai td { border: 1px solid #000; padding: 1px 3px; vertical-align: middle; line-height: 1.15; }
   .lembar-rapor .tabel-nilai thead th { background: #d9d9d9; font-weight: 700; text-align: center; }
@@ -145,7 +147,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
     : 'SD ISLAM TERPADU AL MADINAH'
-  const nisNisn = [siswa.nis, siswa.nisn].filter(Boolean).join('/') || '-'
+  const nisNisn = formatTeksNisNisn(siswa.nis, siswa.nisn, ' / ')
   const tempatTanggal = tempatTanggalPengesahanRaporHq(data.lokasi)
 
   return (
@@ -169,7 +171,7 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
             <td>Kelas</td>
             <td>: {siswa.kelasTampil || siswa.kelas || '-'}</td>
             <td>NIS/NISN</td>
-            <td>: {nisNisn}</td>
+            <td className="nilai-nis">: {nisNisn}</td>
           </tr>
         </tbody>
       </table>
