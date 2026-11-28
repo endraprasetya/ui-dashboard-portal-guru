@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   jumlahkanPos,
   labelPeriodeBerjalan,
@@ -32,10 +33,23 @@ const BATAS_MS = 45_000
 const PESAN_AMPSS_NONAKTIF =
   'Data pembayaran dan Tagihan siswa dalam perbaikan. Mohon maaf atas ketidaknyamanan ini. Jazaakumullohu khoiron katsiron.'
 
-/** Default nonaktif; aktifkan scraping dengan `AMPSS_NONAKTIF=0` di server. */
+/** Nonaktifkan sementara dengan `AMPSS_NONAKTIF=1` di server. */
 function ampssNonaktif(): boolean {
-  const nilai = (process.env.AMPSS_NONAKTIF ?? '1').trim().toLowerCase()
+  const nilai = (process.env.AMPSS_NONAKTIF ?? '0').trim().toLowerCase()
   return nilai !== '0' && nilai !== 'false' && nilai !== 'off' && nilai !== 'no'
+}
+
+/** Konteks permintaan dashboard KS / bendahara — tetap live meski kill switch global aktif. */
+const konteksAmpssKepsek = new AsyncLocalStorage<{ paksaAktif?: boolean }>()
+
+function ampssDiblokir(): boolean {
+  if (konteksAmpssKepsek.getStore()?.paksaAktif) return false
+  return ampssNonaktif()
+}
+
+/** Jalankan scraping AMPSS untuk modul keuangan kepala sekolah & bendahara. */
+export function denganAmpssKepsekAktif<T>(kerja: () => Promise<T>): Promise<T> {
+  return konteksAmpssKepsek.run({ paksaAktif: true }, kerja)
 }
 
 type Sesi = Map<string, string>
@@ -160,7 +174,7 @@ function adalahAlihan(status: number) {
 }
 
 async function minta(url: string, init: RequestInit & { sesi?: Sesi; referer?: string } = {}): Promise<Response> {
-  if (ampssNonaktif()) throw new Error(PESAN_AMPSS_NONAKTIF)
+  if (ampssDiblokir()) throw new Error(PESAN_AMPSS_NONAKTIF)
   const { sesi: peta, referer, headers: headersAwal, signal, ...sisa } = init
   const headers = new Headers(headersAwal)
   headers.set('User-Agent', UA_PERAMBAN)
@@ -426,7 +440,7 @@ async function muatRekapSekolah(sekolah: { id: string; nama: string }, segar: bo
 }
 
 export async function muatRekapKeuangan(segar = false, unit?: string): Promise<RekapKeuangan> {
-  if (ampssNonaktif()) {
+  if (ampssDiblokir()) {
     const sekolah = sekolahDariUnit(unit)
     const nama = sekolah?.nama || kanonNamaUnit(unit) || String(unit || '').trim() || 'Sekolah'
     return rekapKosong(nama, PESAN_AMPSS_NONAKTIF)
@@ -489,7 +503,7 @@ export async function muatRekapSyaratAsas(segar = false, unit?: string): Promise
 }
 
 export async function muatDetailTunggakan(nis: string, unit?: string): Promise<DetailTunggakan | null> {
-  if (ampssNonaktif()) return null
+  if (ampssDiblokir()) return null
   if (!/^\d{3,12}$/.test(nis)) return null
   const sekolah = sekolahDariUnit(unit)
   if (!sekolah) return null

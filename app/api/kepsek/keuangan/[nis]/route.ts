@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { muatDetailTunggakan } from '@/lib/ampss'
+import { denganAmpssKepsekAktif, muatDetailTunggakan } from '@/lib/ampss'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -11,7 +11,7 @@ export async function GET(request: Request, konteks: Konteks) {
   const params = new URL(request.url).searchParams
   const unit = params.has('unit') ? params.get('unit') || '' : undefined
   try {
-    const data = await muatDetailTunggakan(decodeURIComponent(nis), unit)
+    const data = await denganAmpssKepsekAktif(() => muatDetailTunggakan(decodeURIComponent(nis), unit))
     if (!data) return NextResponse.json({ pesan: 'Siswa tidak ditemukan pada rekap tunggakan.' }, { status: 404 })
     return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
