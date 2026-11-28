@@ -141,7 +141,7 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
   )
 }
 
-export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTahfidz; indikator?: string }) {
+export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
   const { siswa } = data
   const niyPembimbing = niyDariNamaPembimbing(siswa.pembimbing)
   const namaSekolah = siswa.unit
@@ -175,8 +175,6 @@ export function LembarRaporTahfidz({ data, indikator }: { data: DataCetakRaporTa
           </tr>
         </tbody>
       </table>
-
-      {indikator ? <p className="mt-2 text-[10.5pt]">Indikator penilaian: {indikator}</p> : null}
 
       <table className="tabel-nilai mt-2 text-[9.5pt]">
         <thead>

@@ -191,7 +191,7 @@ export function PratinjauRaporHqKepsek({ baris, onTutup }: { baris: KirimRaporHq
               Identitas siswa belum ditemukan, sehingga lembar rapor belum dapat dicetak.
             </p>
           ) : null}
-          {data ? <LembarRaporTahfidz data={data} indikator={indikator} /> : null}
+          {data ? <LembarRaporTahfidz data={data} /> : null}
         </div>
       </div>
     </div>
