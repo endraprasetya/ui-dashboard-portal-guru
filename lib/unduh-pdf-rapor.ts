@@ -61,6 +61,10 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   pdf.text(`Kelas : ${siswa.kelasTampil || siswa.kelas || '-'}`, 14, 56)
   pdf.text(`NIS/NISN : ${nisNisn}`, 120, 56)
 
+  const surahCount = data.detail.length
+  const padat = surahCount > 10
+  const tinggiBarisNilai = padat ? 5.2 : 6.5
+  const fontBaris = padat ? 7 : 8
   const kiri = 14
   const kanan = 196
   const col = [12, 16, 52, 28, 22, 16, 16, 14, 16]
@@ -78,6 +82,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   y += 8
 
   pdf.setFont('times', 'normal')
+  pdf.setFontSize(fontBaris)
   const baris = data.detail.length ? data.detail : [{
     juz: '-',
     nomorSurat: '-',
@@ -93,7 +98,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
 
   for (const row of baris) {
     const nama = row.rentangAyat ? `${row.namaSurat} (${row.rentangAyat})` : row.namaSurat
-    const tinggi = 8
+    const tinggi = tinggiBarisNilai
     pdf.rect(kiri, y, kanan - kiri, tinggi)
     for (let i = 1; i < col.length; i++) {
       pdf.line(xCol(i), y, xCol(i), y + tinggi)
@@ -154,19 +159,21 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
     ['Capaian Target Hafalan', data.capaianTarget],
     ['Motivasi', data.motivasi],
   ]
+  const tinggiCatatanBaris = padat ? 4.2 : 5
+  const tinggiCatatanMin = padat ? 10 : 12
   for (const [judul, isi] of catatan) {
     const barisTeks = bungkus(isi || '-', 78)
-    const tinggi = Math.max(12, 6 + barisTeks.length * 5)
+    const tinggi = Math.max(tinggiCatatanMin, 6 + barisTeks.length * tinggiCatatanBaris)
     pdf.rect(kiri, y, 52, tinggi)
     pdf.rect(kiri + 52, y, 130, tinggi)
     pdf.text(judul, kiri + 2, y + 6)
     pdf.setFont('times', 'normal')
-    barisTeks.forEach((b, i) => pdf.text(b, kiri + 54, y + 6 + i * 5))
+    barisTeks.forEach((b, i) => pdf.text(b, kiri + 54, y + 6 + i * tinggiCatatanBaris))
     pdf.setFont('times', 'bold')
     y += tinggi
   }
 
-  const tinggiTandaTangan = 62
+  const tinggiTandaTangan = padat ? 48 : 62
   if (y + tinggiTandaTangan > 318) {
     pdf.addPage([210, 330], 'portrait')
     y = 18
@@ -179,7 +186,7 @@ export async function buatPdfRaporTahfidz(data: DataCetakRaporTahfidz): Promise<
   pdf.text('Orang Tua / Wali Siswa', 40, y, { align: 'center' })
   pdf.text(siswa.labelPembimbing || 'Ustadz Pembimbing', 105, y, { align: 'center' })
   pdf.text('Kepala Sekolah', 165, y, { align: 'center' })
-  y += 28
+  y += padat ? 22 : 28
   pdf.setFont('times', 'bold')
   pdf.text('........................', 40, y, { align: 'center' })
   pdf.text(siswa.pembimbing || '........................', 105, y, { align: 'center' })

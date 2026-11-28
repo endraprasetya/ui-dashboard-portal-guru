@@ -10,7 +10,7 @@ import {
 } from '@/lib/jadwal-asas'
 
 export function JadwalAsasI() {
-  const [terbuka, setTerbuka] = useState(true)
+  const [terbuka, setTerbuka] = useState(false)
   const hariIni = isoTanggalLokal()
   const isoBerikutnya = useMemo(
     () => JADWAL_ASAS_I.find((hari) => hari.iso >= hariIni)?.iso,

@@ -23,10 +23,13 @@ function teks(value: unknown) {
 function normalNama(nama: string) {
   return nama
     .toLowerCase()
+    .replace(/[''`]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+const KOLOM_DIRI = 'nama_lengkap,kelas,nomor_induk_sekolah,nisn'
 
 /** Teks tampilan NIS/NISN pada cetak; jika kosong keduanya → `-`. */
 export function formatTeksNisNisn(nis?: string, nisn?: string, pemisah = ' / ') {
@@ -38,14 +41,9 @@ export function formatTeksNisNisn(nis?: string, nisn?: string, pemisah = ' / ') 
   return '-'
 }
 
-async function ambilBarisDataDiri(kunci: string, nilai: string, kolom = 'nomor_induk_sekolah') {
+async function ambilBarisDataDiri(nilai: string, kolom: 'nomor_induk_sekolah' | 'nisn' = 'nomor_induk_sekolah') {
   if (!teks(nilai)) return null
-  const { data } = await supabase
-    .from('data_diri_siswa')
-    .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn')
-    .eq(kolom, nilai)
-    .limit(1)
-    .maybeSingle()
+  const { data } = await supabase.from('data_diri_siswa').select(KOLOM_DIRI).eq(kolom, nilai).limit(1).maybeSingle()
   return (data as DataDiriSiswaRingkas | null) || null
 }
 
@@ -55,7 +53,7 @@ async function ambilDataDiriNamaKelas(nama: string, kelas: string) {
   if (!n || !k) return null
   const { data: tepat } = await supabase
     .from('data_diri_siswa')
-    .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn')
+    .select(KOLOM_DIRI)
     .eq('nama_lengkap', n)
     .eq('kelas', k)
     .limit(1)
@@ -63,7 +61,7 @@ async function ambilDataDiriNamaKelas(nama: string, kelas: string) {
   if (tepat) return tepat as DataDiriSiswaRingkas
   const { data: daftar } = await supabase
     .from('data_diri_siswa')
-    .select('nama_lengkap,kelas,nomor_induk_sekolah,nisn')
+    .select(KOLOM_DIRI)
     .eq('kelas', k)
     .ilike('nama_lengkap', n)
     .limit(5)
@@ -72,12 +70,38 @@ async function ambilDataDiriNamaKelas(nama: string, kelas: string) {
   return (cocok as DataDiriSiswaRingkas | undefined) || null
 }
 
+async function ambilDataDiriNamaFuzzy(nama: string) {
+  const n = teks(nama)
+  if (!n) return null
+  const { data: tepat } = await supabase.from('data_diri_siswa').select(KOLOM_DIRI).eq('nama_lengkap', n).limit(1).maybeSingle()
+  if (tepat) return tepat as DataDiriSiswaRingkas
+  const kataPertama = n.split(/\s+/)[0] || n
+  const { data: daftar } = await supabase
+    .from('data_diri_siswa')
+    .select(KOLOM_DIRI)
+    .ilike('nama_lengkap', `%${kataPertama}%`)
+    .limit(25)
+  const target = normalNama(n)
+  const cocok = (daftar || []).find((row) => normalNama(teks(row.nama_lengkap)) === target)
+  if (cocok) return cocok as DataDiriSiswaRingkas
+  return (
+    (daftar || []).find((row) => {
+      const kandidat = normalNama(teks(row.nama_lengkap))
+      return kandidat.includes(target) || target.includes(kandidat)
+    }) as DataDiriSiswaRingkas | undefined
+  ) || null
+}
+
 async function ambilNisnDariSiswa(idSiswa: string) {
   const id = teks(idSiswa)
-  if (!id) return ''
+  if (!id) return { nis: '', nisn: '' }
   const { data, error } = await supabase.from('siswa').select('nis,nisn').eq('id_siswa', id).maybeSingle()
-  if (error && /nisn|column|schema cache/i.test(error.message || '')) return ''
-  return teks((data as { nisn?: string } | null)?.nisn)
+  if (error && /nisn|column|schema cache/i.test(error.message || '')) {
+    const { data: tanpaNisn } = await supabase.from('siswa').select('nis').eq('id_siswa', id).maybeSingle()
+    return { nis: teks(tanpaNisn?.nis), nisn: '' }
+  }
+  const baris = data as { nis?: string; nisn?: string } | null
+  return { nis: teks(baris?.nis), nisn: teks(baris?.nisn) }
 }
 
 /**
@@ -88,24 +112,33 @@ export async function resolveIdentitasSiswaCetak(input: {
   nama?: string
   kelas?: string
   nis?: string
+  nisn?: string
 }): Promise<IdentitasSiswaCetak> {
   const id = teks(input.idSiswa)
   const nama = teks(input.nama)
   const kelas = teks(input.kelas)
   const nisSiswa = teks(input.nis)
+  const nisnHint = teks(input.nisn)
+
+  const dariSiswa = id ? await ambilNisnDariSiswa(id) : { nis: '', nisn: '' }
 
   let diri: DataDiriSiswaRingkas | null = null
-  if (nisSiswa) diri = await ambilBarisDataDiri('nomor', nisSiswa)
-  if (!diri && id) diri = await ambilBarisDataDiri('nomor', id)
-  if (!diri && nisSiswa && id && nisSiswa !== id) {
-    const cadangan = await ambilBarisDataDiri('nomor', id)
-    if (cadangan) diri = cadangan
+  const nomorCoba = [nisSiswa, dariSiswa.nis, id].filter((nilai, indeks, daftar) => teks(nilai) && daftar.indexOf(nilai) === indeks)
+  for (const nomor of nomorCoba) {
+    const baris = await ambilBarisDataDiri(nomor, 'nomor_induk_sekolah')
+    if (baris) {
+      diri = baris
+      break
+    }
+  }
+  if (!diri && (nisnHint || dariSiswa.nisn)) {
+    diri = await ambilBarisDataDiri(nisnHint || dariSiswa.nisn, 'nisn')
   }
   if (!diri) diri = await ambilDataDiriNamaKelas(nama, kelas)
+  if (!diri) diri = await ambilDataDiriNamaFuzzy(nama)
 
-  const nisnSiswa = id ? await ambilNisnDariSiswa(id) : ''
-  const nis = nisSiswa || teks(diri?.nomor_induk_sekolah) || id
-  const nisn = teks(diri?.nisn) || nisnSiswa
+  const nis = nisSiswa || dariSiswa.nis || teks(diri?.nomor_induk_sekolah) || id
+  const nisn = teks(diri?.nisn) || nisnHint || dariSiswa.nisn
 
   return { nis, nisn }
 }

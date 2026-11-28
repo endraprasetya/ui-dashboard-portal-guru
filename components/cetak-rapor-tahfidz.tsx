@@ -11,7 +11,11 @@ import {
   type DataCetakRaporTahfidz,
 } from '@/lib/cetak-rapor-tahfidz'
 import { formatTeksNisNisn } from '@/lib/identitas-siswa-cetak'
+import { normalisasiGelarNama } from '@/lib/format-nama-gelar'
 import { formatAngkaRapor } from '@/lib/rapor-tahfidz-nilai'
+
+/** Ambang jumlah surah: ≤ lega; > padat (muat 1 halaman). */
+export const BATAS_SURAH_LAYOUT_PADAT = 10
 
 function garis(value: string, panjang = 22) {
   const teks = value.trim()
@@ -51,6 +55,30 @@ export const GAYA_CETAK_RAPOR_TAHFIDZ = `
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  .lembar-rapor-lega .tabel-nilai th,
+  .lembar-rapor-lega .tabel-nilai td { padding: 3px 4px; line-height: 1.3; }
+  .lembar-rapor-lega .tabel-catatan th,
+  .lembar-rapor-lega .tabel-catatan td { padding: 5px 6px; line-height: 1.25; min-height: 1.6em; }
+  .lembar-rapor-lega .ttd-rapor .ruang { height: 18mm; }
+  .lembar-rapor-lega .ttd-rapor { margin-top: 4mm; }
+  .lembar-rapor-lega { line-height: 1.28; }
+
+  .lembar-rapor-padat { font-size: 9pt; line-height: 1.08; }
+  .lembar-rapor-padat header h1,
+  .lembar-rapor-padat header p { font-size: 12pt !important; }
+  .lembar-rapor-padat .identitas { font-size: 9pt; }
+  .lembar-rapor-padat .tabel-nilai { font-size: 8pt; }
+  .lembar-rapor-padat .tabel-nilai th,
+  .lembar-rapor-padat .tabel-nilai td { padding: 0 2px; line-height: 1.05; }
+  .lembar-rapor-padat .nama-arab { font-size: 9pt; }
+  .lembar-rapor-padat .tabel-catatan { font-size: 8pt; margin-top: 1mm; }
+  .lembar-rapor-padat .tabel-catatan th,
+  .lembar-rapor-padat .tabel-catatan td { padding: 2px 3px; line-height: 1.1; }
+  .lembar-rapor-padat .kotak-hijau { font-size: 12pt !important; }
+  .lembar-rapor-padat .blok-tanda-tangan { margin-top: 1mm; }
+  .lembar-rapor-padat .ttd-rapor { margin-top: 1mm; font-size: 9pt; }
+  .lembar-rapor-padat .ttd-rapor .ruang { height: 9mm; }
+
   @media print {
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
     .lembar-rapor {
@@ -64,6 +92,8 @@ export const GAYA_CETAK_RAPOR_TAHFIDZ = `
       page-break-after: always;
     }
     .lembar-rapor:last-child { page-break-after: auto; }
+    .lembar-rapor-lega { font-size: 10pt !important; line-height: 1.28 !important; }
+    .lembar-rapor-padat { font-size: 9pt !important; line-height: 1.08 !important; }
     .lembar-rapor header h1,
     .lembar-rapor header p { font-size: 12pt; line-height: 1.15; margin: 0; }
     .blok-tanda-tangan,
@@ -143,7 +173,12 @@ export function CetakRaporTahfidzHalaman({ idSiswa, asesmen }: { idSiswa: string
 
 export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
   const { siswa } = data
-  const niyPembimbing = niyDariNamaPembimbing(siswa.pembimbing)
+  const surahCount = data.detail.length
+  const modePadat = surahCount > BATAS_SURAH_LAYOUT_PADAT
+  const kelasLembar = modePadat ? 'lembar-rapor-padat' : 'lembar-rapor-lega'
+  const namaPembimbing = normalisasiGelarNama(siswa.pembimbing)
+  const namaKepsek = normalisasiGelarNama(data.kepsek.nama)
+  const niyPembimbing = niyDariNamaPembimbing(namaPembimbing || siswa.pembimbing)
   const namaSekolah = siswa.unit
     ? `SD ISLAM TERPADU AL MADINAH ${siswa.unit.toUpperCase()}`
     : 'SD ISLAM TERPADU AL MADINAH'
@@ -151,7 +186,9 @@ export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
   const tempatTanggal = tempatTanggalPengesahanRaporHq(data.lokasi)
 
   return (
-    <article className="lembar-rapor mx-auto min-h-[330mm] max-w-[210mm] bg-white px-6 py-4 text-[10.5pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none">
+    <article
+      className={`lembar-rapor ${kelasLembar} mx-auto min-h-[330mm] max-w-[210mm] bg-white px-6 py-4 text-[10.5pt] leading-snug shadow-xl print:min-h-0 print:max-w-none print:px-0 print:py-0 print:shadow-none`}
+    >
       <header className="text-center">
         <h1 className="text-[14pt] font-bold tracking-wide">RAPOR TAHFIZHUL QUR&apos;AN</h1>
         <p className="text-[14pt] font-bold">{data.judulAsesmen}</p>
@@ -295,7 +332,7 @@ export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
               <span className="font-bold underline">{'.'.repeat(22)}</span>
             </td>
             <td>
-              <span className="font-bold underline">{garis(siswa.pembimbing)}</span>
+              <span className="font-bold underline">{garis(namaPembimbing || siswa.pembimbing)}</span>
               {niyPembimbing ? (
                 <>
                   <br />
@@ -304,7 +341,7 @@ export function LembarRaporTahfidz({ data }: { data: DataCetakRaporTahfidz }) {
               ) : null}
             </td>
             <td>
-              <span className="font-bold underline">{garis(data.kepsek.nama)}</span>
+              <span className="font-bold underline">{garis(namaKepsek || data.kepsek.nama)}</span>
               {data.kepsek.niy ? (
                 <>
                   <br />

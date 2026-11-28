@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, Printer, RefreshCw } from 'lucide-react'
+import { Download, Printer, RefreshCw, X } from 'lucide-react'
 import type { BarisBulanSidia, KelompokSidia, RekapBulananSidia, SelBulanSidia } from '@/lib/sidia-absensi'
 import { todayInputValue } from '@/lib/jurnal'
 
@@ -76,7 +76,7 @@ function kelompokTampil(baris: BarisBulanSidia[], unit: 'Semua' | KelompokSidia,
   return [...grup.entries()]
 }
 
-export function RekapBulananPresensiKaryawan() {
+export function RekapBulananPresensiKaryawan({ dalamModal = false }: { dalamModal?: boolean }) {
   const [bulan, setBulan] = useState(bulanAwal)
   const [unit, setUnit] = useState<'Semua' | KelompokSidia>('Semua')
   const [lembaga, setLembaga] = useState('Semua')
@@ -189,7 +189,11 @@ export function RekapBulananPresensiKaryawan() {
   }
 
   return (
-    <section className="rekap-presensi-karyawan rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+    <section
+      className={`rekap-presensi-karyawan ${
+        dalamModal ? 'border-0 bg-transparent p-0 shadow-none' : 'rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4'
+      }`}
+    >
       <style>{`
         .rekap-presensi-table { border-collapse: collapse; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
         .rekap-presensi-table th, .rekap-presensi-table td { border: 1px solid #cbd5e1; padding: 3px 2px; text-align: center; vertical-align: middle; }
@@ -208,6 +212,9 @@ export function RekapBulananPresensiKaryawan() {
           }
           body.cetak-rekap-presensi .rekap-presensi-karyawan .no-print,
           body.cetak-rekap-presensi .rekap-presensi-karyawan .no-print * { display: none !important; visibility: hidden !important; }
+          body.cetak-rekap-presensi .no-print-modal-rekap,
+          body.cetak-rekap-presensi .no-print-modal-rekap * { display: none !important; visibility: hidden !important; }
+          body.cetak-rekap-presensi .overlay-rekap-presensi-modal { position: static !important; inset: auto !important; background: transparent !important; padding: 0 !important; overflow: visible !important; }
           body.cetak-rekap-presensi .rekap-presensi-scroll { overflow: visible !important; }
           body.cetak-rekap-presensi .rekap-presensi-table { font-size: 6.5pt; }
           body.cetak-rekap-presensi .rekap-presensi-table .nama-col { min-width: 0 !important; position: static !important; }
@@ -215,13 +222,20 @@ export function RekapBulananPresensiKaryawan() {
       `}</style>
 
       <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="text-sm font-extrabold text-slate-900">Rekapitulasi Bulanan Presensi Karyawan</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Gaya SIDIA · {data?.labelBulan || bulan} · jam masuk di atas, jam pulang di bawah
+        {!dalamModal ? (
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900">Rekapitulasi Bulanan Presensi Karyawan</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Gaya SIDIA · {data?.labelBulan || bulan} · jam masuk di atas, jam pulang di bawah
+              {data ? ` · ${barisEkspor.length} karyawan` : ''}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">
+            {data?.labelBulan || bulan}
             {data ? ` · ${barisEkspor.length} karyawan` : ''}
           </p>
-        </div>
+        )}
         <div className="no-print flex flex-wrap items-end gap-2">
           <label className="text-xs font-bold text-slate-600">
             Bulan & tahun
@@ -383,5 +397,67 @@ export function RekapBulananPresensiKaryawan() {
         </div>
       ) : null}
     </section>
+  )
+}
+
+export function ModalRekapBulananPresensiKaryawan({ buka, onTutup }: { buka: boolean; onTutup: () => void }) {
+  useEffect(() => {
+    if (!buka) return
+    const padaEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onTutup()
+    }
+    window.addEventListener('keydown', padaEscape)
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', padaEscape)
+      document.body.style.overflow = overflow
+    }
+  }, [buka, onTutup])
+
+  if (!buka) return null
+
+  return (
+    <div
+      className="overlay-rekap-presensi-modal fixed inset-0 z-[75] flex items-end justify-center bg-slate-900/55 p-2 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="judul-modal-rekap-presensi"
+      onClick={onTutup}
+    >
+      <div
+        className="flex max-h-[94vh] w-full max-w-[min(100%,72rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="no-print-modal-rekap flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+          <div className="min-w-0">
+            <h2 id="judul-modal-rekap-presensi" className="text-sm font-extrabold text-slate-900 sm:text-base">
+              Rekapitulasi Bulanan Presensi Karyawan
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">Gaya SIDIA · jam masuk di atas, jam pulang di bawah</p>
+          </div>
+          <button
+            type="button"
+            onClick={onTutup}
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+            aria-label="Tutup"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+          <RekapBulananPresensiKaryawan dalamModal />
+        </div>
+        <div className="no-print-modal-rekap shrink-0 border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onTutup}
+            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 sm:w-auto"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

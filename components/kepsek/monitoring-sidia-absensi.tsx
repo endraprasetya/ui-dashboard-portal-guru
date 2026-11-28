@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Clock3, RefreshCw, Users } from 'lucide-react'
+import { CalendarRange, Clock3, RefreshCw, Users } from 'lucide-react'
+import { ModalRekapBulananPresensiKaryawan } from '@/components/kepsek/rekap-bulanan-presensi-karyawan'
 import type { BarisAbsensiSidia, RekapAbsensiSidia } from '@/lib/sidia-absensi'
 
 const kelasStatus: Record<string, string> = {
@@ -120,6 +121,7 @@ export function MonitoringSidiaAbsensiReguler({ tanggal }: { tanggal: string }) 
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
   const [filter, setFilter] = useState<'Semua' | 'Putra' | 'Putri'>('Semua')
+  const [modalRekapBulanan, setModalRekapBulanan] = useState(false)
 
   useEffect(() => {
     setTanggalPilih(tanggal.slice(0, 10))
@@ -198,8 +200,18 @@ export function MonitoringSidiaAbsensiReguler({ tanggal }: { tanggal: string }) 
             <RefreshCw className={`size-3.5 ${memuat ? 'animate-spin' : ''}`} />
             Muat ulang
           </button>
+          <button
+            type="button"
+            onClick={() => setModalRekapBulanan(true)}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#143d32] px-3 py-2 text-xs font-bold text-white hover:bg-[#1a4f42]"
+          >
+            <CalendarRange className="size-3.5" />
+            Rekap Bulanan
+          </button>
         </div>
       </div>
+
+      <ModalRekapBulananPresensiKaryawan buka={modalRekapBulanan} onTutup={() => setModalRekapBulanan(false)} />
 
       {data ? (
         <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">

@@ -1,5 +1,6 @@
 import { labelPembimbingDariDaftarPeran, labelPembimbingDariRole, roleDariSesiPengguna } from '@/lib/label-pembimbing'
 import { fetchPejabatUntukCetak, type PejabatCetak } from '@/lib/setting-cetak'
+import { normalisasiGelarNama } from '@/lib/format-nama-gelar'
 import { resolveIdentitasSiswaCetak } from '@/lib/identitas-siswa-cetak'
 import { supabase } from '@/lib/supabase'
 import { namaSuratArab } from '@/lib/surah-arab'
@@ -43,7 +44,7 @@ export function denganPenandatanganSesi<T extends { siswa: { pembimbing: string;
     const user = mentah ? JSON.parse(mentah) : null
     const peran = String(user?.role || '').toLowerCase()
     if (!user || peran.includes('kepala')) return data
-    const nama = String(user.nama_lengkap || user.nama || '').trim()
+    const nama = normalisasiGelarNama(String(user.nama_lengkap || user.nama || '').trim())
     if (!nama) return data
     return {
       ...data,
@@ -149,13 +150,19 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
   const id = teks(idSiswa)
   if (!id) return null
 
-  const { data: siswaRow, error: galatSiswa } = await supabase
-    .from('siswa')
-    .select('id_siswa,nama_siswa,kelas,unit,id_pembimbing,nis,id_ortu')
-    .eq('id_siswa', id)
-    .maybeSingle()
-
-  if (galatSiswa || !siswaRow) return null
+  const kolomSiswaLengkap = 'id_siswa,nama_siswa,kelas,unit,id_pembimbing,nis,nisn,id_ortu'
+  const kolomSiswaDasar = 'id_siswa,nama_siswa,kelas,unit,id_pembimbing,nis,id_ortu'
+  let barisSiswa: Record<string, unknown> | null = null
+  const siswaLengkap = await supabase.from('siswa').select(kolomSiswaLengkap).eq('id_siswa', id).maybeSingle()
+  if (!siswaLengkap.error && siswaLengkap.data) {
+    barisSiswa = siswaLengkap.data as Record<string, unknown>
+  } else if (siswaLengkap.error && /nisn|column|schema cache/i.test(siswaLengkap.error.message || '')) {
+    const siswaDasar = await supabase.from('siswa').select(kolomSiswaDasar).eq('id_siswa', id).maybeSingle()
+    if (siswaDasar.error || !siswaDasar.data) return null
+    barisSiswa = siswaDasar.data as Record<string, unknown>
+  } else {
+    return null
+  }
 
   const { tahunAjaran, semester } = periodeAjaranSekarang()
   const header = await ambilHeaderCetak(id, teks(asesmen), tahunAjaran, semester)
@@ -172,9 +179,10 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     fetchAllSurah(),
     resolveIdentitasSiswaCetak({
       idSiswa: id,
-      nama: teks(siswaRow.nama_siswa),
-      kelas: teks(siswaRow.kelas),
-      nis: teks(siswaRow.nis),
+      nama: teks(barisSiswa.nama_siswa),
+      kelas: teks(barisSiswa.kelas),
+      nis: teks(barisSiswa.nis),
+      nisn: teks(barisSiswa.nisn),
     }),
     supabase
       .from('setoran_tahfidz')
@@ -184,7 +192,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
       .limit(80),
   ])
 
-  const idsPembimbing = teks(siswaRow.id_pembimbing)
+  const idsPembimbing = teks(barisSiswa.id_pembimbing)
     .split(/[,;]/)
     .map((item) => item.trim())
     .filter(Boolean)
@@ -204,17 +212,20 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
       if ((cadangan.data || []).length > 0) hasil = cadangan
     }
     const guru = (hasil.data || []) as { nama_lengkap?: string | null; role?: unknown }[]
-    pembimbing = guru.map((row) => teks(row.nama_lengkap)).filter(Boolean).join(', ')
+    pembimbing = guru
+      .map((row) => normalisasiGelarNama(teks(row.nama_lengkap)))
+      .filter(Boolean)
+      .join(', ')
     if (guru.some((row) => row.role != null && String(row.role).trim())) {
       labelPembimbing = labelPembimbingDariDaftarPeran(guru.map((row) => row.role))
     }
   }
 
   const pejabat = await fetchPejabatUntukCetak({
-    unit: teks(siswaRow.unit),
-    kelas: teks(siswaRow.kelas),
+    unit: teks(barisSiswa.unit),
+    kelas: teks(barisSiswa.kelas),
     idSiswa: id,
-    namaSiswa: teks(siswaRow.nama_siswa),
+    namaSiswa: teks(barisSiswa.nama_siswa),
     guruPengampu: pembimbing,
   })
 
@@ -248,7 +259,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
 
   baris.sort((a, b) => Number(b.nomorSurat || 0) - Number(a.nomorSurat || 0))
 
-  const kelasAngka = angkaKelas(teks(siswaRow.kelas))
+  const kelasAngka = angkaKelas(teks(barisSiswa.kelas))
   const kandidat: PosisiHafalan[] = []
   for (const row of setoranRes.data || []) {
     const posisi = posisiDariSetoran(surahs, row as Record<string, unknown>)
@@ -259,7 +270,7 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     if (posisi) kandidat.push(posisi)
   }
   const posisiCapaian = posisiTerbaik(kelasAngka || 1, kandidat)
-  const hasilTarget = hitungNilaiTarget(teks(siswaRow.kelas), posisiCapaian, surahs)
+  const hasilTarget = hitungNilaiTarget(teks(barisSiswa.kelas), posisiCapaian, surahs)
   const nilaiRataRata = nilaiRataRataSurah(baris.map((row) => row.nilaiSurat))
   const angkaTargetHeader =
     header?.nilai_target == null || header?.nilai_target === '' ? NaN : Number(header.nilai_target)
@@ -272,13 +283,13 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
   return {
     siswa: {
       idSiswa: id,
-      nama: teks(siswaRow.nama_siswa),
+      nama: teks(barisSiswa.nama_siswa),
       nis: identitas.nis,
       nisn: identitas.nisn,
-      noAbsen: noAbsenDariKode(teks((siswaRow as { id_ortu?: string }).id_ortu)),
-      kelas: teks(siswaRow.kelas),
-      kelasTampil: formatKelasRapor(teks(siswaRow.kelas)),
-      unit: teks(siswaRow.unit),
+      noAbsen: noAbsenDariKode(teks(barisSiswa.id_ortu)),
+      kelas: teks(barisSiswa.kelas),
+      kelasTampil: formatKelasRapor(teks(barisSiswa.kelas)),
+      unit: teks(barisSiswa.unit),
       pembimbing,
       labelPembimbing,
     },
@@ -296,7 +307,10 @@ export async function fetchCetakRaporTahfidz(idSiswa: string, asesmen?: string):
     capaianTarget,
     motivasi,
     detail: baris,
-    kepsek: pejabat.kepsek,
-    lokasi: pejabat.lokasi || teks(siswaRow.unit) || 'Nogosari',
+    kepsek: {
+      ...pejabat.kepsek,
+      nama: normalisasiGelarNama(pejabat.kepsek.nama),
+    },
+    lokasi: pejabat.lokasi || teks(barisSiswa.unit) || 'Nogosari',
   }
 }
